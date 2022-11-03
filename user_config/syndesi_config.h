@@ -1,8 +1,10 @@
-/* Please edit this file to configure how the syndesi library works
+/* This file has been automatical
 *
 * Part of this file has been generated automatically by the script generate_commands.py
 * date : 22-11-03 10:37:03
 */
+
+
 #define SYNDESI_CONFIG_INCLUDED // Do not change this
 
 /* ######## General configuration ######### */
