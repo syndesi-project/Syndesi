@@ -137,6 +137,3 @@ class ChangeEvaluator:
         """
         with open(self._store_file, 'wb') as f:
             pickle.dump(self._store_file_content, f)
-
-
-
