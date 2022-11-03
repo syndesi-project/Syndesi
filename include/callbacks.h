@@ -25,6 +25,7 @@ class Callbacks {
         void confirm(Frame& payload);
 
 #if defined(USE_ERROR_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)
+#warning "here"
     void ERROR_reply_callback(ERROR_reply& reply);
 #endif
 #if defined(USE_DEVICE_DISCOVER_REQUEST_CALLBACK) && defined(SYNDESI_DEVICE_MODE)
