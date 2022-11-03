@@ -11,6 +11,8 @@
 
 #include "sdid.h"
 
+#include <iostream>
+
 namespace syndesi {
 
 const char* SyndesiID::no_address_string = "no address";
@@ -21,16 +23,30 @@ const char* SyndesiID::no_address_string = "no address";
 SyndesiID::SyndesiID() {}
 
 bool SyndesiID::parseIPv4(const char* ip, unsigned short port) {
+    std::string input_ip(ip);
     unsigned int count = 0;
+    unsigned short tempbytes[IPv4_size]; // short because sscanf cannot process bytes
     unsigned char bytes[IPv4_size];
-    for (int i = 0, r = 0; i < IPv4_size; ip += r + 1, i++) {
-        if (sscanf(ip, "%d%n", &bytes[i], &r) < 0) {
+    if (input_ip.find(":") != std::string::npos) {
+        // There's a ":" inside the IPv4 so there's probably a port
+        if (sscanf(ip, "%hu.%hu.%hu.%hu:%hu", &tempbytes[0], &tempbytes[1], &tempbytes[2],
+                   &tempbytes[3], &port) < 5) {
+            return false;
+        }
+    } else {
+        // Only IPv4 address
+        if (sscanf(ip, "%hu.%hu.%hu.%hu", &tempbytes[0], &tempbytes[1], &tempbytes[2], &tempbytes[3]) < 4) {
             return false;
         }
     }
+    for(int i = 0;i<IPv4_size;i++) {
+        bytes[i] = tempbytes[i];
+    }
     // Valid IP
-    if (port > 0) _port = port;
-    else _port = settings.getIPPort(); // This works only for devices
+    if (port > 0)
+        _port = port;
+    else
+        _port = settings.getIPPort();  // This works only for devices
     memcpy(&payload.IPv4, bytes, IPv4_size);
     header.fields.address_type = IPV4;
     return true;
@@ -41,6 +57,17 @@ void SyndesiID::fromIPv4(uint32_t ip, unsigned short port) {
     memcpy(&payload, &ip, IPv4_size);
     if (port > 0) _port = port;
     header.fields.address_type = IPV4;
+}
+
+bool SyndesiID::parse(const char* text) {
+    std::string input_text(text);
+    
+
+    if (input_text.find(".") != std::string::npos) {
+        // There's a "." inside the text, it's probably an IPv4
+        return parseIPv4(text);
+    }
+    return false;
 }
 
 std::string SyndesiID::str() {
@@ -61,7 +88,7 @@ unsigned short SyndesiID::getIPPort() { return _port; }
 
 std::string SyndesiID::IPv4str() {
     std::string output;
-    for(int i = 0;i < IPv4_size;i++) {
+    for (int i = 0; i < IPv4_size; i++) {
         if (i > 0) {
             output += ".";
         }

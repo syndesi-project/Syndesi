@@ -107,6 +107,14 @@ class SyndesiID {
     void fromIPv4(uint32_t ip, unsigned short port = 0);
 
     /**
+     * @brief General ID parser
+     * 
+     * @param text 
+     */
+    bool parse(const char* text);
+
+
+    /**
      * @brief Print device ID as string
      * 
      * @return string 
