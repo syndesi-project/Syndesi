@@ -1,0 +1,46 @@
+/* THIS FILE IS GENERATED AUTOMATICALLY
+ *  DO NOT EDIT
+ *  This file has been written by the script >>>file<<<
+ *  date : >>>date<<<
+ */
+
+
+#ifndef COMMANDS_H
+#define COMMANDS_H
+
+#include <stdint.h>
+#include "syndesi_tools.h"
+#include "buffer.h"
+//#include <memory>
+
+namespace syndesi {
+
+typedef uint16_t cmd_t;
+
+enum commands : cmd_t {
+>>>commands<<<
+};
+
+
+extern const cmd_t commandIDArray[];
+
+const char* commandNameByID(cmd_t id);
+
+class Payload {
+    friend class Frame;
+   protected:
+    virtual void build(Buffer* buffer) = 0;
+    virtual size_t payloadLength() = 0;
+    virtual cmd_t getCommand() = 0;
+};
+
+
+
+
+
+
+>>>payloads<<<
+
+}  // namespace syndesi
+
+#endif  // COMMANDS_H

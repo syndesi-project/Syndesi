@@ -1,0 +1,203 @@
+# commands.yaml
+# Syndesi
+#
+# Sébastien Deriaz
+# 20.06.2022
+# 
+# This file describe every commands used in the Syndesi Communication Protocol (SCP)
+# - Requests : host -> device
+# - Replies  : device -> host
+#
+# Each command is used both ways (as a request, then as a reply). Therefor each command as request fields and reply fields
+# The fields are described in order as such
+#   request_content:        # this is an empty command
+#   reply_content:        # the reply has some data
+#     length:
+#       size: 1
+#       type: "uint"
+#     name:
+#       size: length
+#       type: "string"
+# 
+# In this case, the reply contains a length variable (0-255) specifying the number of bytes in the following string
+#
+# SUPPORTED TYPES
+#
+# - "int"      signed integer
+# - "uint"     unsigned interger
+# - "float"    single precision (4 bytes)
+# - "double"   double precision (8 bytes)
+# - "byte"     used for byte arrays
+# - "char"     used for strings (constant length)
+# - "{A,B}"    enum (1 byte)
+# 
+#
+#
+#
+# The content of each frame is specific to each command and is specified in the content array
+# - i8           -> signed byte (8 bits)
+# - u32          -> unsigned integer (32 bits)
+# - a5           -> array of 5 bytes
+# - s10          -> string of 10 bytes
+#
+# Heritance
+#
+# - length: u8   -> Length is 8 bits long (1 byte)
+# - name: length -> Name is length-bytes long
+#
+# Note that the u8/u16/etc... are affected by endianness (big endian through the network)
+# array types aren't affected and are copied "as is"
+# 
+# The content is described for both request and reply
+# 
+# CATEGORIES
+# 0x00XX : Control
+# 0x010X : Raw register read/write
+# 0x011X : SPI
+# 0x012X : I2C
+# 0x013X : UART
+
+Settings:
+Commands:
+# List of available commands
+# Control
+  - alias: NO_COMMAND
+    ID: 0x0000
+    comment: "No command"
+# Generic error command
+  - alias: ERROR
+    ID: 0x0001
+    comment: "Generic Error"
+    # The request doesn't exist
+    reply_content:
+      error_code:
+        size: 1
+        type: "{INVALID_FRAME, OTHER}"
+# Device discover
+  - alias: DEVICE_DISCOVER
+    ID: 0x0002
+    comment: "Discover frame"
+    request_content:
+    reply_content:
+      ID:
+        size: 20
+        type: "byte"
+      syndesi_protocol_version:
+        size: 1
+        type: "uint"
+      device_version:
+        size: 1
+        type: "uint"
+      name_length:
+        size: 1
+        type: "uint"
+      name:
+        size: "name_length"
+        type: "char"
+      description_length:
+        size: 2
+        type: "uint"
+      description:
+        size: description_length 
+        type: "char"
+# Register read
+  - alias: REGISTER_READ_16
+    ID: 0x0100
+    comment: "Read register (with register index)"
+    request_content:
+      address:
+        size: 2
+        type: "uint"
+    reply_content:
+      data:
+        size: 2
+        type: "uint"
+# Register write
+  - alias: REGISTER_WRITE_16
+    ID: 0x0101
+    comment: "Write register (with register index)"
+    request_content:
+      address:
+        size: 2
+        type: "uint"
+      data:
+        size: 2
+        type: "uint"
+    reply_content:
+      status:
+        size: 1
+        type: "{OK, NOK}"
+# SPI read
+  - alias: SPI_READ_WRITE
+    ID: 0x0110
+    comment: "Read and write SPI data (with interface index)"
+    request_content:
+      interface_index:
+        size: 1
+        type: "uint"
+      write_size:
+        size: 2
+        type: "uint"
+      write_data:
+        size: write_size
+        type: "byte"
+    reply_content:
+      read_size:
+        size: 2
+        type: "uint"
+      read_data:
+        size: read_size
+        type: "byte"
+# SPI write
+  - alias: SPI_WRITE_ONLY
+    ID: 0x0111
+    comment: "Write SPI data (with interface index)"
+    request_content:
+      interface_index:
+        size: 1
+        type: "uint"
+      write_size:
+        size: 2
+        type: "uint"
+      write_data:
+        size: write_size
+        type: "byte"
+    reply_content:
+      status:
+        size: 1
+        type: "{OK, NOK}"
+# I2C
+  - alias: I2C_READ
+    ID: 0x0120
+    comment: "Read I2C data (with interface index)"
+    request_content:
+      interface_index:
+        size: 1
+        type: "uint"
+      read_size:
+        size: 2
+        type: "uint"
+    reply_content:
+      read_size:
+        size: 2
+        type: "uint"
+      read_data:
+        size: read_size
+        type: "byte"
+  - alias: I2C_WRITE
+    ID: 0x0121
+    comment: "Write I2C data (with interface index)"
+    request_content:
+      interface_index:
+        size: 1
+        type: "uint"
+      write_size:
+        size: 2
+        type: "uint"
+      write_data:
+        size: write_size
+        type: "byte"
+    reply_content:
+      status:
+        size: 1
+        type: "{OK, NOK}"

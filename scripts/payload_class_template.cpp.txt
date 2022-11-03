@@ -1,0 +1,27 @@
+class >>>alias<<< : public Payload{
+friend class FrameManager;
+public:
+>>>values<<<
+
+    >>>alias<<<() {};
+private:
+
+>>>alias<<<(Buffer* payloadBuffer) {
+        size_t pos = 0;
+        >>>parse_function<<< 
+    };
+
+>>>command<<<    
+
+>>>constructor<<<
+
+    size_t payloadLength() {
+>>>length_function<<<
+    }
+
+    void build(Buffer* payloadBuffer) {
+        size_t pos = 0;
+>>>build_function<<<
+    }
+};
+

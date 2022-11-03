@@ -1,0 +1,34 @@
+/* THIS FILE IS GENERATED AUTOMATICALLY
+*  DO NOT EDIT
+*  This file has been written by the script >>>file<<<
+*  date : >>>date<<<
+*/
+
+#include "framemanager.h"
+
+namespace syndesi {
+
+void FrameManager::indication(Frame& frame) {
+    Buffer* requestPayloadBuffer = frame.getPayloadBuffer();
+    Payload* reply = nullptr;
+    Payload* request = nullptr;
+
+    switch(frame.getCommand()) {
+>>>switch_request<<<
+    }
+
+    Frame replyFrame(*reply, frame.getID(), false);
+    response(replyFrame);
+}
+
+void FrameManager::confirm(Frame& frame) {
+    Buffer* replyPayloadBuffer = frame.getPayloadBuffer();
+    Payload* reply = nullptr;
+
+    switch(frame.getCommand()) {
+>>>switch_reply<<<
+    }
+}
+
+
+} // namespace syndesi
