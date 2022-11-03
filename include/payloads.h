@@ -1,7 +1,7 @@
 /* THIS FILE IS GENERATED AUTOMATICALLY
  *  DO NOT EDIT
  *  This file has been written by the script generate_commands.py
- *  date : 22-11-01 15:11:23
+ *  date : 22-11-03 09:45:26
  */
 
 
@@ -29,11 +29,6 @@ enum commands : cmd_t {
     I2C_WRITE = 0x0121
 };
 
-
-extern const cmd_t commandIDArray[];
-
-const char* commandNameByID(cmd_t id);
-
 class Payload {
     friend class Frame;
    protected:
@@ -41,10 +36,6 @@ class Payload {
     virtual size_t payloadLength() = 0;
     virtual cmd_t getCommand() = 0;
 };
-
-
-
-
 
 
 class ERROR_reply : public Payload{

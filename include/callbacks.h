@@ -1,7 +1,7 @@
 /* THIS FILE IS GENERATED AUTOMATICALLY
  *  DO NOT EDIT
  *  This file has been written by the script generate_commands.py
- *  date : 22-11-01 15:11:23
+ *  date : 22-11-03 09:45:26
  */
 
 #ifndef CALLBACKS_H
@@ -9,8 +9,8 @@
 
 
 #include "payloads.h"
-#include "interfaces.h"
 #include "config.h"
+#include "interfaces.h"
 
 namespace syndesi {
 

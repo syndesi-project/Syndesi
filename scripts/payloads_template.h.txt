@@ -32,20 +32,6 @@ class Payload {
 
 >>>payloads<<<
 
-
-const cmd_t commandIDArray[] = {
->>>commands_ids<<<
-};
-
-const char* commandNameByID(cmd_t id) {
-    switch(id) {
->>>commands_names_switch<<<
-        default:
-            return "";
-            break;
-    }
-}
-
 }  // namespace syndesi
 
 #endif  // COMMANDS_H

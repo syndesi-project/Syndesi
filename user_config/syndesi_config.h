@@ -1,7 +1,7 @@
 /* Please edit this file to configure how the syndesi library works
 *
 * Part of this file has been generated automatically by the script generate_commands.py
-* date : 22-11-01 15:11:23
+* date : 22-11-03 09:45:26
 */
 #define SYNDESI_CONFIG_INCLUDED // Do not change this
 
@@ -25,7 +25,6 @@
 /*
 * Configure what controllers are used (uncomment to enable)
 */
-
 
 
 /* ######## Callbacks configuration ######## */

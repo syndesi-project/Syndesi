@@ -1,0 +1,25 @@
+/* THIS FILE IS GENERATED AUTOMATICALLY
+ *  DO NOT EDIT
+ *  This file has been written by the script >>>file<<<
+ *  date : >>>date<<<
+ */
+
+
+#include "payloads.h"
+
+namespace syndesi {
+
+const cmd_t commandIDArray[] = {
+>>>commands_ids<<<
+};
+
+const char* commandNameByID(cmd_t id) {
+    switch(id) {
+>>>commands_names_switch<<<
+        default:
+            return "";
+            break;
+    }
+}
+
+} //namespace syndesi

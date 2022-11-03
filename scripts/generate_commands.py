@@ -23,7 +23,7 @@ import re
 
 # Other repositories
 repos_path = {
-    "documentation" : join(dirname(__file__), "../../documentation")
+    "Documentation" : join(dirname(__file__), "../../Documentation")
 }
 
 for p in repos_path.values():
@@ -41,13 +41,14 @@ COMMANDS_DESCRIPTION_FILE = join(dirname(__file__), "commands.yaml")
 PAYLOADS_H = (join(dirname(__file__), "payloads_template.h.txt"),join(dirname(__file__), "../include/payloads.h"))
 CONFIG_H = (join(dirname(__file__), "syndesi_config_template.h.txt"), join(dirname(__file__), "../user_config/syndesi_config.h"))
 CALLBACKS_H = (join(dirname(__file__), "callbacks_template.h.txt"), join(dirname(__file__), "../include/callbacks.h"))
-FRAME_MANAGER_CALLBACKS_H = (join(dirname(__file__), "framemanagercallbacks_template.h.txt"), join(dirname(__file__), "../include/framemanagercallbacks.h"))
+FRAME_MANAGER_H = (join(dirname(__file__), "framemanager_template.h.txt"), join(dirname(__file__), "../include/framemanager.h"))
+PAYLOADS_CPP = (join(dirname(__file__), "payloads_template.cpp.txt"),join(dirname(__file__), "../include/payloads.cpp"))
 
 # Python
 COMMANDS_PY = (join(dirname(__file__), "payloads_template.py"), join(dirname(__file__), "../Python/syndesi/syndesi/payloads.py"))
 
 # Markdown
-COMMANDS_LIST_MD = (join(dirname(__file__), "commands_list_template.md"), join(dirname(__file__), join(repos_path["documentation"], "communication/commands_list.md")))
+COMMANDS_LIST_MD = (join(dirname(__file__), "commands_list_template.md"), join(repos_path["Documentation"], "communication/commands_list.md"))
 
 def main():
     # Read the description file
@@ -67,6 +68,11 @@ def main():
             "file" : Path(__file__).name,
             "commands" : cpp.commands_enum(),
             "payloads" : cpp.payloads(),
+        })
+        # Create C++ source
+        replace(*PAYLOADS_CPP, {
+            "date" : datetime.strftime(datetime.now(), "%y-%m-%d %H:%M:%S"),
+            "file" : Path(__file__).name,
             "commands_names_switch" : cpp.commands_names_switch(),
             "commands_ids" : cpp.commands_ids()
         })
@@ -82,7 +88,7 @@ def main():
         
 
         # Create C++ callbacks source file
-        replace(*FRAME_MANAGER_CALLBACKS_H, {
+        replace(*FRAME_MANAGER_H, {
             "date" : datetime.strftime(datetime.now(), "%y-%m-%d %H:%M:%S"),
             "file" : Path(__file__).name,
             "switch_request" : cpp.switch(request=True),

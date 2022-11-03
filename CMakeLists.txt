@@ -27,7 +27,6 @@ target_sources(${PROJECT_NAME}
         src/network.cpp
         src/sdid.cpp
         src/syndesi_tools.cpp
-        src/payloads.cpp
         src/network.cpp
         src/settings.cpp
 )

@@ -8,7 +8,7 @@ from utilities import replace_str
 from settings import types
 from typing import List
 
-with open(join(dirname(__file__), "payload_class_template.cpp.txt")) as f:
+with open(join(dirname(__file__), "payload_class_template.h.txt")) as f:
     CPP_PAYLOAD_TEMPLATE = f.read()
 
 TAB = 4*' '
