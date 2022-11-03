@@ -21,11 +21,6 @@ enum commands : cmd_t {
 >>>commands<<<
 };
 
-
-extern const cmd_t commandIDArray[];
-
-const char* commandNameByID(cmd_t id);
-
 class Payload {
     friend class Frame;
    protected:
@@ -35,11 +30,21 @@ class Payload {
 };
 
 
-
-
-
-
 >>>payloads<<<
+
+
+const cmd_t commandIDArray[] = {
+>>>commands_ids<<<
+};
+
+const char* commandNameByID(cmd_t id) {
+    switch(id) {
+>>>commands_names_switch<<<
+        default:
+            return "";
+            break;
+    }
+}
 
 }  // namespace syndesi
 

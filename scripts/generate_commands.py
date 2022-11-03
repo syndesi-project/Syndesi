@@ -39,10 +39,9 @@ COMMANDS_DESCRIPTION_FILE = join(dirname(__file__), "commands.yaml")
 # Each of the following file is a tuple (template, output)
 # C++
 PAYLOADS_H = (join(dirname(__file__), "payloads_template.h.txt"),join(dirname(__file__), "../include/payloads.h"))
-PAYLOADS_CPP = (join(dirname(__file__), "payloads_template.cpp.txt"), join(dirname(__file__), "../src/payloads.cpp"))
 CONFIG_H = (join(dirname(__file__), "syndesi_config_template.h.txt"), join(dirname(__file__), "../user_config/syndesi_config.h"))
 CALLBACKS_H = (join(dirname(__file__), "callbacks_template.h.txt"), join(dirname(__file__), "../include/callbacks.h"))
-FRAME_MANAGER_CALLBACKS_CPP = (join(dirname(__file__), "framemanagercallbacks_template.cpp.txt"), join(dirname(__file__), "../src/framemanagercallbacks.cpp"))
+FRAME_MANAGER_CALLBACKS_H = (join(dirname(__file__), "framemanagercallbacks_template.h.txt"), join(dirname(__file__), "../include/framemanagercallbacks.h"))
 
 # Python
 COMMANDS_PY = (join(dirname(__file__), "payloads_template.py"), join(dirname(__file__), "../Python/syndesi/syndesi/payloads.py"))
@@ -67,12 +66,7 @@ def main():
             "date" : datetime.strftime(datetime.now(), "%y-%m-%d %H:%M:%S"),
             "file" : Path(__file__).name,
             "commands" : cpp.commands_enum(),
-            "payloads" : cpp.payloads()
-        })
-        # Create C++ source
-        replace(*PAYLOADS_CPP, {
-            "date" : datetime.strftime(datetime.now(), "%y-%m-%d %H:%M:%S"),
-            "file" : Path(__file__).name,
+            "payloads" : cpp.payloads(),
             "commands_names_switch" : cpp.commands_names_switch(),
             "commands_ids" : cpp.commands_ids()
         })
@@ -88,7 +82,7 @@ def main():
         
 
         # Create C++ callbacks source file
-        replace(*FRAME_MANAGER_CALLBACKS_CPP, {
+        replace(*FRAME_MANAGER_CALLBACKS_H, {
             "date" : datetime.strftime(datetime.now(), "%y-%m-%d %H:%M:%S"),
             "file" : Path(__file__).name,
             "switch_request" : cpp.switch(request=True),
