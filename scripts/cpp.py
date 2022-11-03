@@ -8,8 +8,7 @@ from utilities import replace_str
 from settings import types
 from typing import List
 
-with open(join(dirname(__file__), "payload_class_template.h.txt")) as f:
-    CPP_PAYLOAD_TEMPLATE = f.read()
+
 
 TAB = 4*' '
 
@@ -33,10 +32,13 @@ class CPP():
         
         return output
 
-    def payloads(self):
+    def payloads(self, payload_template):
         """
         Generate the class description for each payload
         """ 
+
+        with open(payload_template) as f:
+            CPP_PAYLOAD_TEMPLATE = f.read()
 
         cpp_type_conversion = {
             types.double : lambda field : f"double {field.name};\n",
