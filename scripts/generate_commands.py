@@ -19,6 +19,7 @@ from commands import Command
 from settings import YAML_ALIAS_KEY, YAML_COMMANDS_LIST_KEY, YAML_SETTINGS_KEY
 from cpp import CPP
 from md import MD
+from sys import argv
 import re
 import pickle
 
@@ -66,6 +67,8 @@ def main():
 
         settings = desc_content[YAML_SETTINGS_KEY]
 
+        force = 'force' in argv
+            
         
 
 
@@ -78,14 +81,14 @@ def main():
             "file" : Path(__file__).name,
             "commands" : cpp.commands_enum(),
             "payloads" : cpp.payloads(PAYLOAD_TEMPLATE_H),
-        }, CE.evaluate(PAYLOADS_H[0], PAYLOAD_TEMPLATE_H))
+        }, CE.evaluate(PAYLOADS_H[0], PAYLOAD_TEMPLATE_H) or force)
         # Create C++ source
         replace(*PAYLOADS_CPP, {
             "date" : datetime.strftime(datetime.now(), "%y-%m-%d %H:%M:%S"),
             "file" : Path(__file__).name,
             "commands_names_switch" : cpp.commands_names_switch(),
             "commands_ids" : cpp.commands_ids()
-        }, CE.evaluate(PAYLOADS_CPP[0]))
+        }, CE.evaluate(PAYLOADS_CPP[0]) or force)
 
         # Create C++ callbacks configuration file (for the user to edit)
         replace(*CONFIG_H, {
@@ -93,7 +96,7 @@ def main():
             "file" : Path(__file__).name,
             "request" : cpp.defines(request=True),
             "reply" : cpp.defines(request=False)
-        }, CE.evaluate(CONFIG_H[0]))
+        }, CE.evaluate(CONFIG_H[0]) or force)
 
         
 
@@ -103,20 +106,20 @@ def main():
             "file" : Path(__file__).name,
             "switch_request" : cpp.switch(request=True),
             "switch_reply" : cpp.switch(request=False)
-        }, CE.evaluate(FRAME_MANAGER_H[0]))
+        }, CE.evaluate(FRAME_MANAGER_H[0]) or force)
 
         # Create C++ callbacks header file
         replace(*CALLBACKS_H, {
             "date" : datetime.strftime(datetime.now(), "%y-%m-%d %H:%M:%S"),
             "file" : Path(__file__).name,
             "callbacks" : cpp.callbacks()
-        }, CE.evaluate(CALLBACKS_H[0]))
+        }, CE.evaluate(CALLBACKS_H[0]) or force)
 
         replace(*COMMANDS_LIST_MD, {
             "date" : datetime.strftime(datetime.now(), "%y-%m-%d %H:%M:%S"),
             "file" : Path(__file__).name,
             "list" : md.commands_list()
-        }, CE.evaluate(COMMANDS_LIST_MD[0]))
+        }, CE.evaluate(COMMANDS_LIST_MD[0]) or force)
 
         
 
