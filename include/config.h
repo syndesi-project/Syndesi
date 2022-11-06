@@ -23,7 +23,8 @@
 // The syndesi_config.h file is already included, nothing to do
 #elif __has_include("syndesi_config.h")
 // We need to find ourselves
-#include <syndesi_config.h>
+//#error "include file"
+#include "syndesi_config.h"
 #else
 // The config file wasn't included first, this file tried looking for it but no
 // luck, so we throw an error

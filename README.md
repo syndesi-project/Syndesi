@@ -63,9 +63,9 @@ There are two types of callbacks :
 
 ## FAQ
 
-Why is the library headers only ? It seems like the only solution to be able to :
+Why is some of the source inside headers and the rest inside .cpp files ? This is a compromise to be able to
 
-- Configure the library with ``syndesi_config.h`` file
-- Not having this file inside the library (and having the same config for all projects)
-- Be able to use the library with the Arduino IDE (so no ``__has_include`` possible)
-- Being able to #ifdef the callbacks (no runtime finding the right one or instianciation of all of them)
+- Configure the library with ``syndesi_config.h`` file (if the library is used from source)
+- Not having the config file inside the library (and having the same config for all projects)
+- Be able to use the library with the Arduino IDE (so no ``__has_include`` possible), in that case the ``syndesi_config.h`` is included before the library
+- Being able to #ifdef the callbacks (no runtime finding the right one or instianciation of all of them). The shared library has all of the callbacks enabled by default, but compiling the library from source allows the user to configure which ones are enabled (for embedded applications for example)

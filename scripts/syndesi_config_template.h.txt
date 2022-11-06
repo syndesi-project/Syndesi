@@ -11,7 +11,7 @@
 /*
 * HOST mode : can send commands (a computer for example)
 */
-//#define SYNDESI_HOST_MODE
+#define SYNDESI_HOST_MODE
 
 /*
 * DEVICE mode : can receive commands (like a I²C interface, SPI interface, etc...)

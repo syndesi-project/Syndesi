@@ -15,16 +15,20 @@
 
 #include "core.h"
 
-// Core
 extern "C" {
+
+
+/* Core */
 void* newCore();
 void delCore(void* core);
+/* SyndesiID */
+void* newSyndesiID();
+void delSyndesiID(void* ID);
+bool syndesiIDParseDescriptor(void* ID, const char* descriptor);
+const char* syndesiIDString(void* ID);
+
+
+
 }
-
-
-
-
-
-
 
 #endif // CINTERFACE_H

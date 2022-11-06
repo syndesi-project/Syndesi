@@ -111,7 +111,7 @@ class CPP():
         Generate a list of defines for each command
 
         //#define USE_command1_callback 
-        //#define USE_command2_callback 
+        //#define USE_command2_callback
         ...
 
         Parameters
@@ -129,9 +129,9 @@ class CPP():
         i = 0
         for command in self._commands:
             if command.has_request and request:
-                output += f'//#define USE_{command.alias.upper()}_REQUEST_CALLBACK\n'
+                output += f'#define USE_{command.alias.upper()}_REQUEST_CALLBACK\n'
             elif command.has_reply and (not request):
-                output += f'//#define USE_{command.alias.upper()}_REPLY_CALLBACK\n'
+                output += f'#define USE_{command.alias.upper()}_REPLY_CALLBACK\n'
         return output
 
     def switch(self, request):
@@ -156,20 +156,20 @@ class CPP():
             if request and command.has_request:
                 output += f'#if defined(USE_{command.alias.upper()}_REQUEST_CALLBACK) && defined(SYNDESI_DEVICE_MODE)\n'                
                 output += ' '*2*TAB + f'case commands::{command.alias}:\n'
-                #output += ' '*3*TAB + f'if({command}_{command_type} != NULL) {{\n'
                 output += ' '*3*TAB + f'request = new {command.alias}_request(requestPayloadBuffer);\n'
                 output += ' '*3*TAB + f'reply = new {command.alias}_reply();\n'
-                output += ' '*3*TAB + f'_callbacks->{command.alias}_request_callback(*(static_cast<{command.alias}_request*>(request)), static_cast<{command.alias}_reply*>(reply));\n'
-                #output += ' '*3*TAB + '}\n'
+                output += ' '*3*TAB + f'if (_callbacks->{command.alias}_request_callback != nullptr) {{\n'
+                output += ' '*4*TAB + f'_callbacks->{command.alias}_request_callback(*(static_cast<{command.alias}_request*>(request)), static_cast<{command.alias}_reply*>(reply));\n'
+                output += ' '*3*TAB + f'}}'
                 output += ' '*3*TAB + f'break;\n'
                 output += '#endif\n'
             elif not request and command.has_reply:
                 output += f'#if defined(USE_{command.alias.upper()}_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)\n'
                 output += ' '*2*TAB + f'case commands::{command.alias}:\n'
-                #output += ' '*3*TAB + f'if({command}_{command_type} != NULL) {{\n'
                 output += ' '*3*TAB + f'reply = new {command.alias}_reply(replyPayloadBuffer);\n'
-                output += ' '*3*TAB + f'_callbacks->{command.alias}_reply_callback(*(static_cast<{command.alias}_reply*>(reply)));\n'
-                #output += ' '*3*TAB + '}\n'
+                output += ' '*3*TAB + f'if (_callbacks->{command.alias}_reply_callback != nullptr) {{\n'
+                output += ' '*4*TAB + f'_callbacks->{command.alias}_reply_callback(*(static_cast<{command.alias}_reply*>(reply)));\n'
+                output += ' '*3*TAB + f'}}'
                 output += ' '*3*TAB + f'break;\n'
                 output += '#endif\n'
         return output
@@ -191,11 +191,11 @@ class CPP():
         for command in self._commands:
             if command.has_request:
                 output += f'#if defined(USE_{command.alias}_REQUEST_CALLBACK) && defined(SYNDESI_DEVICE_MODE)\n'
-                output += TAB*' ' + f'void {command.alias}_request_callback({command.alias}_request& request, {command.alias}_reply* reply);\n'
+                output += TAB*' ' + f'void (*{command.alias}_request_callback)({command.alias}_request&, {command.alias}_reply*);\n'
                 output += f'#endif\n'
             if command.has_reply:
                 output += f'#if defined(USE_{command.alias}_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)\n'
-                output += TAB*' ' + f'void {command.alias}_reply_callback({command.alias}_reply& reply);\n'
+                output += TAB*' ' + f'void (*{command.alias}_reply_callback)({command.alias}_reply&);\n'
                 output += f'#endif\n'
         return output
 

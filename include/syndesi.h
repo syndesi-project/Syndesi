@@ -10,6 +10,8 @@
 #ifndef SYNDESI_H
 #define SYNDESI_H
 
+#include "config.h"
+
 #if !defined(SYNDESI_HOST_MODE) && !defined(SYNDESI_DEVICE_MODE)
     #error "MODE unspecified"
 #endif
@@ -23,7 +25,7 @@
 #endif
 
 #if SYNDESI_ETHERNET_CONTROLLER == 1
-    #include "ethernet/system.h"
+    #include "ethernet/systemethernet.h"
 #endif
 
 
