@@ -12,8 +12,6 @@ if(NOT N EQUAL 0)
   set(ctest_test_args ${ctest_test_args} PARALLEL_LEVEL ${N})
 endif()
 
-#include_directories(user_config)
-
 
 include_directories(../../include)
 file(GLOB LIB_SOURCES CONFIGURE_DEPENDS ../../src/*.cpp)

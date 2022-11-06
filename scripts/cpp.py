@@ -111,7 +111,7 @@ class CPP():
         Generate a list of defines for each command
 
         //#define USE_command1_callback 
-        //#define USE_command2_callback 
+        //#define USE_command2_callback
         ...
 
         Parameters
@@ -129,9 +129,9 @@ class CPP():
         i = 0
         for command in self._commands:
             if command.has_request and request:
-                output += f'//#define USE_{command.alias.upper()}_REQUEST_CALLBACK\n'
+                output += f'#define USE_{command.alias.upper()}_REQUEST_CALLBACK\n'
             elif command.has_reply and (not request):
-                output += f'//#define USE_{command.alias.upper()}_REPLY_CALLBACK\n'
+                output += f'#define USE_{command.alias.upper()}_REPLY_CALLBACK\n'
         return output
 
     def switch(self, request):

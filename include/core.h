@@ -26,6 +26,7 @@ class Core {
     /*
      * Layers
      */
+    public: // making it public temporarily
     Callbacks callbacks;
     FrameManager frameManager;
     Network network;
