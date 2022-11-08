@@ -15,20 +15,7 @@
 using namespace std;
 using namespace syndesi;
 
-Core core;
-
-/**
- * @brief Send command with the desired ID
- *
- * @param commandID
- * @return true if the ID is valid
- * @return false if the ID is invalid
- */
-bool sendCommand(cmd_t commandID);
-
-syndesi::SyndesiID deviceID;
-
-void REGISTER_WRITE_16_reply_callback(
+void reg_write_callback(
     syndesi::REGISTER_WRITE_16_reply& reply) {
     cout << "REGISTER_WRITE_16_reply_callback" << endl;
     cout << "    status = ";
@@ -47,11 +34,10 @@ int main() {
     struct sockaddr_in address;
     char buffer[1024] = {0};
     int choice;
+    syndesi::SyndesiID deviceID;
     
-
-    core.addController(&ethernetController, Network::ControllerType::ETHERNET);
     ethernetController.init();
-    core.callbacks.REGISTER_WRITE_16_reply_callback = REGISTER_WRITE_16_reply_callback;
+    core.callbacks.REGISTER_WRITE_16_reply_callback = reg_write_callback;
 
 
     bool validIPAddress = true;
@@ -78,7 +64,7 @@ int main() {
             ethernetController.waitForData();
         }
         else {
-            cout << " fail" << endl;
+            cout << "fail" << endl;
         }
         
 
@@ -87,6 +73,7 @@ int main() {
         
 
         usleep(1'000'000); // 1s
+        ethernetController.print();
     }
     return 0;
 }

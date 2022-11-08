@@ -33,13 +33,13 @@ class Core {
 
 
    public:
-    void addController(SAP::IController* controller, Network::ControllerType type);
-
     bool sendRequest(Payload& payload, SyndesiID& id);
 
     Core() { factory_init(); };
     ~Core(){};
 };
+
+extern Core core;
 
 }  // namespace syndesi
 

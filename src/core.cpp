@@ -13,6 +13,8 @@
 
 namespace syndesi {
 
+Core core;
+
 void Core::factory_init() {
     // register interfaces (connect layers together)
     // Callbacks class
@@ -23,10 +25,6 @@ void Core::factory_init() {
     // Network class
     network.registerFrameManager(&frameManager);
     // IP Controller class (if used)
-}
-
-void Core::addController(SAP::IController* controller, Network::ControllerType type) {
-    network.registerController(controller, type);
 }
 
 bool Core::sendRequest(Payload& payload, SyndesiID& id) {

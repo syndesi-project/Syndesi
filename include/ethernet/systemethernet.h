@@ -11,8 +11,9 @@
 #ifndef ETHERNET_SYSTEM_H
 #define ETHERNET_SYSTEM_H
 
-#include "interfaces.h"
-#include "sdid.h"
+#include "../interfaces.h"
+#include "../sdid.h"
+#include "../core.h"
 
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -25,8 +26,6 @@
 #include <cstdio>
 #include <iostream>
 
-
-
 namespace syndesi {
 
 #ifdef SYNDESI_HOST_MODE
@@ -36,7 +35,9 @@ class IPController : public SAP::IController {
     SyndesiID deviceID;
 
    public:
-    void init() { cout << "init, socket = " << sock << endl; }
+    void init() { 
+        core.network.registerController(this, Network::ControllerType::ETHERNET);
+     }
 
     size_t write(SyndesiID& id, char* buffer, size_t length) {
         if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -104,6 +105,8 @@ class IPController : public SAP::IController {
    public:
 
     void init() {
+        core.network.registerController(this, Network::ControllerType::ETHERNET);
+
         if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
             perror("socket failed");
             exit(EXIT_FAILURE);
@@ -151,10 +154,6 @@ class IPController : public SAP::IController {
 
     size_t read(char* buffer, size_t length) {
         int valread = ::read(new_socket, buffer, length);
-
-        /*for (int i = 0; i < valread; i++) {
-            printf("%02X ", (uint8_t)buffer[i]);
-        }*/
         return valread;
     }
 

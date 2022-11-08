@@ -9,6 +9,8 @@
 
 #include "network.h"
 
+#include <iostream>
+
 namespace syndesi {
 
 unsigned short Network::port() { return settings.getIPPort(); }
@@ -17,6 +19,7 @@ void Network::registerController(SAP::IController* controller,
                                  ControllerType type) {
     switch (type) {
         case ControllerType::ETHERNET:
+            // Trouver pourquoi le controleur est NULL lors de l'execution mais il est valide à l'initialisation
             IPController = controller;
             break;
         case ControllerType::RS485:
@@ -59,14 +62,19 @@ bool Network::request(Frame& frame) {
                 // The controllerDataAvailable method will take care of the
                 // confirm
                 break;
+            default:
+                printf("Invalid address type\n");
+                break;
         }
     }
     return output;
 };
 
 void Network::response(Frame& frame) {
-    IPController->write(frame.getID(), frame._buffer->data(),
-                        frame._buffer->length());
+    if (IPController != nullptr) {
+        IPController->write(frame.getID(), frame._buffer->data(),
+                            frame._buffer->length());
+    }
 }
 
 /*
