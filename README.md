@@ -2,7 +2,7 @@
 
 The Syndesi library implements low-level communication between syndesi compatible devices (layers 5 and 6 of the OSI model) as well as host-specific high level functions to manage devices
 
-The Syndesi Communication Protocol is responsible for the following tasks :
+The Syndesi library is responsible for :
 
 - Managing communication ports (Ethernet, I²C, SPI, RS-485, etc...)
 - Routing frames through and/or between those communication ports
@@ -20,39 +20,27 @@ To use the library, the user needs to :
 
 The file is located is located at ``user_config/syndesi_config.h``
 
-The **mode** must be set :
+#### Mode
 
 - host : Syndesi Master (like a computer)
 - device : Syndesi subordinate (like an I/O interface)
 
+#### Controller
+
+A controller allows the syndesi library to communicate through a specific interface (Ethernet, I²C, SPI, etc...)
+
+If necessary, the user can provide a custom implementation of a controller
+
 ### 2) Include the files
 
-The configuration file must be included before the library
+The configuration file must be included before the library, if the configuration file is in an include folder, the syndesi library will include it automatically (through ``__has_include``). Otherwise it can be included by the user manually beforehand
 
 ```c++
-#include "syndesi_config.h"
+#include "syndesi_config.h" // Onyl necessary if __has_include is unavailable, with Arduino for example
 #include <syndesi>
 ```
 
 This is done so that the #define in the configuration file are passed to the library
-
-### 3) Declare controllers
-
-A controller is child class of syndesi::SAP::IController. The user must create this class and implement all of its virtual functions.
-
-```c++
-class MyController :: syndesi::SAP::IController {
-    // User code
-}
-```
-
-Then the controller must be instanciated and added to the network class
-
-```c++
-myController = MyController();
-core.addController(myController);
-```
-
 
 ### 4) Implement command specific callbacks
 
@@ -60,6 +48,19 @@ There are two types of callbacks :
 
 - Request : function called on the device whenever a request is received from the host
 - Reply : function called on the host whenever a device sends data back
+
+Each callback function needs to be implemented by the user and then set accordingly :
+
+```C++
+void user_callback(<arguments>) {
+    // User code
+}
+
+// Initialisation
+core.callbacks.<callback> = user_callback
+```
+
+the ``<arguments>`` can be found in the command list
 
 ## FAQ
 
