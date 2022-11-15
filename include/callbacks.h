@@ -8,7 +8,9 @@
 #define CALLBACKS_H
 
 
+#ifndef ARDUINO
 #include "config.h" // Added because the defines weren't propagated
+#endif
 #include "payloads.h"
 #include "interfaces.h"
 
