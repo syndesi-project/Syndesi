@@ -41,10 +41,7 @@ class INetwork_top {
 class IController;
 
 class INetwork_bottom {
-   public:
-    //virtual unsigned short port() = 0;
-    //virtual void setCustomPort(unsigned short port) = 0;
-    // virtual void registerIPController(IController* controller) = 0;
+    public:
     virtual void controllerDataAvailable(IController* controller,
                                          SyndesiID& deviceID,
                                          size_t length) = 0;

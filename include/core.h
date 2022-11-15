@@ -15,7 +15,6 @@
 #include "framemanager.h"
 #include "network.h"
 #include "settings.h"
-#include "config.h"
 
 namespace syndesi {
 
@@ -35,8 +34,11 @@ class Core {
    public:
     bool sendRequest(Payload& payload, SyndesiID& id);
 
-    Core() { factory_init(); };
+    Core() {}
     ~Core(){};
+
+
+    void init();
 };
 
 extern Core core;

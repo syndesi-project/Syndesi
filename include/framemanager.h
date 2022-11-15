@@ -1,7 +1,7 @@
 /* THIS FILE IS GENERATED AUTOMATICALLY
 *  DO NOT EDIT
 *  This file has been written by the script generate_commands.py
-*  date : 22-11-03 16:34:10
+*  date : 22-11-15 10:03:28
 *
 *  Template :
 * @file framemanager.h
@@ -16,7 +16,14 @@
 #define FRAME_MANAGER_H
 
 #include "callbacks.h"
-#include "config.h"
+
+#ifdef ARDUINO
+#include <Arduino.h>
+#define SLEEP(x) delayMicroseconds(x)
+#else
+#include <unistd.h>
+#define SLEEP(x) usleep(x)
+#endif
 
 using namespace std;
 
@@ -46,7 +53,7 @@ class FrameManager : SAP::IFrameManager_bottom, SAP::IFrameManager_top {
      * Lower layer
      */
     SAP::INetwork_top* network = nullptr;
-    void registerNetwork(SAP::INetwork_top* _network) { network = _network; };
+    void registerNetwork(SAP::INetwork_top* _network) { network = _network;};
     
     /* Indication (incoming from host)*/
     void indication(Frame& frame) {
@@ -113,8 +120,9 @@ class FrameManager : SAP::IFrameManager_bottom, SAP::IFrameManager_top {
 #endif
 
         }
+        printf("ok\n");
 
-        Frame replyFrame(*reply, frame.getID(), false);
+        Frame replyFrame(reply, frame.getID(), false);
         network->response(replyFrame);
     }
 

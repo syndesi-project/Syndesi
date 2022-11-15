@@ -1,15 +1,15 @@
 /* THIS FILE IS GENERATED AUTOMATICALLY
  *  DO NOT EDIT
  *  This file has been written by the script generate_commands.py
- *  date : 22-11-03 16:34:10
+ *  date : 22-11-15 10:03:28
  */
 
 #ifndef CALLBACKS_H
 #define CALLBACKS_H
 
 
+#include "config.h" // Added because the defines weren't propagated
 #include "payloads.h"
-#include "config.h"
 #include "interfaces.h"
 
 namespace syndesi {

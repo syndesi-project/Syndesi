@@ -13,28 +13,11 @@
 
 namespace syndesi {
 
+SAP::IController* networkIPController = nullptr;
+SAP::IController* networkUARTController = nullptr;
+SAP::IController* networkRS485Controller = nullptr;
+
 unsigned short Network::port() { return settings.getIPPort(); }
-
-void Network::registerController(SAP::IController* controller,
-                                 ControllerType type) {
-    switch (type) {
-        case ControllerType::ETHERNET:
-            // Trouver pourquoi le controleur est NULL lors de l'execution mais il est valide à l'initialisation
-            IPController = controller;
-            break;
-        case ControllerType::RS485:
-            RS485Controller = controller;
-            break;
-        case ControllerType::UART:
-            UARTController = controller;
-            break;
-        default:
-            // Do not add anything
-            break;
-    }
-
-    controller->network = this; // Register itself to the controller
-}
 
 /*
  * From upper layer
@@ -47,15 +30,16 @@ bool Network::request(Frame& frame) {
     size_t Nwritten;
     bool output = false;
 
-    if (IPController != nullptr) {
+    if (networkIPController != nullptr) {
         // Determine which controller to use based on address
         switch (frame._id->getAddressType()) {
             case SyndesiID::address_type_t::IPV4:
             case SyndesiID::address_type_t::IPV6:
                 frame.getID().setIPPort(settings.getIPPort());
 
-                Nwritten = IPController->write(frame.getID(), frame._buffer->data(),
-                                    frame._buffer->length());
+                Nwritten =
+                    networkIPController->write(frame.getID(), frame._buffer->data(),
+                                        frame._buffer->length());
                 if (Nwritten == frame._buffer->length()) {
                     output = true;
                 }
@@ -71,8 +55,8 @@ bool Network::request(Frame& frame) {
 };
 
 void Network::response(Frame& frame) {
-    if (IPController != nullptr) {
-        IPController->write(frame.getID(), frame._buffer->data(),
+    if (networkIPController != nullptr) {
+        networkIPController->write(frame.getID(), frame._buffer->data(),
                             frame._buffer->length());
     }
 }
@@ -85,7 +69,6 @@ Frame Network::readFrame(SyndesiID& id, SAP::IController* controller) {
     // Start by reading the first few bytes of the frame to know the length,
     // then read the rest of it. If multiple frames are present in the buffer,
     // they will be treated separately
-
     const size_t header_size =
         Frame::networkHeader_size + Frame::frameLength_size;
     char header[header_size];
@@ -119,6 +102,21 @@ void Network::controllerDataAvailable(SAP::IController* controller,
     } else {
         // is reply (we are the host)
         _frameManager->confirm(frame);
+    }
+}
+
+void Network::init() {
+    if (networkIPController != nullptr) {
+        networkIPController->network = this;  // Register itself to the controller
+        networkIPController->init(); // Initialize the controller
+    }
+    if (networkRS485Controller != nullptr) {
+        networkIPController->network = this;
+        networkIPController->init();
+    }
+    if (networkUARTController != nullptr) {
+        networkUARTController->network = this;
+        networkUARTController->init();
     }
 }
 

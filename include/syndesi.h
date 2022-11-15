@@ -19,6 +19,7 @@
 #include "callbacks.h"
 #include "core.h"
 #include "payloads.h"
+#include "framemanager.h"
 
 #if !defined(SYNDESI_ETHERNET_CONTROLLER)
     #error "Ehernet controller must be specified"
@@ -27,10 +28,5 @@
 #if SYNDESI_ETHERNET_CONTROLLER == 1
     #include "ethernet/systemethernet.h"
 #endif
-
-
-
-
-
 
 #endif  // SYNDESI_H

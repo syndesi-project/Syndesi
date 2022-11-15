@@ -35,8 +35,10 @@ class IPController : public SAP::IController {
     SyndesiID deviceID;
 
    public:
+    IPController() {
+        syndesi::networkIPController = this;
+    }
     void init() { 
-        core.network.registerController(this, Network::ControllerType::ETHERNET);
      }
 
     size_t write(SyndesiID& id, char* buffer, size_t length) {
@@ -66,9 +68,6 @@ class IPController : public SAP::IController {
 
     size_t read(char* buffer, size_t length) {
         int valread = ::read(sock, buffer, length);
-        /*for (int i = 0; i < valread; i++) {
-            printf("%02X ", (uint8_t)buffer[i]);
-        }*/
         return valread;
     }
 
@@ -81,7 +80,6 @@ class IPController : public SAP::IController {
         do {
             ioctl(sock, FIONREAD, &count);
         } while (count <= 0);
-        printf("count = %d", count);
         dataAvailable(deviceID, count);
         close();
     }
@@ -104,8 +102,11 @@ class IPController : public SAP::IController {
 
    public:
 
+   IPController() {
+        syndesi::networkIPController = this;
+    }
+
     void init() {
-        core.network.registerController(this, Network::ControllerType::ETHERNET);
 
         if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
             perror("socket failed");
@@ -134,7 +135,6 @@ class IPController : public SAP::IController {
     }
 
     size_t write(SyndesiID& deviceID, char* buffer, size_t length) {
-        printf("ip controller write\n");
         int sock = 0;
         struct sockaddr_in serv_addr;
 
@@ -146,9 +146,6 @@ class IPController : public SAP::IController {
         }
 
         size_t Nwritten = send(new_socket, buffer, length, 0);
-
-        printf("write ok");
-
         return Nwritten;
     }
 

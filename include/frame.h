@@ -52,7 +52,7 @@ class Frame {
      * @param payload payload
      * @param id id of device
      */
-    Frame(Payload& payload, SyndesiID& id, bool isRequest);
+    Frame(Payload* payload, SyndesiID& id, bool isRequest);
 
     /**
      * @brief Construct a frame from a buffer object

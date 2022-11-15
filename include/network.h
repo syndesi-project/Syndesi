@@ -18,9 +18,29 @@
 #include "sdid.h"
 #include "settings.h"
 
+#ifdef ARDUINO
+#include <Arduino.h>
+#define SLEEP(x) delayMicroseconds(x)
+#else
+#include <unistd.h>
+#define SLEEP(x) usleep(x)
+#endif
+
 using namespace std;
 
 namespace syndesi {
+
+// Why Global ?
+// Because when the driver is created, especially a pre-made one, we do not want to
+// tell the user "do a controller.init()" to connect the controller to the network class.
+// So we make this connection in the controller's constructor. But we can't be sure that the
+// network's constructor is done yet (and indeed, after testing, it isn't).
+// In the end this is the best solution, the controller can "register" itself on the global variable
+// 
+extern SAP::IController* networkIPController;
+extern SAP::IController* networkUARTController;
+extern SAP::IController* networkRS485Controller;
+
 class Network : SAP::INetwork_top, public SAP::INetwork_bottom {
     /**
      * @brief Network frame instance
@@ -29,15 +49,16 @@ class Network : SAP::INetwork_top, public SAP::INetwork_bottom {
      */
     friend class Core;
 
-    // Controllers
-    SAP::IController* IPController = nullptr;
-    SAP::IController* UARTController = nullptr;
-    SAP::IController* RS485Controller = nullptr;
+    public:
+    Network() {
+        printf("(network) my address = %u", this);
+    }
+    
 
    public:
     enum ControllerType { ETHERNET, UART, RS485 };
 
-    void registerController(SAP::IController* controller, ControllerType type);
+    //void registerController(SAP::IController* controller, ControllerType type);
 
    private:
     // List of pendingConfirm IDs
@@ -58,7 +79,7 @@ class Network : SAP::INetwork_top, public SAP::INetwork_bottom {
     /*
      * Upper layer
      */
-    SAP::IFrameManager_bottom* _frameManager;
+    SAP::IFrameManager_bottom* _frameManager = nullptr;
 
     void registerFrameManager(SAP::IFrameManager_bottom* frameManager) {
         _frameManager = frameManager;
@@ -80,6 +101,8 @@ class Network : SAP::INetwork_top, public SAP::INetwork_bottom {
    public:
     void setDefaultPort();
     unsigned short port();
+
+    void init();
 };
 
 }  // namespace syndesi

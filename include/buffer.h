@@ -13,6 +13,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string>
+#ifndef ARDUINO
+#include <memory.h>
+#endif
 
 namespace syndesi {
 
@@ -50,10 +53,23 @@ class Buffer {
                 free((char*)_data);
             }
         };
-        rawBuffer(char* buffer, size_t length) {
-            _data = buffer;
-            _length = length;
-            external = true;
+        rawBuffer(char* buffer, size_t length, bool copy) {
+            if (copy) {
+                // Copy the data locally
+                _data = (char*)malloc(length);
+                if(_data == nullptr) {
+                    memcpy(_data, buffer, length);
+                    external = false;
+                }
+                else {
+                    _length = length;
+                }
+            }
+            else {
+                _data = buffer;
+                _length = length;
+                external = true;
+            }
         };
 
         char* start() { return _data; };
@@ -76,7 +92,7 @@ class Buffer {
         fromParent(parent, offset);
     }
     Buffer(char* buffer, size_t length) {
-        _data = new rawBuffer(buffer, length);
+        _data = new rawBuffer(buffer, length, false);
     };
 
    private:
@@ -118,9 +134,9 @@ class Buffer {
      * @param buffer
      * @param length
      */
-    void fromBuffer(char* buffer, size_t length) {
+    void fromBuffer(char* buffer, size_t length, bool copy) {
         deallocate();
-        _data = new rawBuffer(buffer, length);
+        _data = new rawBuffer(buffer, length, copy);
     };
 
     /**

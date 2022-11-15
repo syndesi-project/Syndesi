@@ -1,7 +1,7 @@
 /* THIS FILE IS GENERATED AUTOMATICALLY
  *  DO NOT EDIT
  *  This file has been written by the script generate_commands.py
- *  date : 22-11-03 16:34:10
+ *  date : 22-11-15 10:03:28
  */
 
 
@@ -54,6 +54,71 @@ const char* commandNameByID(cmd_t id) {
         default:
             return "";
             break;
+    }
+}
+
+Payload* newPayloadInstance(cmd_t id, bool request_nReply) {
+
+    if(request_nReply) {
+        switch(id) {
+        case 0x0002:
+            return new DEVICE_DISCOVER_request();
+            break;
+        case 0x0100:
+            return new REGISTER_READ_16_request();
+            break;
+        case 0x0101:
+            return new REGISTER_WRITE_16_request();
+            break;
+        case 0x0110:
+            return new SPI_READ_WRITE_request();
+            break;
+        case 0x0111:
+            return new SPI_WRITE_ONLY_request();
+            break;
+        case 0x0120:
+            return new I2C_READ_request();
+            break;
+        case 0x0121:
+            return new I2C_WRITE_request();
+            break;
+
+        default:
+            return nullptr;
+            break;
+        }
+    }
+    else {
+        switch(id) {
+        case 0x0001:
+            return new ERROR_reply();
+            break;
+        case 0x0002:
+            return new DEVICE_DISCOVER_reply();
+            break;
+        case 0x0100:
+            return new REGISTER_READ_16_reply();
+            break;
+        case 0x0101:
+            return new REGISTER_WRITE_16_reply();
+            break;
+        case 0x0110:
+            return new SPI_READ_WRITE_reply();
+            break;
+        case 0x0111:
+            return new SPI_WRITE_ONLY_reply();
+            break;
+        case 0x0120:
+            return new I2C_READ_reply();
+            break;
+        case 0x0121:
+            return new I2C_WRITE_reply();
+            break;
+
+        default:
+            return nullptr;
+            break;
+        }
     }
 }
 

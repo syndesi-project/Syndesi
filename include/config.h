@@ -17,7 +17,7 @@
  * the __has_include directive
  */
 
-#define SYNDESI
+//#define SYNDESI
 
 #ifdef SYNDESI_CONFIG_INCLUDED
 // The syndesi_config.h file is already included, nothing to do

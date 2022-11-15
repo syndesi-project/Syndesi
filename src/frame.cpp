@@ -2,10 +2,18 @@
 
 namespace syndesi {
 
-Frame::Frame(Payload& payload, SyndesiID& id, bool isRequest) {
+Frame::Frame(Payload* payload, SyndesiID& id, bool isRequest) {
     // Set the values
     _id = &id;
-    command = payload.getCommand();
+    bool payload_ownership = false;
+    
+    if(payload == nullptr) {
+        payload = new ERROR_reply();
+        ((ERROR_reply*)payload)->error_code = ERROR_reply::error_code_t::NO_CALLBACK;
+        payload_ownership = true;
+    }
+
+    command = payload->getCommand();
 
     // TODO update
     networkHeader.value = 0;
@@ -15,7 +23,7 @@ Frame::Frame(Payload& payload, SyndesiID& id, bool isRequest) {
 
     // Calculate the length of the frame
     size_t addressing_size = _id->getTotalAdressingSize();
-    frameLength = addressing_size + command_size + payload.payloadLength();
+    frameLength = addressing_size + command_size + payload->payloadLength();
     size_t packetLength = networkHeader_size + frameLength_size + frameLength;
     size_t pos = 0;
 
@@ -38,7 +46,11 @@ Frame::Frame(Payload& payload, SyndesiID& id, bool isRequest) {
                 command_size);
     // Write payload
     Buffer payloadBuffer(_buffer, pos);
-    payload.build(&payloadBuffer);
+    payload->build(&payloadBuffer);
+
+    if (payload_ownership) {
+        delete payload;
+    }
 }
 
 Frame::Frame(Buffer& buffer, SyndesiID& id) {

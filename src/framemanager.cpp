@@ -14,7 +14,10 @@ namespace syndesi {
  * Upper layer
  */
 bool FrameManager::request(Frame& frame) {
-    return network->request(frame);
+    if (network != nullptr) {
+        return network->request(frame);
+    }
+    return false;
 }
 
 }  // namespace syndesi
