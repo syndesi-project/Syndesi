@@ -58,25 +58,27 @@ class Field():
         """
         # Name
         self.name = name
-        # Size (fixed or variable)
-        self.size = description[YAML_SIZE_KEY]
-        if self.size is int:
-            self.fixed_size = True
-        else:
-            self.fixed_size = False
+        if YAML_SIZE_KEY in description:
+            # Size (fixed or variable)
+            self.size = description[YAML_SIZE_KEY]
+            if self.size is int:
+                self.fixed_size = True
+            else:
+                self.fixed_size = False
+
         # Type
-        
-        type_string = description[YAML_TYPE_KEY]
-        for pattern_string, type_class in ALLOWED_TYPES.items():
-            if re.match(pattern_string, type_string):
-                self.type = type_class
-                if self.type == types.enum:
-                    self.enum = type_string
-                else:
-                    self.enum = None
-                break
+        type = description[YAML_TYPE_KEY]
+        if isinstance(type, list):
+            # It is an enum
+            self.enum = list(enumerate(type))
+            self.type = types.enum
         else:
-            raise ValueError(f"Field '{self.name}' has invalid type : {self.type}")
+            for pattern_string, type_class in ALLOWED_TYPES.items():
+                if re.match(pattern_string, type):
+                    self.type = type_class
+                    break
+            else:
+                raise ValueError(f"Field '{self.name}' has invalid type : {self.type}")
     
     def __repr__(self):
         return self.__str__()

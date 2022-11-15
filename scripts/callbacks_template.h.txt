@@ -9,7 +9,6 @@
 
 
 #include "payloads.h"
-#include "config.h"
 #include "interfaces.h"
 
 namespace syndesi {

@@ -1,0 +1,23 @@
+class >>>alias<<<:
+    ID = >>>id<<<
+    request_nReply = >>>request_nReply<<<
+
+>>>values<<<
+
+    def __init__(self):
+        """
+        New instance of >>>alias<<<.
+        Payload parameters are :
+>>>parameters<<<
+
+        Parameters
+        ----------
+        """
+
+    def value():
+        pass
+
+    def parse():
+        pass
+        
+

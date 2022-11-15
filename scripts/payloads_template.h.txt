@@ -21,6 +21,7 @@ enum commands : cmd_t {
 >>>commands<<<
 };
 
+
 class Payload {
     friend class Frame;
    protected:
@@ -29,6 +30,11 @@ class Payload {
     virtual cmd_t getCommand() = 0;
 };
 
+extern const cmd_t commandIDArray[];
+
+const char* commandNameByID(cmd_t id);
+
+Payload* newPayloadInstance(cmd_t id, bool request_nReply);
 
 >>>payloads<<<
 

@@ -16,7 +16,6 @@
 #define FRAME_MANAGER_H
 
 #include "callbacks.h"
-#include "config.h"
 
 using namespace std;
 
@@ -58,7 +57,7 @@ class FrameManager : SAP::IFrameManager_bottom, SAP::IFrameManager_top {
     >>>switch_request<<<
         }
 
-        Frame replyFrame(*reply, frame.getID(), false);
+        Frame replyFrame(reply, frame.getID(), false);
         network->response(replyFrame);
     }
 

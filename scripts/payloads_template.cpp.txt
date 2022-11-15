@@ -22,4 +22,24 @@ const char* commandNameByID(cmd_t id) {
     }
 }
 
+Payload* newPayloadInstance(cmd_t id, bool request_nReply) {
+
+    if(request_nReply) {
+        switch(id) {
+>>>new_payload_request<<<
+        default:
+            return nullptr;
+            break;
+        }
+    }
+    else {
+        switch(id) {
+>>>new_payload_reply<<<
+        default:
+            return nullptr;
+            break;
+        }
+    }
+}
+
 } //namespace syndesi

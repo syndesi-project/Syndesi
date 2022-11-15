@@ -18,13 +18,30 @@ YAML_TYPE_KEY = "type"
 
 
 class types(Enum):
+    short = auto()
+    ushort = auto()
     int = auto()
     uint = auto()
+    longlong = auto()
+    ulonglong = auto()
     float = auto()
     double = auto()
     char = auto()
     enum = auto()
     byte = auto()
+
+# Number of bytes for each type (with fixed size)
+SIZE = {
+    types.short : 2,
+    types.ushort : 2,
+    types.int : 4,
+    types.uint : 4,
+    types.longlong : 8,
+    types.ulonglong : 8,
+    types.float : 4,
+    types.double : 8,
+    types.enum : 1 
+}
 
 ALLOWED_TYPES = {
     'int' : types.int,
@@ -33,6 +50,5 @@ ALLOWED_TYPES = {
     'double' : types.double,
     'char' : types.char,
     'byte' : types.byte,
-    # Matches anything that looks like {A,B,C,D}
-    '{([a-zA-Z _0-9]+)(,[a-zA-Z _0-9]+)+}' : types.enum
+    '---' : types.enum # Enum is detected by being a list
 }

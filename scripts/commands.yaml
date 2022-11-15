@@ -22,31 +22,17 @@
 # In this case, the reply contains a length variable (0-255) specifying the number of bytes in the following string
 #
 # SUPPORTED TYPES
-#
-# - "int"      signed integer
-# - "uint"     unsigned interger
-# - "float"    single precision (4 bytes)
-# - "double"   double precision (8 bytes)
-# - "byte"     used for byte arrays
-# - "char"     used for strings (constant length)
-# - "{A,B}"    enum (1 byte)
-# 
-#
-#
-#
-# The content of each frame is specific to each command and is specified in the content array
-# - i8           -> signed byte (8 bits)
-# - u32          -> unsigned integer (32 bits)
-# - a5           -> array of 5 bytes
-# - s10          -> string of 10 bytes
-#
-# Heritance
-#
-# - length: u8   -> Length is 8 bits long (1 byte)
-# - name: length -> Name is length-bytes long
-#
-# Note that the u8/u16/etc... are affected by endianness (big endian through the network)
-# array types aren't affected and are copied "as is"
+# - "short"      signed short (2 bytes)
+# - "ushort"     unsigned short (2 bytes)
+# - "int"        signed integer (4 bytes)
+# - "uint"       unsigned integer (4 bytes)
+# - "longlong"   signed integer (8 bytes)
+# - "ulonglong"  unsigned long (8 bytes)
+# - "float"      single precision (4 bytes)
+# - "double"     double precision (8 bytes)
+# - "byte"       used for byte arrays
+# - "char"       used for strings (constant length)
+# - ['A', 'B']   enum (1 byte)
 # 
 # The content is described for both request and reply
 # 
@@ -71,8 +57,7 @@ Commands:
     # The request doesn't exist
     reply_content:
       error_code:
-        size: 1
-        type: "{INVALID_FRAME, OTHER}"
+        type: ['INVALID_FRAME', 'OTHER', 'NO_CALLBACK']
 # Device discover
   - alias: DEVICE_DISCOVER
     ID: 0x0002
@@ -83,19 +68,15 @@ Commands:
         size: 20
         type: "byte"
       syndesi_protocol_version:
-        size: 1
         type: "uint"
       device_version:
-        size: 1
         type: "uint"
       name_length:
-        size: 1
         type: "uint"
       name:
         size: "name_length"
         type: "char"
       description_length:
-        size: 2
         type: "uint"
       description:
         size: description_length 
@@ -106,11 +87,9 @@ Commands:
     comment: "Read register (with register index)"
     request_content:
       address:
-        size: 2
         type: "uint"
     reply_content:
       data:
-        size: 2
         type: "uint"
 # Register write
   - alias: REGISTER_WRITE_16
@@ -118,32 +97,26 @@ Commands:
     comment: "Write register (with register index)"
     request_content:
       address:
-        size: 2
         type: "uint"
       data:
-        size: 2
         type: "uint"
     reply_content:
       status:
-        size: 1
-        type: "{OK, NOK}"
+        type: ['OK', 'NOK']
 # SPI read
   - alias: SPI_READ_WRITE
     ID: 0x0110
     comment: "Read and write SPI data (with interface index)"
     request_content:
       interface_index:
-        size: 1
         type: "uint"
       write_size:
-        size: 2
         type: "uint"
       write_data:
         size: write_size
         type: "byte"
     reply_content:
       read_size:
-        size: 2
         type: "uint"
       read_data:
         size: read_size
@@ -154,32 +127,26 @@ Commands:
     comment: "Write SPI data (with interface index)"
     request_content:
       interface_index:
-        size: 1
         type: "uint"
       write_size:
-        size: 2
         type: "uint"
       write_data:
         size: write_size
         type: "byte"
     reply_content:
       status:
-        size: 1
-        type: "{OK, NOK}"
+        type: ['OK', 'NOK']
 # I2C
   - alias: I2C_READ
     ID: 0x0120
     comment: "Read I2C data (with interface index)"
     request_content:
       interface_index:
-        size: 1
         type: "uint"
       read_size:
-        size: 2
         type: "uint"
     reply_content:
       read_size:
-        size: 2
         type: "uint"
       read_data:
         size: read_size
@@ -189,15 +156,12 @@ Commands:
     comment: "Write I2C data (with interface index)"
     request_content:
       interface_index:
-        size: 1
         type: "uint"
       write_size:
-        size: 2
         type: "uint"
       write_data:
         size: write_size
         type: "byte"
     reply_content:
       status:
-        size: 1
-        type: "{OK, NOK}"
+        type: ['OK', 'NOK']
