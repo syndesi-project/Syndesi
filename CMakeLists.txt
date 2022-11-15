@@ -29,7 +29,6 @@ target_sources(${PROJECT_NAME}
         src/syndesi_tools.cpp
         src/network.cpp
         src/settings.cpp
-        src/cinterface.cpp
 )
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
@@ -59,10 +58,9 @@ set(public_headers
     include/payloads.h
     include/sdid.h
     include/syndesi.h
-    include/syndesi_tools.h    
+    include/syndesi_tools.h
     include/settings.h
     include/config.h
-    include/cinterface.h
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES PUBLIC_HEADER "${public_headers}")
