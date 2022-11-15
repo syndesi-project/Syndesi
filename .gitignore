@@ -66,3 +66,6 @@ _deps
 # Build and cmake output
 build
 cmake
+
+# Arduino library temporary folder
+arduino/syndesi
