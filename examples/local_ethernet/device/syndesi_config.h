@@ -18,8 +18,6 @@
 */
 #define SYNDESI_DEVICE_MODE
 
-// Both can be activated at the same time to enable HYBRID mode
-
 
 /* ######## Protocols configuration ####### */
 

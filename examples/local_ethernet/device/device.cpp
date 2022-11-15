@@ -22,19 +22,16 @@ void reg_write_callback(
 }
 
 int main(int argc, char const* argv[]) {
-    char buffer[1024] = {0};
-
     cout << "Syndesi comtest example : device" << endl;
     cout << "Sébastien Deriaz    20.08.2022" << endl;
 
-    ethernetController.init();
+    core.init();
     core.callbacks.REGISTER_WRITE_16_request_callback = reg_write_callback;
 
     cout << "Listening for commands on port " << syndesi::settings.getIPPort() << " ..." << endl;
 
     while (1) {
         ethernetController.wait_for_connection();
-        cout << "ok" << endl;
     }
 
     return 0;

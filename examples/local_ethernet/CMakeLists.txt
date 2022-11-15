@@ -1,6 +1,8 @@
 set(CMAKE_C_COMPILER "gcc")
 set(CMAKE_CXX_COMPILER "g++")
 
+set(CMAKE_BUILD_TYPE Debug)
+
 cmake_minimum_required(VERSION 3.20)
 
 project(local_ethernet VERSION 0.1)

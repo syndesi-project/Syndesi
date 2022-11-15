@@ -31,16 +31,10 @@ void reg_write_callback(
 }
 
 int main() {
-    struct sockaddr_in address;
-    char buffer[1024] = {0};
-    int choice;
     syndesi::SyndesiID deviceID;
-    
-    ethernetController.init();
+
     core.callbacks.REGISTER_WRITE_16_reply_callback = reg_write_callback;
-
-
-    bool validIPAddress = true;
+    core.init();
 
     cout << "Syndesi comtest example : host" << endl;
     cout << "Sébastien Deriaz    02.11.2022" << endl << endl;
@@ -57,11 +51,13 @@ int main() {
     payload.address = 0;
     payload.data = 0;
 
+
+
     while(true) {
         cout << "send (address = " << payload.address << ", data = " << payload.data << ") ... ";
         if(core.sendRequest(payload, deviceID)) {
-            cout << "ok" << endl;
             ethernetController.waitForData();
+            cout << "ok" << endl;
         }
         else {
             cout << "fail" << endl;
@@ -73,7 +69,6 @@ int main() {
         
 
         usleep(1'000'000); // 1s
-        ethernetController.print();
     }
     return 0;
 }
