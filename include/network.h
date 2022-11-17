@@ -18,6 +18,10 @@
 #include "sdid.h"
 #include "settings.h"
 
+
+
+#include "linkedlist.h"
+
 #ifdef ARDUINO
 #include <Arduino.h>
 #define SLEEP(x) delayMicroseconds(x)
@@ -50,9 +54,9 @@ class Network : SAP::INetwork_top, public SAP::INetwork_bottom {
     friend class Core;
 
     public:
-    Network() {
-        printf("(network) my address = %u", this);
-    }
+    Network() {}
+
+    LinkedList<SyndesiID> devicesList;
     
 
    public:

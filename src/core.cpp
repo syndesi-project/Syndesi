@@ -19,15 +19,14 @@ void Core::factory_init() {
     // register interfaces (connect layers together)
 
     // FrameManager class
-    frameManager.registerCallbacks(&callbacks);
     frameManager.registerNetwork(&network);
     // Network class
     network.registerFrameManager(&frameManager);
 }
 
-bool Core::sendRequest(Payload& payload, SyndesiID& id) {
+bool Core::sendRequest(IPayload& payload, SyndesiID& id) {
     // This version is easier but requires a copy of the SyndesiID argument
-    Frame frame(&payload, id, true);
+    Frame frame(id, payload);
     return frameManager.request(frame);
 }
 

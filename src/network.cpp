@@ -23,41 +23,40 @@ unsigned short Network::port() { return settings.getIPPort(); }
  * From upper layer
  */
 bool Network::request(Frame& frame) {
-    Frame::NetworkHeader networkHeader;
-    networkHeader.fields.routing = frame.getID().reroutes() > 0 ? true : false;
-    networkHeader.fields.request_nReply = true;
-    networkHeader.fields.reserved = 0;
     size_t Nwritten;
     bool output = false;
 
     if (networkIPController != nullptr) {
         // Determine which controller to use based on address
-        switch (frame._id->getAddressType()) {
+        switch (frame.id.getAddressType()) {
             case SyndesiID::address_type_t::IPV4:
             case SyndesiID::address_type_t::IPV6:
                 frame.getID().setIPPort(settings.getIPPort());
 
-                Nwritten =
-                    networkIPController->write(frame.getID(), frame._buffer->data(),
-                                        frame._buffer->length());
-                if (Nwritten == frame._buffer->length()) {
+                Nwritten = networkIPController->write(frame.getID(),
+                                                      frame.buffer->data(),
+                                                      frame.buffer->length());
+                if (Nwritten == frame.buffer->length()) {
                     output = true;
                 }
-                // The controllerDataAvailable method will take care of the
-                // confirm
+
                 break;
             default:
                 printf("Invalid address type\n");
                 break;
         }
     }
+
+    // If the send was successful, add the device to the pending list
+    if (output) devicesList.Append(frame.getID());
+
     return output;
 };
 
 void Network::response(Frame& frame) {
     if (networkIPController != nullptr) {
-        networkIPController->write(frame.getID(), frame._buffer->data(),
-                            frame._buffer->length());
+        networkIPController->write(frame.getID(), frame.buffer->data(),
+                                   frame.buffer->length());
     }
 }
 
@@ -65,7 +64,7 @@ void Network::response(Frame& frame) {
  * Lower layer
  */
 
-Frame Network::readFrame(SyndesiID& id, SAP::IController* controller) {
+/*Frame Network::readFrame(SyndesiID& id, SAP::IController* controller) {
     // Start by reading the first few bytes of the frame to know the length,
     // then read the rest of it. If multiple frames are present in the buffer,
     // they will be treated separately
@@ -90,25 +89,42 @@ Frame Network::readFrame(SyndesiID& id, SAP::IController* controller) {
     controller->read(buffer.data() + header_size,
                      buffer.length() - header_size);
     return Frame(buffer, id);
-}
+}*/
 
 void Network::controllerDataAvailable(SAP::IController* controller,
                                       SyndesiID& deviceID, size_t length) {
-    Frame frame = readFrame(deviceID, controller);
+    bool deviceFound = true;
+    Frame frame(*controller, deviceID);
+    devicesList.moveToStart();
 
-    if (frame.networkHeader.fields.request_nReply) {
-        // is request (we are the device)
-        _frameManager->indication(frame);
+    if (devicesList.getLength() > 0) {
+        while (devicesList.getCurrent() == deviceID) {
+            if (!devicesList.next()) {
+                deviceFound = false;
+                break;
+            }
+        }
     } else {
+        deviceFound = false;
+    }
+
+    if (deviceFound) {
+        // We were waiting for a response from this device
+        devicesList.DeleteCurrent();
         // is reply (we are the host)
         _frameManager->confirm(frame);
+    } else {
+        // This is a new message (and we're the device)
+        // is request (we are the device)
+        _frameManager->indication(frame);
     }
 }
 
 void Network::init() {
     if (networkIPController != nullptr) {
-        networkIPController->network = this;  // Register itself to the controller
-        networkIPController->init(); // Initialize the controller
+        networkIPController->network =
+            this;                     // Register itself to the controller
+        networkIPController->init();  // Initialize the controller
     }
     if (networkRS485Controller != nullptr) {
         networkIPController->network = this;

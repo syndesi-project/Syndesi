@@ -14,14 +14,23 @@
 
 using namespace std;
 
-#include "payloads.h"
 #include "sdid.h"
+#include "ipayload.h"
+#include "icontroller.h"
 
 namespace syndesi {
 
 class Frame {
     friend class Network;
     friend class FrameManager;
+
+   public:
+    enum ErrorCode : unsigned short {
+        NO_ERROR = 0,
+        NO_INTERPETER = 1,
+        INVALID_PAYLOAD = 2};
+
+    static const size_t errorCode_size = 2;
 
     union NetworkHeader {
         struct {
@@ -31,72 +40,59 @@ class Frame {
             bool routing : 1;
             // Signals that another frame is following the current one
             bool follow : 1;
-            bool request_nReply : 1;  // Request (1) or reply (0)
+            bool error : 1;  // Error frame
             unsigned char reserved : 5;
         } fields;
         uint8_t value;
     };
+    static const size_t networkHeader_size = sizeof(NetworkHeader);
 
-    static const size_t command_size = sizeof(cmd_t);
+    
+
     static const size_t addressingHeader_size = 1;
 
-   public:
-    typedef uint16_t frameLength_t;
-    static const size_t networkHeader_size = sizeof(NetworkHeader);
-    static const size_t frameLength_size = sizeof(frameLength_t);
+    typedef uint16_t payloadLength_t;
+
+    static const size_t payloadLength_size = sizeof(payloadLength_t);
+
+    // NOTE : the error code is the same size as the payload length
+    // That's on purpose so that <header_size> bytes can be read every time, and
+    // depending on the value of the network header, the rest is interpreted as
+    // either payload length or error code value
+    static const size_t header_size = networkHeader_size + payloadLength_size;
 
    public:
-    /**
-     * @brief Construct a frame object from a payload and SyndesiID
-     *
-     * @param payload payload
-     * @param id id of device
-     */
-    Frame(Payload* payload, SyndesiID& id, bool isRequest);
+    // Create a frame locally 
+    Frame(SyndesiID& id, ErrorCode errorCode);
+    Frame(SyndesiID& id, IPayload& payload);
+    // Create a frame from received data
+    Frame(SAP::IController& controller, SyndesiID& id);
 
-    /**
-     * @brief Construct a frame from a buffer object
-     *
-     */
-    Frame(Buffer& buffer, SyndesiID& id);
+    
 
-    /**
-     * @brief Destroy the Frame object
-     *
-     */
     ~Frame() {}
 
    private:
-    cmd_t command;
     NetworkHeader networkHeader;
-    frameLength_t frameLength;
-    Buffer* _buffer = nullptr;
-    SyndesiID* _id = nullptr;
-
-    // Predefine the payloadBuffer (when creating the frame from the lower
-    // layer)
-    Buffer* _payloadBuffer = nullptr;
+    Buffer* buffer = nullptr;
+    Buffer payloadBuffer;
+    SyndesiID& id;
 
    public:
-    /**
-     * @brief Get the command ID
-     *
-     * @return cmd_t
-     */
-    cmd_t getCommand();
-
     /**
      * @brief Get the payload buffer
      *
      * @return pointer to buffer
      */
-    Buffer* getPayloadBuffer();
+    Buffer* getBuffer();
+
+    Buffer& getPayloadBuffer();
 
     /**
      * @brief Get the SyndesiID
      *
      */
-    SyndesiID& getID() { return *_id; };
+    SyndesiID& getID() { return id; };
 };
 
 }  // namespace syndesi

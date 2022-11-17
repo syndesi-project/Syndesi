@@ -10,11 +10,11 @@
 #ifndef CORE_H
 #define CORE_H
 
-#include "callbacks.h"
 #include "frame.h"
 #include "framemanager.h"
 #include "network.h"
 #include "settings.h"
+#include "icontroller.h"
 
 namespace syndesi {
 
@@ -26,13 +26,12 @@ class Core {
      * Layers
      */
     public: // making it public temporarily
-    Callbacks callbacks;
     FrameManager frameManager;
     Network network;
 
 
    public:
-    bool sendRequest(Payload& payload, SyndesiID& id);
+    bool sendRequest(IPayload& payload, SyndesiID& id);
 
     Core() {}
     ~Core(){};

@@ -2,85 +2,110 @@
 
 namespace syndesi {
 
-Frame::Frame(Payload* payload, SyndesiID& id, bool isRequest) {
-    // Set the values
-    _id = &id;
-    bool payload_ownership = false;
-    
-    if(payload == nullptr) {
-        payload = new ERROR_reply();
-        ((ERROR_reply*)payload)->error_code = ERROR_reply::error_code_t::NO_CALLBACK;
-        payload_ownership = true;
-    }
+Frame::Frame(SyndesiID& id, ErrorCode errorCode) : id(id) {
+    // Create a new frame from an error code
+    // Copy the error code in the buffer
+    buffer = new Buffer(networkHeader_size + errorCode_size);
+    hton((char*)&errorCode, buffer->data() + networkHeader_size,
+         errorCode_size);
 
-    command = payload->getCommand();
+    networkHeader.value = 0;
+    networkHeader.fields.follow = false;
+    networkHeader.fields.routing = id.reroutes() > 0 ? true : false;
+    networkHeader.fields.error = true;
 
+    // Write network header
+    buffer->data()[0] = networkHeader.value;
+}
+
+Frame::Frame(SyndesiID& id, IPayload& payload) : id(id) {
+    size_t pos = 0;
+    // Create a new frame from a payload
+    buffer =
+        new Buffer(payload.length() + header_size + id.getTotalAdressingSize());
     // TODO update
     networkHeader.value = 0;
     networkHeader.fields.follow = false;
-    networkHeader.fields.request_nReply = isRequest;
-    networkHeader.fields.routing = _id->reroutes() > 0 ? true : false;
+    networkHeader.fields.routing = id.reroutes() > 0 ? true : false;
+    networkHeader.fields.error = false;
 
-    // Calculate the length of the frame
-    size_t addressing_size = _id->getTotalAdressingSize();
-    frameLength = addressing_size + command_size + payload->payloadLength();
-    size_t packetLength = networkHeader_size + frameLength_size + frameLength;
-    size_t pos = 0;
-
-    // Create a buffer
-    _buffer = new Buffer(packetLength);
+    size_t addressing_size = id.getTotalAdressingSize();
+    size_t payloadLength = addressing_size + payload.length();
 
     // Write networkHeader
-    pos += hton(reinterpret_cast<char*>(&networkHeader), _buffer->data(),
+    pos += hton(reinterpret_cast<char*>(&networkHeader), buffer->data(),
                 networkHeader_size);
     // Write frame length
-    pos += hton(reinterpret_cast<char*>(&frameLength), _buffer->data() + pos,
-                frameLength_size);
+    pos += hton(reinterpret_cast<char*>(&payloadLength), buffer->data() + pos,
+                payloadLength_size);
     // Write ID(s) (start at addressingHeader_size)
-    Buffer IDBuffer(_buffer, pos, addressing_size);
-    _id->buildAddressingBuffer(&IDBuffer);
+    Buffer IDBuffer(buffer, pos, addressing_size);
+    id.buildAddressingBuffer(&IDBuffer);
     pos += addressing_size;
 
-    // Write cmd_t
-    pos += hton(reinterpret_cast<char*>(&command), _buffer->data() + pos,
-                command_size);
     // Write payload
-    Buffer payloadBuffer(_buffer, pos);
-    payload->build(&payloadBuffer);
+    Buffer payloadBuffer(buffer, pos);
+    payload.build(payloadBuffer);
+    printf("payload buffer : ");
+    payloadBuffer.print();
+    printf("\nBuffer : ");
+    buffer->print();
+    printf("\n");
 
-    if (payload_ownership) {
-        delete payload;
-    }
 }
 
-Frame::Frame(Buffer& buffer, SyndesiID& id) {
-    size_t pos = 0;
-    _buffer = &buffer;
-    _id = &id;
-    // Read network header
-    pos += ntoh(_buffer->data() + pos, reinterpret_cast<char*>(&networkHeader),
-                networkHeader_size);
-    // Read the frame length (no including the network header size and
-    // itself)
-    pos += ntoh(_buffer->data() + pos, reinterpret_cast<char*>(&frameLength),
-                frameLength_size);
+Frame::Frame(SAP::IController& controller, SyndesiID& id) : id(id) {
+    // Create a frame from the read data of the controller
+    payloadLength_t payloadLength;
 
-    // Check if the frame contains a SyndesiID (to identify a sub-device)
+    // Read the header (or the network header + error code)
+    char headerBuffer[header_size];
+    controller.read(headerBuffer, header_size);
+
+    // Write the network header
+    ntoh(headerBuffer, (char*)&networkHeader, networkHeader_size);
+
+    
+
     if (networkHeader.fields.routing) {
         // Create a buffer for SyndesiID to read
-        Buffer addressingBuffer = Buffer(_buffer, pos);
+        /*Buffer addressingBuffer = Buffer(_buffer, pos);
         _id->parseAddressingBuffer(&addressingBuffer);
-        pos += _id->getTotalAdressingSize();
+        pos += _id->getTotalAdressingSize();*/
+        // TODO : Add this
     }
-    // Read command
-    pos += ntoh(_buffer->data() + pos, reinterpret_cast<char*>(&command),
-                command_size);
-    // Read payload length
-    _payloadBuffer = new Buffer(_buffer, pos);
+
+    if (networkHeader.fields.error) {
+        // No need to read the payload
+        buffer = new Buffer(header_size);
+        buffer->fromBuffer(headerBuffer, header_size, true, false);
+        // Copy into the buffer
+    } else {
+        // Get the length and read the payload
+        ntoh(headerBuffer, (char*)&payloadLength, payloadLength_size);
+        buffer = new Buffer(header_size + payloadLength);
+        // Read the payload
+        controller.read(buffer->data() + header_size, payloadLength);
+    }
+
+    /*printf("Frame (%u): ", buffer->length());
+    buffer->print();
+    printf("\n");*/
 }
 
-cmd_t Frame::getCommand() { return command; }
+Buffer& Frame::getPayloadBuffer() {
+    if (buffer != nullptr) {
+        // Return a smaller buffer, for the payload only
+        if (networkHeader.fields.error) {
+            // Remove only the network header
+            payloadBuffer = buffer->offset(networkHeader_size);
+        } else {
+            // Remove the whole header (network header + length)
+            payloadBuffer = buffer->offset(header_size);
+        }
+    }
 
-Buffer* Frame::getPayloadBuffer() { return _payloadBuffer; }
+    return payloadBuffer;
+}
 
 }  // namespace syndesi
