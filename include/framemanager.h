@@ -1,31 +1,35 @@
 /* THIS FILE IS GENERATED AUTOMATICALLY
-*  DO NOT EDIT
-*  This file has been written by the script generate_commands.py
-*  date : 22-11-15 10:03:28
-*
-*  Template :
-* @file framemanager.h
-*
-* @brief Management of frames
-*
-* @author Sébastien Deriaz
-* @date 15.08.2022
-*/
+ *  DO NOT EDIT
+ *  This file has been written by the script generate_commands.py
+ *  date : 22-11-15 10:03:28
+ *
+ *  Template :
+ * @file framemanager.h
+ *
+ * @brief Management of frames
+ *
+ * @author Sébastien Deriaz
+ * @date 15.08.2022
+ */
 
 #ifndef FRAME_MANAGER_H
 #define FRAME_MANAGER_H
 
-#include "callbacks.h"
+#include "inetwork_top.h"
+#include "interfaces.h"
+#include "iinterpreter.h"
+
+#include "interpreters/error.h"
+
+using namespace std;
 
 #ifdef ARDUINO
 #include <Arduino.h>
-#define SLEEP(x) delayMicroseconds(x)
+#define SLEEP(x) delay(x)
 #else
 #include <unistd.h>
-#define SLEEP(x) usleep(x)
+#define SLEEP(x) usleep((x)*1000)
 #endif
-
-using namespace std;
 
 namespace syndesi {
 
@@ -34,6 +38,7 @@ namespace syndesi {
  * interface
  *
  */
+
 class FrameManager : SAP::IFrameManager_bottom, SAP::IFrameManager_top {
     friend class Core;
 
@@ -41,157 +46,38 @@ class FrameManager : SAP::IFrameManager_bottom, SAP::IFrameManager_top {
     FrameManager(){};
     ~FrameManager(){};
 
+    IInterpreter* first_interpreter = nullptr;
+
+    FrameManager& operator<<(IInterpreter& new_interpreter) {
+        // Add the interpreter to the list
+        IInterpreter** interpreter = &first_interpreter;
+        while (*interpreter) {
+            *interpreter = (*interpreter)->next;
+        }
+        *interpreter = &new_interpreter;
+
+        return *this;
+    }
+
    private:
     /*
      * Upper layer
      */
-    Callbacks* _callbacks = nullptr;
-    void registerCallbacks(Callbacks* callbacks) { _callbacks = callbacks; };
-    // From core
+
+    // void registerCallbacks(Callbacks* callbacks) { _callbacks = callbacks; };
+    //  From core
     bool request(Frame& frame);
     /*
      * Lower layer
      */
     SAP::INetwork_top* network = nullptr;
-    void registerNetwork(SAP::INetwork_top* _network) { network = _network;};
-    
+    void registerNetwork(SAP::INetwork_top* _network) { network = _network; };
+
     /* Indication (incoming from host)*/
-    void indication(Frame& frame) {
-        Buffer* requestPayloadBuffer = frame.getPayloadBuffer();
-        Payload* reply = nullptr;
-        Payload* request = nullptr;
-
-        switch(frame.getCommand()) {
-    #if defined(USE_DEVICE_DISCOVER_REQUEST_CALLBACK) && defined(SYNDESI_DEVICE_MODE)
-        case commands::DEVICE_DISCOVER:
-            request = new DEVICE_DISCOVER_request(requestPayloadBuffer);
-            reply = new DEVICE_DISCOVER_reply();
-            if (_callbacks->DEVICE_DISCOVER_request_callback != nullptr) {
-                _callbacks->DEVICE_DISCOVER_request_callback(*(static_cast<DEVICE_DISCOVER_request*>(request)), static_cast<DEVICE_DISCOVER_reply*>(reply));
-            }            break;
-#endif
-#if defined(USE_REGISTER_READ_16_REQUEST_CALLBACK) && defined(SYNDESI_DEVICE_MODE)
-        case commands::REGISTER_READ_16:
-            request = new REGISTER_READ_16_request(requestPayloadBuffer);
-            reply = new REGISTER_READ_16_reply();
-            if (_callbacks->REGISTER_READ_16_request_callback != nullptr) {
-                _callbacks->REGISTER_READ_16_request_callback(*(static_cast<REGISTER_READ_16_request*>(request)), static_cast<REGISTER_READ_16_reply*>(reply));
-            }            break;
-#endif
-#if defined(USE_REGISTER_WRITE_16_REQUEST_CALLBACK) && defined(SYNDESI_DEVICE_MODE)
-        case commands::REGISTER_WRITE_16:
-            request = new REGISTER_WRITE_16_request(requestPayloadBuffer);
-            reply = new REGISTER_WRITE_16_reply();
-            if (_callbacks->REGISTER_WRITE_16_request_callback != nullptr) {
-                _callbacks->REGISTER_WRITE_16_request_callback(*(static_cast<REGISTER_WRITE_16_request*>(request)), static_cast<REGISTER_WRITE_16_reply*>(reply));
-            }            break;
-#endif
-#if defined(USE_SPI_READ_WRITE_REQUEST_CALLBACK) && defined(SYNDESI_DEVICE_MODE)
-        case commands::SPI_READ_WRITE:
-            request = new SPI_READ_WRITE_request(requestPayloadBuffer);
-            reply = new SPI_READ_WRITE_reply();
-            if (_callbacks->SPI_READ_WRITE_request_callback != nullptr) {
-                _callbacks->SPI_READ_WRITE_request_callback(*(static_cast<SPI_READ_WRITE_request*>(request)), static_cast<SPI_READ_WRITE_reply*>(reply));
-            }            break;
-#endif
-#if defined(USE_SPI_WRITE_ONLY_REQUEST_CALLBACK) && defined(SYNDESI_DEVICE_MODE)
-        case commands::SPI_WRITE_ONLY:
-            request = new SPI_WRITE_ONLY_request(requestPayloadBuffer);
-            reply = new SPI_WRITE_ONLY_reply();
-            if (_callbacks->SPI_WRITE_ONLY_request_callback != nullptr) {
-                _callbacks->SPI_WRITE_ONLY_request_callback(*(static_cast<SPI_WRITE_ONLY_request*>(request)), static_cast<SPI_WRITE_ONLY_reply*>(reply));
-            }            break;
-#endif
-#if defined(USE_I2C_READ_REQUEST_CALLBACK) && defined(SYNDESI_DEVICE_MODE)
-        case commands::I2C_READ:
-            request = new I2C_READ_request(requestPayloadBuffer);
-            reply = new I2C_READ_reply();
-            if (_callbacks->I2C_READ_request_callback != nullptr) {
-                _callbacks->I2C_READ_request_callback(*(static_cast<I2C_READ_request*>(request)), static_cast<I2C_READ_reply*>(reply));
-            }            break;
-#endif
-#if defined(USE_I2C_WRITE_REQUEST_CALLBACK) && defined(SYNDESI_DEVICE_MODE)
-        case commands::I2C_WRITE:
-            request = new I2C_WRITE_request(requestPayloadBuffer);
-            reply = new I2C_WRITE_reply();
-            if (_callbacks->I2C_WRITE_request_callback != nullptr) {
-                _callbacks->I2C_WRITE_request_callback(*(static_cast<I2C_WRITE_request*>(request)), static_cast<I2C_WRITE_reply*>(reply));
-            }            break;
-#endif
-
-        }
-        printf("ok\n");
-
-        Frame replyFrame(reply, frame.getID(), false);
-        network->response(replyFrame);
-    }
+    void indication(Frame& frame);
 
     /* Confirm (incoming from device)*/
-    void confirm(Frame& frame) {
-        Buffer* replyPayloadBuffer = frame.getPayloadBuffer();
-        Payload* reply = nullptr;
-
-        switch(frame.getCommand()) {
-    #if defined(USE_ERROR_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)
-        case commands::ERROR:
-            reply = new ERROR_reply(replyPayloadBuffer);
-            if (_callbacks->ERROR_reply_callback != nullptr) {
-                _callbacks->ERROR_reply_callback(*(static_cast<ERROR_reply*>(reply)));
-            }            break;
-#endif
-#if defined(USE_DEVICE_DISCOVER_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)
-        case commands::DEVICE_DISCOVER:
-            reply = new DEVICE_DISCOVER_reply(replyPayloadBuffer);
-            if (_callbacks->DEVICE_DISCOVER_reply_callback != nullptr) {
-                _callbacks->DEVICE_DISCOVER_reply_callback(*(static_cast<DEVICE_DISCOVER_reply*>(reply)));
-            }            break;
-#endif
-#if defined(USE_REGISTER_READ_16_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)
-        case commands::REGISTER_READ_16:
-            reply = new REGISTER_READ_16_reply(replyPayloadBuffer);
-            if (_callbacks->REGISTER_READ_16_reply_callback != nullptr) {
-                _callbacks->REGISTER_READ_16_reply_callback(*(static_cast<REGISTER_READ_16_reply*>(reply)));
-            }            break;
-#endif
-#if defined(USE_REGISTER_WRITE_16_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)
-        case commands::REGISTER_WRITE_16:
-            reply = new REGISTER_WRITE_16_reply(replyPayloadBuffer);
-            if (_callbacks->REGISTER_WRITE_16_reply_callback != nullptr) {
-                _callbacks->REGISTER_WRITE_16_reply_callback(*(static_cast<REGISTER_WRITE_16_reply*>(reply)));
-            }            break;
-#endif
-#if defined(USE_SPI_READ_WRITE_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)
-        case commands::SPI_READ_WRITE:
-            reply = new SPI_READ_WRITE_reply(replyPayloadBuffer);
-            if (_callbacks->SPI_READ_WRITE_reply_callback != nullptr) {
-                _callbacks->SPI_READ_WRITE_reply_callback(*(static_cast<SPI_READ_WRITE_reply*>(reply)));
-            }            break;
-#endif
-#if defined(USE_SPI_WRITE_ONLY_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)
-        case commands::SPI_WRITE_ONLY:
-            reply = new SPI_WRITE_ONLY_reply(replyPayloadBuffer);
-            if (_callbacks->SPI_WRITE_ONLY_reply_callback != nullptr) {
-                _callbacks->SPI_WRITE_ONLY_reply_callback(*(static_cast<SPI_WRITE_ONLY_reply*>(reply)));
-            }            break;
-#endif
-#if defined(USE_I2C_READ_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)
-        case commands::I2C_READ:
-            reply = new I2C_READ_reply(replyPayloadBuffer);
-            if (_callbacks->I2C_READ_reply_callback != nullptr) {
-                _callbacks->I2C_READ_reply_callback(*(static_cast<I2C_READ_reply*>(reply)));
-            }            break;
-#endif
-#if defined(USE_I2C_WRITE_REPLY_CALLBACK) && defined(SYNDESI_HOST_MODE)
-        case commands::I2C_WRITE:
-            reply = new I2C_WRITE_reply(replyPayloadBuffer);
-            if (_callbacks->I2C_WRITE_reply_callback != nullptr) {
-                _callbacks->I2C_WRITE_reply_callback(*(static_cast<I2C_WRITE_reply*>(reply)));
-            }            break;
-#endif
-
-        }
-    }
-
+    void confirm(Frame& frame);
 };
 
 }  // namespace syndesi

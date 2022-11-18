@@ -10,23 +10,7 @@
 #ifndef SYNDESI_H
 #define SYNDESI_H
 
-#include "config.h"
-
-#if !defined(SYNDESI_HOST_MODE) && !defined(SYNDESI_DEVICE_MODE)
-    #error "MODE unspecified"
-#endif
-
-#include "callbacks.h"
 #include "core.h"
-#include "payloads.h"
-#include "framemanager.h"
-
-#if !defined(SYNDESI_ETHERNET_CONTROLLER)
-    #error "Ehernet controller must be specified"
-#endif
-
-#if SYNDESI_ETHERNET_CONTROLLER == 1
-    #include "ethernet/systemethernet.h"
-#endif
+#include "interpreters/error.h"
 
 #endif  // SYNDESI_H

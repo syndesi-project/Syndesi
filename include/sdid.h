@@ -65,10 +65,10 @@ class SyndesiID {
         IPV6 = 2};
 
    private: // Private types
-    union payload_t {
+    union Descriptor {
         unsigned char IPv4[IPv4_size];
         unsigned char IPv6[IPv6_size];
-    } payload;
+    } descriptor;
     unsigned short _port;
     union sdid_header_t {
         struct {
@@ -80,6 +80,8 @@ class SyndesiID {
     };
 
     const size_t addressSize(address_type_t type);
+
+    bool operator==(SyndesiID& id);
 
    public: // User methods
     /**
@@ -169,7 +171,7 @@ class SyndesiID {
      */
     SyndesiID(Buffer* buffer);
 
-   private:
+   public:
     /**
      * @brief Copy constructor
      *

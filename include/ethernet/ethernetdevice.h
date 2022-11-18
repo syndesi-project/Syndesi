@@ -28,65 +28,7 @@
 
 namespace syndesi {
 
-#ifdef SYNDESI_HOST_MODE
 
-class IPController : public SAP::IController {
-    int sock = 0;
-    SyndesiID deviceID;
-
-   public:
-    IPController() {
-        syndesi::networkIPController = this;
-    }
-    void init() { 
-     }
-
-    size_t write(SyndesiID& id, char* buffer, size_t length) {
-        if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-            printf("Socket creation error \n");
-            return 0;
-        }
-
-        struct sockaddr_in serv_addr;
-
-        serv_addr.sin_family = AF_INET;
-        serv_addr.sin_port = htons(id.getIPPort());
-
-        if (inet_pton(AF_INET, id.str().c_str(), &serv_addr.sin_addr) <= 0) {
-            printf("Invalid address/ Address not supported \n");
-            return 0;
-        }
-
-        if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) <
-            0) {
-            printf("Connection Failed\n");
-            return 0;
-        }
-
-        return send(sock, buffer, length, 0);
-    }
-
-    size_t read(char* buffer, size_t length) {
-        int valread = ::read(sock, buffer, length);
-        return valread;
-    }
-
-    void close() { ::close(sock); }
-
-    SyndesiID& getSyndesiID() { return deviceID; }
-
-    void waitForData() {
-        int count = 0;
-        do {
-            ioctl(sock, FIONREAD, &count);
-        } while (count <= 0);
-        dataAvailable(deviceID, count);
-        close();
-    }
-};
-
-
-#else
 
 class IPController : public SAP::IController {
     int server_fd;
@@ -169,9 +111,6 @@ class IPController : public SAP::IController {
 
     void end() { shutdown(server_fd, SHUT_RDWR); }
 };
-
-#endif
-
 IPController ethernetController;
 
 }

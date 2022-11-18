@@ -47,14 +47,14 @@ bool SyndesiID::parseIPv4(const char* ip, unsigned short port) {
         _port = port;
     else
         _port = settings.getIPPort();  // This works only for devices
-    memcpy(&payload.IPv4, bytes, IPv4_size);
+    memcpy(&descriptor.IPv4, bytes, IPv4_size);
     header.fields.address_type = IPV4;
     return true;
 }
 
 void SyndesiID::fromIPv4(uint32_t ip, unsigned short port) {
     // TODO : check for endianness
-    memcpy(&payload, &ip, IPv4_size);
+    memcpy(&descriptor, &ip, IPv4_size);
     if (port > 0) _port = port;
     header.fields.address_type = IPV4;
 }
@@ -92,7 +92,7 @@ std::string SyndesiID::IPv4str() {
         if (i > 0) {
             output += ".";
         }
-        output += INT_TO_STRING(payload.IPv4[i]);
+        output += INT_TO_STRING(descriptor.IPv4[i]);
     }
     return output;
 }
@@ -104,7 +104,7 @@ SyndesiID::SyndesiID(unsigned char* buffer, address_type_t type) {
     switch (type) {
         case IPV4:
         case IPV6:
-            memcpy((void*)&payload, buffer, addressSize(type));
+            memcpy((void*)&descriptor, buffer, addressSize(type));
             break;
     }
 }
@@ -122,7 +122,7 @@ void SyndesiID::append(unsigned char* buffer, address_type_t type) {
 }
 
 SyndesiID::SyndesiID(SyndesiID& sdid) {
-    memcpy(&payload, &sdid.payload, sizeof(sdid.payload));
+    memcpy(&descriptor, &sdid.descriptor, sizeof(sdid.descriptor));
     header.value = sdid.header.value;
 }
 
@@ -131,7 +131,7 @@ SyndesiID::SyndesiID(Buffer* buffer) {
     ntoh(buffer->data(), reinterpret_cast<char*>(&header), sizeof(header));
     // Read the payload
     size_t address_size = addressSize(header.fields.address_type);
-    memcpy(reinterpret_cast<void*>(&payload), buffer->data() + sizeof(header),
+    memcpy(reinterpret_cast<void*>(&descriptor), buffer->data() + sizeof(header),
            address_size);
     is_next = true;
     if (header.fields.follow) {
@@ -178,7 +178,7 @@ void SyndesiID::buildAddressingBuffer(Buffer* buffer) {
         // Write itself
         hton(reinterpret_cast<char*>(&header), buffer->data(), sizeof(header));
         addressLength = addressSize(header.fields.address_type);
-        memcpy(buffer->data() + sizeof(header), &payload, addressLength);
+        memcpy(buffer->data() + sizeof(header), &descriptor, addressLength);
         if (next) {
             // As long as they are "next"s, write them
             Buffer subbuffer(buffer, addressLength + sizeof(header));
@@ -194,4 +194,11 @@ void SyndesiID::parseAddressingBuffer(Buffer* buffer) {
     // Read
     next = new SyndesiID(buffer);
 }
+
+bool SyndesiID::operator==(SyndesiID& id) {
+    bool descriptor_equal = memcmp((void*)&descriptor, (void*)&(id.descriptor), sizeof(Descriptor)) == 0;
+    bool port_equal = _port == id._port;
+    return descriptor_equal && port_equal;
+}
+
 }  // namespace syndesi

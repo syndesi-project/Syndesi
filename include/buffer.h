@@ -12,9 +12,16 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+
 #include <string>
 #ifndef ARDUINO
 #include <memory.h>
+#endif
+
+#define ENABLE_PRINTING
+
+#ifdef ENABLE_PRINTING
+#include <stdio.h>
 #endif
 
 namespace syndesi {
@@ -30,51 +37,14 @@ namespace syndesi {
  * @brief Buffer class
  *
  */
+
 class Buffer {
-    class rawBuffer {
-       private:
-        char* _data = nullptr;
-        size_t _length = 0;
-        // Buffer is defined externaly and not managed
-        bool external = false;
-
-       public:
-        rawBuffer(){};
-        rawBuffer(size_t length) {
-            _data = (char*)malloc(length);
-            if (_data == nullptr) {
-                // throw std::bad_alloc();
-            } else {
-                _length = length;
-            }
-        };
-        ~rawBuffer() {
-            if (_data != nullptr && !external) {
-                free((char*)_data);
-            }
-        };
-        rawBuffer(char* buffer, size_t length, bool copy) {
-            if (copy) {
-                // Copy the data locally
-                _data = (char*)malloc(length);
-                if(_data == nullptr) {
-                    memcpy(_data, buffer, length);
-                    external = false;
-                }
-                else {
-                    _length = length;
-                }
-            }
-            else {
-                _data = buffer;
-                _length = length;
-                external = true;
-            }
-        };
-
-        char* start() { return _data; };
-        size_t length() const { return _length; };
-    };
+    char* _data = nullptr;
+    size_t _length = 0;
+    // Buffer is defined externaly and not managed
+    bool isparent = true;
+    size_t _offset = 0;
+    size_t _clipLength = 0;
 
    public:
     /**
@@ -82,34 +52,66 @@ class Buffer {
      *
      * @param length
      */
-    Buffer() { _total_offset = 0; };
-    Buffer(size_t length) {
+    Buffer(){};
+    Buffer(size_t length) { 
         allocate(length);
-        _total_offset = 0;
-    };
+        };
     ~Buffer() { deallocate(); };
     Buffer(Buffer* parent, size_t offset, size_t length = 0) {
         fromParent(parent, offset);
     }
-    Buffer(char* buffer, size_t length) {
-        _data = new rawBuffer(buffer, length, false);
-    };
+    Buffer(char* buffer, size_t length) { fromBuffer(buffer, length); };
+
+    /**
+     * @brief Copy assignement
+     *
+     * @param other
+     * @return Buffer&
+     */
+    Buffer& operator=(const Buffer& other) {
+        allocate(other.length());
+        if (data()) {
+            memcpy(data(), other.data(), other.length());
+        }
+        return *this;
+    }
+
+    /**
+     * @brief Canonical move
+     *
+     * @param other
+     * @return Buffer&
+     */
+    // Buffer& operator=(Buffer&& other) = default;
+
+    char& operator[](size_t i) { return data()[i]; }
 
    private:
-    size_t _total_offset = 0;
-    size_t _offset = 0;
-    rawBuffer* _data = nullptr;
-    size_t _clipLength = 0;
-
    public:
     void allocate(size_t length) {
-        if (_data) {
-            deallocate();
+        deallocate();  // Deallocate if there was a previous buffer
+        _data = (char*)malloc(length);
+        if (_data != nullptr) {
+            // Ok
+            _length = length;
+        } else {
+            printf("Couldn't allocate buffer");
+            _length = 0;
         }
-        _data = new rawBuffer(length);
+        _offset = 0;
+        _clipLength = _length;
+        isparent = true;
     };
 
-    void deallocate() { _data = nullptr; };
+    void deallocate() {
+        // free the data if
+        // - there's something to free
+        // - it's not externally owned
+        if (_data != nullptr && isparent) {
+            free(_data);
+            _data = nullptr;
+        }
+    };
 
     /**
      * @brief Create a subbuffer (with an offset compared to the first one)
@@ -118,14 +120,16 @@ class Buffer {
      * @param offset the start offset of the data
      */
     void fromParent(const Buffer* parent, size_t offset, size_t length = 0) {
+        isparent = false;
         if (offset > parent->length()) {
             // Cannot create a sub-buffer with offset greater than the parent's
             // length
+        } else {
+            _data = parent->_data;
+            _offset = offset;
+            _clipLength = length;
+            _length = parent->length();
         }
-        _total_offset = parent->_total_offset + offset;
-        _data = parent->_data;
-        _offset = offset;
-        _clipLength = length;
     }
 
     /**
@@ -134,9 +138,15 @@ class Buffer {
      * @param buffer
      * @param length
      */
-    void fromBuffer(char* buffer, size_t length, bool copy) {
-        deallocate();
-        _data = new rawBuffer(buffer, length, copy);
+    void fromBuffer(char* buffer, size_t length) {
+        // Allocate a new buffer
+        // Copy the data locally
+        allocate(length);
+        if (_data != nullptr) {
+            memcpy(_data, buffer, length);
+            _length = length;
+        }
+        isparent = true;
     };
 
     /**
@@ -153,9 +163,13 @@ class Buffer {
 
     size_t length() const {
         // Set the max length
-        size_t len = _data->length() - _offset;
+        if (_offset > _length) {
+            return 0;
+        }
+        size_t len = _length - _offset;
+
         // If a clip is defined and it is valid, use it
-        if (_clipLength > 0 && _clipLength < len) {
+        if (_clipLength < len) {
             len = _clipLength;
         }
         return len;
@@ -165,7 +179,7 @@ class Buffer {
      * @brief Get the raw data pointer
      *
      */
-    char* data() const { return _data->start() + _offset; };
+    char* data() const { return _data + _offset; };
 
     /**
      * @brief Get the sub-buffer offset (from base buffer)
@@ -194,6 +208,19 @@ class Buffer {
         return output.str();*/
         return output;
     };
+
+    void dump(char* dest, size_t maxLength) {
+        memcpy(dest, data(), std::min(length(), maxLength));
+    }
+
+#ifdef ENABLE_PRINTING
+    void print() {
+        const unsigned char* start = reinterpret_cast<unsigned char*>(data());
+        for (size_t i = 0; i < length(); i++) {
+            printf("%02X ", (unsigned int)(start[i]));
+        }
+    }
+#endif  // ENABLE_PRINTING
 };
 }  // namespace syndesi
 
