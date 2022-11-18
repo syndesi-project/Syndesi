@@ -22,13 +22,17 @@
 
  */
 
+
 #include <SPI.h>
 #include <Ethernet.h>
 
+#include <MemoryFree.h>
+
 #include <ArduinoSTL.h>
 #include <memory>
-#include "syndesi_config.h"
-#include <syndesi>
+
+#include <syndesi.h>
+#include <interpreters/raw.h>
 
 // Enter a MAC address and IP address for your controller below.
 // The IP address will be dependent on your local network.
@@ -42,82 +46,122 @@ IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 0, 0);
 
 
-// telnet defaults to port23
-EthernetServer server(3456);
-boolean gotAMessage = false; // whether or not you got a message from the client yet
+EthernetServer server(2608);
+
+class IPController : public syndesi::SAP::IController {
+
+  EthernetClient client; 
+    syndesi::SyndesiID hostID;
+
+   public:
+
+    void init() {
+        Ethernet.init(10);  // Most Arduino shields
+
+        Serial.println("Trying to get an IP address using DHCP");
+        if (Ethernet.begin(mac) == 0) {
+          Serial.println("Failed to configure Ethernet using DHCP");
+          // Check for Ethernet hardware present
+          if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+            Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
+            while (true) {
+              delay(1); // do nothing, no point running without Ethernet hardware
+            }
+          }
+          if (Ethernet.linkStatus() == LinkOFF) {
+            Serial.println("Ethernet cable is not connected.");
+          }
+          // initialize the Ethernet device not using DHCP:
+          Ethernet.begin(mac, ip, myDns, gateway, subnet);
+        }
+        else {
+          Serial.println("ok");
+        }
+        // print your local IP address:
+        Serial.print("My IP address: ");
+        Serial.println(Ethernet.localIP());
+      
+        // start listening for clients
+        server.begin();
+    }
+
+    size_t write(syndesi::SyndesiID& deviceID, char* buffer, size_t length) {
+        printf("ip controller write\n");
+        size_t Nwritten = server.write(buffer, length);
+
+        printf("write ok");
+
+        return Nwritten;
+    }
+
+    size_t read(char* _buffer, size_t _length) {
+        for(int i = 0;i<_length;i++) {
+          _buffer[i] = client.read();
+          if (_buffer[i] == -1) {
+            return i-1;
+          }
+          Ethernet.maintain();
+        }
+        return _length;
+    }
+
+    void close() { client.stop(); }
+
+    void wait_for_connection() {
+        // wait for a new client:
+        do {
+        client = server.available();
+        } while(!client);
+        Serial.println("client available !");
+        
+        //hostID.fromIPv4(address.sin_addr.s_addr, address.sin_port);
+        dataAvailable(hostID, -1);
+        close();
+    }
+};
+
+IPController controller;
+using namespace syndesi;
 
 
+void raw_callback(RawInterpreter::RawPayloadRequest& request, RawInterpreter::RawPayloadReply& reply) {
+    //cout << "REGISTER_READ_16_request_callback" << endl;
+    //cout << "    Address = " << request.address << endl;
+    Serial.print("REGISTER_READ_16_REQUEST");
+    reply.data.allocate(request.data.length());
+    for(int i = 0;i<request.data.length();i++) {
+      reply.data[i] = request.data[i] + 1;
+    }
+}
+
+
+//RawInterpreter::Callbacks rawCallbacks{.reply = raw_callback};
+RawInterpreter raw;
+  
 void setup() {
-  // You can use Ethernet.init(pin) to configure the CS pin
-  Ethernet.init(10);  // Most Arduino shields
-  //Ethernet.init(5);   // MKR ETH shield
-  //Ethernet.init(0);   // Teensy 2.0
-  //Ethernet.init(20);  // Teensy++ 2.0
-  //Ethernet.init(15);  // ESP8266 with Adafruit Featherwing Ethernet
-  //Ethernet.init(33);  // ESP32 with Adafruit Featherwing Ethernet
-
+  
   // Open serial communications and wait for port to open:
   Serial.begin(115200);
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
+  Serial.println("ready");
 
-  // start the Ethernet connection:
-  Serial.println("Trying to get an IP address using DHCP");
-  if (Ethernet.begin(mac) == 0) {
-    Serial.println("Failed to configure Ethernet using DHCP");
-    // Check for Ethernet hardware present
-    if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-      Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
-      while (true) {
-        delay(1); // do nothing, no point running without Ethernet hardware
-      }
-    }
-    if (Ethernet.linkStatus() == LinkOFF) {
-      Serial.println("Ethernet cable is not connected.");
-    }
-    // initialize the Ethernet device not using DHCP:
-    Ethernet.begin(mac, ip, myDns, gateway, subnet);
-  }
-  else {
-    Serial.println("ok");
-  }
-  // print your local IP address:
-  Serial.print("My IP address: ");
-  Serial.println(Ethernet.localIP());
+  raw.request = raw_callback;
 
-  // start listening for clients
-  server.begin();
+  syndesi::networkIPController = &controller;
+  syndesi::core.frameManager << raw;
+
+  core.init();
+
+  controller.init();
+
+  // start the Ethernet connection:  
 }
 
 void loop() {
-  // wait for a new client:
-  EthernetClient client = server.available();
-
-  // when the client sends the first byte, say hello:
-  if (client) {
-    if (!gotAMessage) {
-      Serial.println("We have a new client");
-      client.println("Hello, client!");
-      gotAMessage = true;
-    }
-
-    // read the bytes incoming from the client:
-    char thisChar = client.read();
-    // echo the bytes back to the client:
-    server.write(thisChar);
-    // echo the bytes to the server as well:
-    Serial.print(thisChar);
-    Ethernet.maintain();
-  }
+  Serial.print("freeMemory()=");
+  Serial.println(freeMemory());
+  controller.wait_for_connection();
+  Serial.println("ok");
 }
-
-
-/*void syndesi::Callbacks::REGISTER_READ_16_request_callback(
-    syndesi::REGISTER_READ_16_request& request,
-    syndesi::REGISTER_READ_16_reply* reply) {
-    //cout << "REGISTER_READ_16_request_callback" << endl;
-    //cout << "    Address = " << request.address << endl;
-    reply->data = request.address;
-    Serial.print("test");
-}*/

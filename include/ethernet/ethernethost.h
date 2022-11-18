@@ -59,13 +59,6 @@ class IPController : public SAP::IController {
             printf("Connection Failed\n");
             return 0;
         }
-
-        printf("Socket write\n");
-        for(int i = 0;i<length;i++) {
-            printf("%02X ", (unsigned int)(buffer[i]));
-        }
-        printf("\n");
-
         return send(sock, buffer, length, 0);
     }
 

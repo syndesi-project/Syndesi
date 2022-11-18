@@ -19,9 +19,9 @@ class IInterpreter {
 
    protected:
     IInterpreter* next = nullptr;
-    virtual IPayload* parseRequest(Buffer& payload) = 0;
-    virtual bool parseReply(Buffer& payload) = 0;
-    enum Type { ERROR, BCS, OTHER };
+    virtual IPayload* parseRequest(char* buffer, size_t length) = 0;
+    virtual bool parseReply(char* buffer, size_t length) = 0;
+    enum Type : unsigned char { ERROR, BCS, OTHER, TEST=9};
     virtual Type type() = 0;
 };
 

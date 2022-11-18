@@ -12,11 +12,11 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+
 #include <string>
 #ifndef ARDUINO
 #include <memory.h>
 #endif
-
 
 #define ENABLE_PRINTING
 
@@ -42,8 +42,9 @@ class Buffer {
     char* _data = nullptr;
     size_t _length = 0;
     // Buffer is defined externaly and not managed
-    bool external = false;
-    bool ownership = false;
+    bool isparent = true;
+    size_t _offset = 0;
+    size_t _clipLength = 0;
 
    public:
     /**
@@ -51,47 +52,62 @@ class Buffer {
      *
      * @param length
      */
-    Buffer() { _total_offset = 0; };
-    Buffer(size_t length) {
+    Buffer(){};
+    Buffer(size_t length) { 
         allocate(length);
-        _total_offset = 0;
-    };
+        };
     ~Buffer() { deallocate(); };
     Buffer(Buffer* parent, size_t offset, size_t length = 0) {
         fromParent(parent, offset);
     }
-    Buffer(char* buffer, size_t length, bool copy = false, bool ownership = false) {
-        fromBuffer(buffer, length, copy, ownership);
-    };
+    Buffer(char* buffer, size_t length) { fromBuffer(buffer, length); };
 
-    char& operator [](size_t i) {
-        return data()[i];
+    /**
+     * @brief Copy assignement
+     *
+     * @param other
+     * @return Buffer&
+     */
+    Buffer& operator=(const Buffer& other) {
+        allocate(other.length());
+        if (data()) {
+            memcpy(data(), other.data(), other.length());
+        }
+        return *this;
     }
 
-   private:
-    size_t _total_offset = 0;
-    size_t _offset = 0;
-    size_t _clipLength = 0;
+    /**
+     * @brief Canonical move
+     *
+     * @param other
+     * @return Buffer&
+     */
+    // Buffer& operator=(Buffer&& other) = default;
 
+    char& operator[](size_t i) { return data()[i]; }
+
+   private:
    public:
     void allocate(size_t length) {
-        deallocate(); // Deallocate if there was a previous buffer
+        deallocate();  // Deallocate if there was a previous buffer
         _data = (char*)malloc(length);
         if (_data != nullptr) {
             // Ok
             _length = length;
-        }
-        else {
+        } else {
             printf("Couldn't allocate buffer");
             _length = 0;
         }
+        _offset = 0;
+        _clipLength = _length;
+        isparent = true;
     };
 
     void deallocate() {
         // free the data if
         // - there's something to free
         // - it's not externally owned
-        if(_data != nullptr && !(external && !ownership)) {
+        if (_data != nullptr && isparent) {
             free(_data);
             _data = nullptr;
         }
@@ -104,16 +120,16 @@ class Buffer {
      * @param offset the start offset of the data
      */
     void fromParent(const Buffer* parent, size_t offset, size_t length = 0) {
-        external = true;
-        ownership = false;
+        isparent = false;
         if (offset > parent->length()) {
             // Cannot create a sub-buffer with offset greater than the parent's
             // length
+        } else {
+            _data = parent->_data;
+            _offset = offset;
+            _clipLength = length;
+            _length = parent->length();
         }
-        _total_offset = parent->_total_offset + offset;
-        _data = parent->_data;
-        _offset = offset;
-        _clipLength = length;
     }
 
     /**
@@ -122,26 +138,15 @@ class Buffer {
      * @param buffer
      * @param length
      */
-    void fromBuffer(char* buffer, size_t length, bool copy, bool ownership) {
-        deallocate(); // Deallocate if there was a previous buffer
-
+    void fromBuffer(char* buffer, size_t length) {
         // Allocate a new buffer
-        if (copy) {
-            // Copy the data locally
-            allocate(length);
-            if(_data != nullptr) {
-                memcpy(_data, buffer, length);
-                _length = length;
-            }
-            external = false;
-            this->ownership = true; // Override the user value
-        }
-        else {
-            _data = buffer;
+        // Copy the data locally
+        allocate(length);
+        if (_data != nullptr) {
+            memcpy(_data, buffer, length);
             _length = length;
-            external = true;
-            this->ownership = ownership;
         }
+        isparent = true;
     };
 
     /**
@@ -164,7 +169,7 @@ class Buffer {
         size_t len = _length - _offset;
 
         // If a clip is defined and it is valid, use it
-        if (_clipLength > 0 && _clipLength < len) {
+        if (_clipLength < len) {
             len = _clipLength;
         }
         return len;
@@ -204,14 +209,18 @@ class Buffer {
         return output;
     };
 
+    void dump(char* dest, size_t maxLength) {
+        memcpy(dest, data(), std::min(length(), maxLength));
+    }
+
 #ifdef ENABLE_PRINTING
     void print() {
         const unsigned char* start = reinterpret_cast<unsigned char*>(data());
-        for(size_t i = 0;i<length();i++) {
+        for (size_t i = 0; i < length(); i++) {
             printf("%02X ", (unsigned int)(start[i]));
         }
     }
-#endif // ENABLE_PRINTING
+#endif  // ENABLE_PRINTING
 };
 }  // namespace syndesi
 

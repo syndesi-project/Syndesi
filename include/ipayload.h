@@ -21,9 +21,10 @@ class IPayload {
     friend class IInterpreter;
 
    public:
-    virtual void build(Buffer& dest) = 0;
-    virtual void parse(Buffer& src) = 0;
+    virtual ~IPayload() {};
     virtual size_t length() = 0;
+    virtual void build(char* buffer) = 0;
+    virtual void parse(char* buffer, size_t length) = 0;
 };
 
 }  // namespace syndesi

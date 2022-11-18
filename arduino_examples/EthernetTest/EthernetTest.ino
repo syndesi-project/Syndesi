@@ -26,12 +26,13 @@
 #include <SPI.h>
 #include <Ethernet.h>
 
+#include <MemoryFree.h>
+
 #include <ArduinoSTL.h>
 #include <memory>
-#include "syndesi_config.h"
-#include <syndesi.h>
 
-syndesi::Core core;
+#include <syndesi.h>
+#include <interpreters/raw.h>
 
 // Enter a MAC address and IP address for your controller below.
 // The IP address will be dependent on your local network.
@@ -45,7 +46,6 @@ IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 0, 0);
 
 
-// telnet defaults to port23
 EthernetServer server(2608);
 
 class IPController : public syndesi::SAP::IController {
@@ -121,10 +121,24 @@ class IPController : public syndesi::SAP::IController {
 };
 
 IPController controller;
+using namespace syndesi;
 
+
+void raw_callback(RawInterpreter::RawPayloadRequest& request, RawInterpreter::RawPayloadReply& reply) {
+    //cout << "REGISTER_READ_16_request_callback" << endl;
+    //cout << "    Address = " << request.address << endl;
+    Serial.print("REGISTER_READ_16_REQUEST");
+    reply.data.allocate(request.data.length());
+    for(int i = 0;i<request.data.length();i++) {
+      reply.data[i] = request.data[i] + 1;
+    }
+}
+
+
+//RawInterpreter::Callbacks rawCallbacks{.reply = raw_callback};
+RawInterpreter raw;
+  
 void setup() {
-
-  core.addController(&controller, syndesi::Network::ControllerType::ETHERNET);
   
   // Open serial communications and wait for port to open:
   Serial.begin(115200);
@@ -133,25 +147,21 @@ void setup() {
   }
   Serial.println("ready");
 
+  raw.request = raw_callback;
+
+  syndesi::networkIPController = &controller;
+  syndesi::core.frameManager << raw;
+
+  core.init();
+
   controller.init();
 
-  // start the Ethernet connection:
-  
+  // start the Ethernet connection:  
 }
-
-
 
 void loop() {
+  Serial.print("freeMemory()=");
+  Serial.println(freeMemory());
   controller.wait_for_connection();
   Serial.println("ok");
-}
-
-
-void syndesi::Callbacks::REGISTER_READ_16_request_callback(
-    syndesi::REGISTER_READ_16_request& request,
-    syndesi::REGISTER_READ_16_reply* reply) {
-    //cout << "REGISTER_READ_16_request_callback" << endl;
-    //cout << "    Address = " << request.address << endl;
-    reply->data = request.address;
-    Serial.print("REGISTER_READ_16_REQUEST");
 }

@@ -24,8 +24,10 @@ class RawInterpreter : public IInterpreter {
         Buffer data;
 
        private:
-        void build(Buffer& dest) { dest = data; }
-        void parse(Buffer& src) { data = src; };
+        void build(char* buffer) { data.dump(buffer, length()); }
+        void parse(char* buffer, size_t length) {
+            data.fromBuffer(buffer, length);
+        };
         size_t length() { return data.length(); }
     };
 
@@ -36,43 +38,48 @@ class RawInterpreter : public IInterpreter {
         Buffer data;
 
        private:
-        void build(Buffer& dest) { dest = data; }
-        void parse(Buffer& src) { data = src; };
+        void build(char* buffer) { data.dump(buffer, length()); };
+        void parse(char* buffer, size_t length) {
+            data.fromBuffer(buffer, length);
+        };
         size_t length() { return data.length(); }
     };
 
-    struct Callbacks {
-        void (*request)(RawPayloadRequest& request,
-                        RawPayloadReply* reply) = nullptr;
-        void (*reply)(RawPayloadReply& reply) = nullptr;
-    };
-
-   private:
-    Callbacks callbacks;
+    void (*request)(RawPayloadRequest& request, RawPayloadReply* reply);
+    void (*reply)(RawPayloadReply& reply);
 
    public:
-    RawInterpreter(Callbacks user_callbacks) { callbacks = user_callbacks; };
+    //RawInterpreter() = delete;
+    RawInterpreter(const syndesi::RawInterpreter&) = delete;
+    RawInterpreter(const syndesi::RawInterpreter&&) = delete;
 
-    IPayload* parseRequest(Buffer& requestBuffer) {
+    RawInterpreter(void (*request)(RawPayloadRequest&,
+                                   RawPayloadReply*) = nullptr,
+                   void (*reply)(RawPayloadReply&) = nullptr) {
+        this->request = request;
+        this->reply = reply;
+    }
+
+    IPayload* parseRequest(char* buffer, size_t length) {
         // Parse request
         RawPayloadRequest requestPayload;
-        requestPayload.parse(requestBuffer);
+        requestPayload.parse(buffer, length);
         // Prepare reply
         RawPayloadReply* replyPayload = new RawPayloadReply();
 
-        if (callbacks.request != nullptr) {
-            callbacks.request(requestPayload, replyPayload);
+        if (request != nullptr) {
+            request(requestPayload, replyPayload);
         }
         return replyPayload;
     }
-    bool parseReply(Buffer& replyBuffer) {
+    bool parseReply(char* buffer, size_t length) {
         RawPayloadReply replyPayload;
-        replyPayload.parse(replyBuffer);
-        callbacks.reply(replyPayload);
+        replyPayload.parse(buffer, length);
+        reply(replyPayload);
         return true;
     }
 
-    IInterpreter::Type type() { return IInterpreter::Type::OTHER; };
+    IInterpreter::Type type() { return IInterpreter::Type::TEST; };
 };
 
 }  // namespace syndesi

@@ -14,15 +14,21 @@
 using namespace std;
 using namespace syndesi;
 
+bool quit = false;
 
 void raw_callback(RawInterpreter::RawPayloadRequest& request, RawInterpreter::RawPayloadReply* reply) {
-    printf("Received raw payload !\n");
-    reply->data = Buffer(request.data.length());
+    printf("Received raw payload : \"");
+    reply->data.allocate(2);
+    /*reply->data = Buffer(request.data.length());
     for(int i = 0;i<request.data.length();i++) {
-        printf("%02X ", request.data[i]);
+        printf("%02X ", (unsigned int)((unsigned char)request.data[i]));
         reply->data[i] = request.data[i] + 1;
     }
-    printf("Sending each byte + 1\n");
+    printf("\", sending each byte + 1\n");*/
+
+    if (request.data[0] == 99) {
+        quit = true;
+    }
 }
 
 /*void reg_write_callback(
@@ -35,24 +41,20 @@ void raw_callback(RawInterpreter::RawPayloadRequest& request, RawInterpreter::Ra
     reply->status = REGISTER_WRITE_16_reply::OK;
 }*/
 
+
+
 int main(int argc, char const* argv[]) {
     cout << "Syndesi comtest example : device" << endl;
     cout << "Sébastien Deriaz    20.08.2022" << endl;
 
     core.init();
 
-    RawInterpreter raw(RawInterpreter::Callbacks{
-        .request = raw_callback
-    });
-
+    RawInterpreter raw(raw_callback, nullptr);
     core.frameManager << raw;
-    
-
-    //core.callbacks.REGISTER_WRITE_16_request_callback = reg_write_callback;
 
     cout << "Listening for commands on port " << syndesi::settings.getIPPort() << " ..." << endl;
 
-    while (1) {
+    while (!quit) {
         ethernetController.wait_for_connection();
     }
 

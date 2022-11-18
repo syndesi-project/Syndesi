@@ -3,6 +3,8 @@ set(CMAKE_CXX_COMPILER "g++")
 
 set(CMAKE_BUILD_TYPE Debug)
 
+set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
+
 cmake_minimum_required(VERSION 3.20)
 
 project(local_ethernet VERSION 0.1)

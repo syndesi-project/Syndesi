@@ -24,10 +24,10 @@
 
 #ifdef ARDUINO
 #include <Arduino.h>
-#define SLEEP(x) delayMicroseconds(x)
+#define SLEEP(x) delay(x)
 #else
 #include <unistd.h>
-#define SLEEP(x) usleep(x)
+#define SLEEP(x) usleep((x)*1000)
 #endif
 
 using namespace std;

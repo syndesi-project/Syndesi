@@ -34,9 +34,9 @@ bool Network::request(Frame& frame) {
                 frame.getID().setIPPort(settings.getIPPort());
 
                 Nwritten = networkIPController->write(frame.getID(),
-                                                      frame.buffer->data(),
-                                                      frame.buffer->length());
-                if (Nwritten == frame.buffer->length()) {
+                                                      frame.buffer.data(),
+                                                      frame.buffer.length());
+                if (Nwritten == frame.buffer.length()) {
                     output = true;
                 }
 
@@ -55,8 +55,8 @@ bool Network::request(Frame& frame) {
 
 void Network::response(Frame& frame) {
     if (networkIPController != nullptr) {
-        networkIPController->write(frame.getID(), frame.buffer->data(),
-                                   frame.buffer->length());
+        networkIPController->write(frame.getID(), frame.buffer.data(),
+                                   frame.buffer.length());
     }
 }
 
@@ -107,7 +107,7 @@ void Network::controllerDataAvailable(SAP::IController* controller,
     } else {
         deviceFound = false;
     }
-
+    
     if (deviceFound) {
         // We were waiting for a response from this device
         devicesList.DeleteCurrent();

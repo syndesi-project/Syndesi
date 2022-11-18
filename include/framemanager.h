@@ -23,6 +23,14 @@
 
 using namespace std;
 
+#ifdef ARDUINO
+#include <Arduino.h>
+#define SLEEP(x) delay(x)
+#else
+#include <unistd.h>
+#define SLEEP(x) usleep((x)*1000)
+#endif
+
 namespace syndesi {
 
 /**
@@ -39,19 +47,6 @@ class FrameManager : SAP::IFrameManager_bottom, SAP::IFrameManager_top {
     ~FrameManager(){};
 
     IInterpreter* first_interpreter = nullptr;
-
-    /*template <typename T>
-    FrameManager& operator<<(T) {
-        SAP::IInterpreter** interpreter = &first_interpreter;
-        // T is a class
-        // We navigate until we get to the last one
-        while (*interpreter) {
-            *interpreter = (*interpreter)->next;
-        }
-        *interpreter = new T();
-
-        return *this;
-    }*/
 
     FrameManager& operator<<(IInterpreter& new_interpreter) {
         // Add the interpreter to the list

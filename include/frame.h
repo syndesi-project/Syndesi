@@ -18,6 +18,14 @@ using namespace std;
 #include "ipayload.h"
 #include "icontroller.h"
 
+#ifdef ARDUINO
+#include <Arduino.h>
+#define SLEEP(x) delay(x)
+#else
+#include <unistd.h>
+#define SLEEP(x) usleep((x)*1000)
+#endif
+
 namespace syndesi {
 
 class Frame {
@@ -74,8 +82,8 @@ class Frame {
 
    private:
     NetworkHeader networkHeader;
-    Buffer* buffer = nullptr;
-    Buffer payloadBuffer;
+    Buffer buffer;
+    payloadLength_t payloadLength = 0;
     SyndesiID& id;
 
    public:
@@ -86,7 +94,8 @@ class Frame {
      */
     Buffer* getBuffer();
 
-    Buffer& getPayloadBuffer();
+    char* getPayloadBuffer();
+    size_t getPayloadLength();
 
     /**
      * @brief Get the SyndesiID

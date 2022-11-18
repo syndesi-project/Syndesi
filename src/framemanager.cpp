@@ -23,22 +23,19 @@ bool FrameManager::request(Frame& frame) {
 void FrameManager::indication(Frame& frame) {
     Frame* reply = nullptr;
     Buffer* replyBuffer;
-    Buffer& payloadBuffer = frame.getPayloadBuffer();
-
     if (frame.networkHeader.fields.error) {
         // We shouldn't get an error request
         reply = new Frame(frame.getID(), Frame::ErrorCode::INVALID_PAYLOAD);
     } else {
         // No need to look for an error interpreter here, a device should
         // never receive an error request
-
         for (IInterpreter** interpreter = &first_interpreter;
              *interpreter != nullptr; *interpreter = (*interpreter)->next) {
             if ((*interpreter)->type() == IInterpreter::Type::ERROR) {
                 // An error interpreter is useless here
             } else {
-                IPayload* payload = (*interpreter)->parseRequest(payloadBuffer);
-                if(payload) {
+                IPayload* payload = (*interpreter)->parseRequest(frame.getPayloadBuffer(), frame.getPayloadLength());
+                if(payload != nullptr) {
                     reply = new Frame(frame.getID(), *payload);
                     delete payload;
                     break;
@@ -53,16 +50,13 @@ void FrameManager::indication(Frame& frame) {
     }
     if (reply != nullptr) {
         network->response(*reply);
+        delete reply;
     }
-
-    delete reply;
 }
 
 void FrameManager::confirm(Frame& frame) {
     Buffer* replyBuffer;
-    Buffer& payloadBuffer = frame.getPayloadBuffer();
 
-    printf("confirm...\n");
     for (IInterpreter** interpreter = &first_interpreter;
          *interpreter != nullptr; *interpreter = (*interpreter)->next) {
         
@@ -70,9 +64,9 @@ void FrameManager::confirm(Frame& frame) {
             if (frame.networkHeader.fields.error) {
                 // We found an error interpreter, it will be able to
                 // parse the reply
-                (*interpreter)->parseReply(payloadBuffer);
+                (*interpreter)->parseReply(frame.getPayloadBuffer(), frame.getPayloadLength());
             }
-        } else if ((*interpreter)->parseReply(payloadBuffer)) {
+        } else if ((*interpreter)->parseReply(frame.getPayloadBuffer(), frame.getPayloadLength())) {
             // We found one that accepts this payload
             break;
         }

@@ -21,42 +21,30 @@ class ErrorPayloadReply : public IPayload {
    public:
     Frame::ErrorCode errorCode = Frame::ErrorCode::NO_ERROR;
 
-    void build(Buffer& dest) {
-        dest.allocate(Frame::errorCode_size);
-        hton((char*)&errorCode, dest.data(), Frame::errorCode_size);
+    void build(char* buffer) {
+        hton((char*)&errorCode, buffer, Frame::errorCode_size);
     }
-    void parse(Buffer& src) {
-        printf("parsing data ... : \"");
-        for(int i = 0;i<src.length();i++) {
-            printf("%02X (%u)", src[i], src.length());
-            if (i > 10) break;
-        }
-        printf("\"\n");
-        ntoh(src.data(), (char*)&errorCode, Frame::errorCode_size);
+    void parse(char* buffer, size_t length) {
+        ntoh(buffer, (char*)&errorCode, Frame::errorCode_size);
     }
     size_t length() { return Frame::errorCode_size; }
 };
 
-class ErrorInterpreter : public IInterpreter {
-   public:
-    struct Callbacks {
-        void (*reply)(ErrorPayloadReply& reply) = nullptr;
+class ErrorInterpreter : public IInterpreter {   
+    void (*reply)(ErrorPayloadReply& reply);
+    public:
+    ErrorInterpreter(void (*reply)(ErrorPayloadReply& reply) = nullptr) {
+        this->reply = reply;
     };
-
-   private:
-    Callbacks callbacks;
-
-   public:
-    ErrorInterpreter(Callbacks user_callbacks) { callbacks = user_callbacks; }
-    IPayload* parseRequest(Buffer& request) {
+    IPayload* parseRequest(char* buffer, size_t length) {
         // Should never happen
         return nullptr;
     }
-    bool parseReply(Buffer& replyBuffer) {
+    bool parseReply(char* buffer, size_t length) {
         ErrorPayloadReply replyPayload;
-        replyPayload.parse(replyBuffer);
-        if (callbacks.reply != nullptr) {
-            callbacks.reply(replyPayload);
+        replyPayload.parse(buffer, length);
+        if (reply != nullptr) {
+            reply(replyPayload);
         }
         return true;
     }
