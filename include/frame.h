@@ -74,7 +74,7 @@ class Frame {
     Frame(SyndesiID& id, ErrorCode errorCode);
     Frame(SyndesiID& id, IPayload& payload);
     // Create a frame from received data
-    Frame(SAP::IController& controller, SyndesiID& id);
+    Frame(SAP::IController& controller, SyndesiID& id, size_t availableLength);
 
     
 

@@ -24,7 +24,6 @@ SyndesiID::SyndesiID() {}
 
 bool SyndesiID::parseIPv4(const char* ip, unsigned short port) {
     std::string input_ip(ip);
-    unsigned int count = 0;
     unsigned short tempbytes[IPv4_size]; // short because sscanf cannot process bytes
     unsigned char bytes[IPv4_size];
     if (input_ip.find(":") != std::string::npos) {
@@ -53,7 +52,6 @@ bool SyndesiID::parseIPv4(const char* ip, unsigned short port) {
 }
 
 void SyndesiID::fromIPv4(uint32_t ip, unsigned short port) {
-    // TODO : check for endianness
     memcpy(&descriptor, &ip, IPv4_size);
     if (port > 0) _port = port;
     header.fields.address_type = IPV4;
@@ -106,6 +104,8 @@ SyndesiID::SyndesiID(unsigned char* buffer, address_type_t type) {
         case IPV6:
             memcpy((void*)&descriptor, buffer, addressSize(type));
             break;
+        default:
+        break;
     }
 }
 
@@ -148,7 +148,7 @@ unsigned int SyndesiID::reroutes() {
     return count;
 }
 
-const size_t SyndesiID::addressSize(address_type_t type) {
+size_t SyndesiID::addressSize(address_type_t type) {
     switch (type) {
         case IPV4:
             return IPv4_size;
@@ -173,7 +173,6 @@ SyndesiID::address_type_t SyndesiID::getAddressType() {
 void SyndesiID::buildAddressingBuffer(Buffer* buffer) {
     // Do not write itself
     size_t addressLength = 0;
-    size_t offset = 0;
     if (is_next) {
         // Write itself
         hton(reinterpret_cast<char*>(&header), buffer->data(), sizeof(header));

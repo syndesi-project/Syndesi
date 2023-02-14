@@ -44,6 +44,8 @@ void raw_callback(RawInterpreter::RawPayloadRequest& request, RawInterpreter::Ra
 
 
 int main(int argc, char const* argv[]) {
+    (void)argc;
+    (void)argv;
     cout << "Syndesi comtest example : device" << endl;
     cout << "Sébastien Deriaz    20.08.2022" << endl;
 

@@ -23,18 +23,6 @@ class IController {
    private:
     INetwork_bottom* network = nullptr;
 
-   public:
-    /*
-     * Callable by the user
-     */
-   public:
-    // void dataAvailable() { network->controllerDataAvailable(this);}
-
-   protected:
-    // unsigned short IPPort() { return network->port(); };
-    // void setCustomIPPort(unsigned short port) { network->setCustomPort(port);
-    // };
-
    protected:
     /*
      * Called by the user
@@ -49,7 +37,6 @@ class IController {
      * Implemented by the user
      */
     virtual void init() = 0;
-    // virtual SyndesiID& getSyndesiID() = 0;
     virtual size_t read(char* buffer, size_t length) = 0;
     // returns the number of bytes written
     virtual size_t write(SyndesiID& deviceID, char* buffer, size_t length) = 0;

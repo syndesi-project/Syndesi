@@ -48,23 +48,12 @@ class FrameManager : SAP::IFrameManager_bottom, SAP::IFrameManager_top {
 
     IInterpreter* first_interpreter = nullptr;
 
-    FrameManager& operator<<(IInterpreter& new_interpreter) {
-        // Add the interpreter to the list
-        IInterpreter** interpreter = &first_interpreter;
-        while (*interpreter) {
-            *interpreter = (*interpreter)->next;
-        }
-        *interpreter = &new_interpreter;
-
-        return *this;
-    }
+    FrameManager& operator<<(IInterpreter& new_interpreter);
 
    private:
     /*
      * Upper layer
      */
-
-    // void registerCallbacks(Callbacks* callbacks) { _callbacks = callbacks; };
     //  From core
     bool request(Frame& frame);
     /*

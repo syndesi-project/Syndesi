@@ -15,23 +15,8 @@
 //#define DEVICE_IP "127.0.0.1"
 
 //#define CUSTOM_PORT 1234
-//#define COMMAND_ID syndesi::cmt_t::REGISTER_READ_16
 
 using namespace syndesi;
-
-/*void reg_write_callback(RawInterpreter::RawPayloadReply& reply) {
-    std::cout << "REGISTER_WRITE_16_reply_callback" << std::endl;
-    std::cout << "    status = ";
-    switch (reply.status) {
-        case REGISTER_WRITE_16_reply::OK:
-            cout << "ok";
-            break;
-        case REGISTER_WRITE_16_reply::NOK:
-            cout << "nok";
-            break;
-    }
-    cout << endl;
-}*/
 
 void error_callback(ErrorPayloadReply& reply) {
     printf("Error : %hu\n", reply.errorCode);
@@ -39,7 +24,7 @@ void error_callback(ErrorPayloadReply& reply) {
 
 void raw_callback(RawInterpreter::RawPayloadReply& reply) {
     printf("Received data : \"");
-    for(int i = 0;i<reply.data.length();i++) {
+    for(size_t i = 0;i<reply.data.length();i++) {
         printf("%02X ", (unsigned int)((unsigned char)reply.data[i]));
     }
     printf("\n");
@@ -69,7 +54,7 @@ int main() {
     unsigned char buffer[] = {0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80};//, 0x90};
     payload.data = Buffer((char*)buffer, sizeof(buffer));
 
-    printf("Payload (%u): ", payload.data.length());
+    printf("Payload (%lu): ", payload.data.length());
     payload.data.print();
     printf("\n");
     

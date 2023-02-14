@@ -58,7 +58,7 @@ class Buffer {
         };
     ~Buffer() { deallocate(); };
     Buffer(Buffer* parent, size_t offset, size_t length = 0) {
-        fromParent(parent, offset);
+        fromParent(parent, offset, length);
     }
     Buffer(char* buffer, size_t length) { fromBuffer(buffer, length); };
 
@@ -68,13 +68,7 @@ class Buffer {
      * @param other
      * @return Buffer&
      */
-    Buffer& operator=(const Buffer& other) {
-        allocate(other.length());
-        if (data()) {
-            memcpy(data(), other.data(), other.length());
-        }
-        return *this;
-    }
+    Buffer& operator=(const Buffer& other);
 
     /**
      * @brief Canonical move
@@ -82,36 +76,13 @@ class Buffer {
      * @param other
      * @return Buffer&
      */
-    // Buffer& operator=(Buffer&& other) = default;
-
     char& operator[](size_t i) { return data()[i]; }
 
    private:
    public:
-    void allocate(size_t length) {
-        deallocate();  // Deallocate if there was a previous buffer
-        _data = (char*)malloc(length);
-        if (_data != nullptr) {
-            // Ok
-            _length = length;
-        } else {
-            printf("Couldn't allocate buffer");
-            _length = 0;
-        }
-        _offset = 0;
-        _clipLength = _length;
-        isparent = true;
-    };
+    void allocate(size_t length);
 
-    void deallocate() {
-        // free the data if
-        // - there's something to free
-        // - it's not externally owned
-        if (_data != nullptr && isparent) {
-            free(_data);
-            _data = nullptr;
-        }
-    };
+    void deallocate();
 
     /**
      * @brief Create a subbuffer (with an offset compared to the first one)
@@ -119,18 +90,7 @@ class Buffer {
      * @param parent the parent buffer
      * @param offset the start offset of the data
      */
-    void fromParent(const Buffer* parent, size_t offset, size_t length = 0) {
-        isparent = false;
-        if (offset > parent->length()) {
-            // Cannot create a sub-buffer with offset greater than the parent's
-            // length
-        } else {
-            _data = parent->_data;
-            _offset = offset;
-            _clipLength = length;
-            _length = parent->length();
-        }
-    }
+    void fromParent(const Buffer* parent, size_t offset, size_t length = 0);
 
     /**
      * @brief Init with the given buffer
@@ -138,16 +98,7 @@ class Buffer {
      * @param buffer
      * @param length
      */
-    void fromBuffer(char* buffer, size_t length) {
-        // Allocate a new buffer
-        // Copy the data locally
-        allocate(length);
-        if (_data != nullptr) {
-            memcpy(_data, buffer, length);
-            _length = length;
-        }
-        isparent = true;
-    };
+    void fromBuffer(char* buffer, size_t length);
 
     /**
      * @brief Create a sub-buffer
@@ -155,25 +106,9 @@ class Buffer {
      * @param offset offset from start
      * @param length length of sub-buffer (default to max)
      */
-    Buffer offset(size_t offset, size_t length = 0) {
-        Buffer buf;
-        buf.fromParent(this, offset, length);
-        return buf;
-    };
+    //Buffer& offset(size_t offset, size_t length = 0);
 
-    size_t length() const {
-        // Set the max length
-        if (_offset > _length) {
-            return 0;
-        }
-        size_t len = _length - _offset;
-
-        // If a clip is defined and it is valid, use it
-        if (_clipLength < len) {
-            len = _clipLength;
-        }
-        return len;
-    };
+    size_t length() const;
 
     /**
      * @brief Get the raw data pointer
@@ -193,21 +128,6 @@ class Buffer {
      *
      */
     char* toString() { return data(); };
-
-    /**
-     * @brief Export buffer as hex string (12 F1 8A ...)
-     *
-     */
-    std::string toHex() {
-        std::string output;
-        /*stringstream output;
-        char* start = data();
-        for(size_t i = 0;i<length();i++) {
-            output << hex << start[i] << " ";
-        }
-        return output.str();*/
-        return output;
-    };
 
     void dump(char* dest, size_t maxLength) {
         memcpy(dest, data(), std::min(length(), maxLength));

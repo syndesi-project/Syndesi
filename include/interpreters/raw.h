@@ -49,7 +49,6 @@ class RawInterpreter : public IInterpreter {
     void (*reply)(RawPayloadReply& reply);
 
    public:
-    //RawInterpreter() = delete;
     RawInterpreter(const syndesi::RawInterpreter&) = delete;
     RawInterpreter(const syndesi::RawInterpreter&&) = delete;
 

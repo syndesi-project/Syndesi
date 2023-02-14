@@ -63,10 +63,7 @@ class Network : SAP::INetwork_top, public SAP::INetwork_bottom {
     enum ControllerType { ETHERNET, UART, RS485 };
 
     //void registerController(SAP::IController* controller, ControllerType type);
-
    private:
-    // List of pendingConfirm IDs
-    // std::list<SyndesiID*> pendingConfirm;
 
     /**
      * @brief Look in the pendingConfirm list and determine wether or not the

@@ -79,7 +79,7 @@ class SyndesiID {
         unsigned char value;
     };
 
-    const size_t addressSize(address_type_t type);
+    size_t addressSize(address_type_t type);
 
     bool operator==(SyndesiID& id);
 

@@ -86,10 +86,7 @@ class IPController : public syndesi::SAP::IController {
     }
 
     size_t write(syndesi::SyndesiID& deviceID, char* buffer, size_t length) {
-        printf("ip controller write\n");
         size_t Nwritten = server.write(buffer, length);
-
-        printf("write ok");
 
         return Nwritten;
     }
@@ -112,7 +109,7 @@ class IPController : public syndesi::SAP::IController {
         do {
         client = server.available();
         } while(!client);
-        Serial.println("client available !");
+        //Serial.println("client available !");
         
         //hostID.fromIPv4(address.sin_addr.s_addr, address.sin_port);
         dataAvailable(hostID, -1);
@@ -125,13 +122,13 @@ using namespace syndesi;
 
 
 void raw_callback(RawInterpreter::RawPayloadRequest& request, RawInterpreter::RawPayloadReply& reply) {
-    //cout << "REGISTER_READ_16_request_callback" << endl;
-    //cout << "    Address = " << request.address << endl;
-    Serial.print("REGISTER_READ_16_REQUEST");
-    reply.data.allocate(request.data.length());
+    /*reply.data.allocate(request.data.length());
     for(int i = 0;i<request.data.length();i++) {
       reply.data[i] = request.data[i] + 1;
-    }
+    }*/
+    digitalWrite(5, request.data[0] & 0x04);
+    digitalWrite(6, request.data[0] & 0x02);
+    digitalWrite(7, request.data[0] & 0x01);
 }
 
 
@@ -156,12 +153,14 @@ void setup() {
 
   controller.init();
 
-  // start the Ethernet connection:  
+  pinMode(5, OUTPUT);
+  pinMode(6, OUTPUT);
+  pinMode(7, OUTPUT);
 }
 
 void loop() {
-  Serial.print("freeMemory()=");
-  Serial.println(freeMemory());
+  /*Serial.print("freeMemory()=");
+  Serial.println(freeMemory());*/
   controller.wait_for_connection();
-  Serial.println("ok");
+  //Serial.println("ok");
 }

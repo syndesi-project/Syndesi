@@ -1,6 +1,7 @@
 set(CMAKE_C_COMPILER "gcc")
 set(CMAKE_CXX_COMPILER "g++")
 
+add_compile_options(-Wall -Wextra -pedantic -Werror)
 set(CMAKE_BUILD_TYPE Debug)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)

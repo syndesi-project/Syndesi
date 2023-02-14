@@ -25,19 +25,24 @@ class ErrorPayloadReply : public IPayload {
         hton((char*)&errorCode, buffer, Frame::errorCode_size);
     }
     void parse(char* buffer, size_t length) {
-        ntoh(buffer, (char*)&errorCode, Frame::errorCode_size);
+        if (length >= Frame::errorCode_size) {
+            ntoh(buffer, (char*)&errorCode, Frame::errorCode_size);
+        }
     }
     size_t length() { return Frame::errorCode_size; }
 };
 
-class ErrorInterpreter : public IInterpreter {   
+class ErrorInterpreter : public IInterpreter {
     void (*reply)(ErrorPayloadReply& reply);
-    public:
+
+   public:
     ErrorInterpreter(void (*reply)(ErrorPayloadReply& reply) = nullptr) {
         this->reply = reply;
     };
     IPayload* parseRequest(char* buffer, size_t length) {
         // Should never happen
+        (void)buffer;
+        (void)length;
         return nullptr;
     }
     bool parseReply(char* buffer, size_t length) {
@@ -49,7 +54,7 @@ class ErrorInterpreter : public IInterpreter {
         return true;
     }
 
-    IInterpreter::Type type() {return IInterpreter::Type::ERROR;};
+    IInterpreter::Type type() { return IInterpreter::Type::ERROR; };
 };
 
 }  // namespace syndesi

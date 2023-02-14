@@ -29,6 +29,7 @@ target_sources(${PROJECT_NAME}
         src/syndesi_tools.cpp
         src/network.cpp
         src/settings.cpp
+        src/buffer.cpp
 )
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)

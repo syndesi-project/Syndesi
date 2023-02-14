@@ -49,9 +49,13 @@ Frame::Frame(SyndesiID& id, IPayload& payload) : id(id) {
     payload.build(buffer.data() + pos);
 }
 
-Frame::Frame(SAP::IController& controller, SyndesiID& id) : id(id) {
+Frame::Frame(SAP::IController& controller, SyndesiID& id, size_t availableLength) : id(id) {
     // Create a frame from the read data of the controller
-
+    (void)availableLength;
+    // TODO : Use the length to either
+    // - build the frame piece by piece
+    // - ignore the data and create the frame once there's enough data
+    
     // Read the header (or the network header + error code)
     char headerBuffer[header_size];
     controller.read(headerBuffer, header_size);
@@ -81,7 +85,7 @@ Frame::Frame(SAP::IController& controller, SyndesiID& id) : id(id) {
             // Copy the header back in the buffer
             memcpy(buffer.data(), headerBuffer, header_size);
             // Read the payload
-            size_t Nwritten = controller.read(buffer.data() + header_size, payloadLength);
+            controller.read(buffer.data() + header_size, payloadLength);
         }
     }
 }

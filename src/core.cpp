@@ -18,9 +18,7 @@ Core core;
 void Core::factory_init() {
     // register interfaces (connect layers together)
 
-    // FrameManager class
     frameManager.registerNetwork(&network);
-    // Network class
     network.registerFrameManager(&frameManager);
 }
 

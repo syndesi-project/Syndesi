@@ -11,6 +11,5 @@
 #define SYNDESI_H
 
 #include "core.h"
-#include "interpreters/error.h"
 
 #endif  // SYNDESI_H

@@ -77,7 +77,6 @@ class IPController : public SAP::IController {
     }
 
     size_t write(SyndesiID& deviceID, char* buffer, size_t length) {
-        int sock = 0;
         struct sockaddr_in serv_addr;
 
         serv_addr.sin_family = AF_INET;
