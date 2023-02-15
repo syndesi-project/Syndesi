@@ -1,5 +1,44 @@
 # Syndesi
 
+The Syndesi library implements low-level communication between compatible devices (layers 5 and 6 of the OSI model) as well as host-specific high level functions to manage devices
+
+The Syndesi library is responsible for :
+
+- Managing communication ports (Ethernet, I²C, SPI, RS-485, etc...)
+- Routing frames through and/or between those communication ports
+- Managing inbound / outbound frames and their corresponding actions
+
+## Structure
+
+The source is split into three parts
+
+- ``src_device`` : Device sources
+- ``src_host`` : Host sources
+- ``src_common`` : Sources common to device and host
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Backup
+
 The Syndesi library implements low-level communication between syndesi compatible devices (layers 5 and 6 of the OSI model) as well as host-specific high level functions to manage devices
 
 The Syndesi library is responsible for :
