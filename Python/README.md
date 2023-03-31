@@ -19,8 +19,22 @@ mydevice = Device(RawTCP("182.168.1.12"))
 mydevice = Device(SyndesiDevice("182.168.1.123"))
 ```
 
+## Usecases
+
+- Test gear (multimeters, oscilloscopes, power supply, etc...)
+  - set values (output voltage, settings, etc...)
+  - get values (measured voltage, trace, screenshot)
+  - continuously read data (UART multimeter for instance)
+- UART devices (Arduinos, etc...)
+  - Send / receive raw data
+  - Custom drivers
+- Syndesi devices
+  - Send / receive formatted data
+- USB devices
+  - Send / receive data using the USB protocol
 
 ## Notes (obsolete)
+
 The user could specify the wrapper directly (IP, UART, etc...)
 
 ```python
