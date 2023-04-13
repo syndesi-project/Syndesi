@@ -3,26 +3,25 @@
 #
 # Communication wrapper abstract class
 
+from abc import abstractmethod, ABCMeta, ABC
 
-from abc import abstractmethod, ABCMeta
-
-class Wrapper(ABCMeta):
+class Wrapper(ABC):
     @abstractmethod
     def __init__(self, descriptor, *args):
         pass
 
     @abstractmethod
-    def open():
+    def open(self):
         pass
 
     @abstractmethod
-    def close():
+    def close(self):
         pass
             
     @abstractmethod
-    def write():
+    def write(self, data : bytearray):
         pass
     
     @abstractmethod
-    def read():
+    def read(self):
         pass
