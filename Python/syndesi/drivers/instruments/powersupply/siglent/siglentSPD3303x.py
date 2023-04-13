@@ -2,10 +2,10 @@
 # Sébastien Deriaz
 # 02.04.2023
 
-from .....meta.instruments import SPCIDevice, MultiChannelPowersupply
+from ....meta.instruments import SPCIDevice, MultiChannelPowersupplyDC
 from enum import Enum
 
-class SPD3303x(SPCIDevice, MultiChannelPowersupply):
+class SPD3303x(SPCIDevice, MultiChannelPowersupplyDC):
     def _checkChannel(self, channel):
         assert channel in [1,2], f"Invalid channel number : {channel}"
     
