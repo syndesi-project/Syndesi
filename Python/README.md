@@ -19,6 +19,13 @@ mydevice = Device(RawTCP("182.168.1.12"))
 mydevice = Device(SyndesiDevice("182.168.1.123"))
 ```
 
+The Device is the base class, it doesn't implement any session protocol, only the one(s) necessary to communicate with it.
+
+## SDP
+
+The Syndesi Device Protocol is a light-weight and easy interface to send / receive commands with compatible devices.
+
+
 ## Usecases
 
 - Test gear (multimeters, oscilloscopes, power supply, etc...)
