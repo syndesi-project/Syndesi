@@ -21,10 +21,21 @@ mydevice = Device(SyndesiDevice("182.168.1.123"))
 
 The Device is the base class, it doesn't implement any session protocol, only the one(s) necessary to communicate with it.
 
+## Layers
+
+The first layer is the "Device" base class
+
+The second layer is made of "Primary drivers". First stage drivers implement mid-level communication protocols like Modbus, SDP, Raw, HTTP, SPCI, etc... Those drivers can be instanciated by the user if he wishes to use a device "as is" (i.e without an application driver)
+
+Next are device drivers. They provide implementation for device-specific operations
+
+Last are the application drivers. These are used to provide application-specific operations that mar or may not be tied to a particular device.
+
+Note that both device drivers and application drivers can be omitted and can also be stacked as all first stage drivers, device drivers and application drivers stem from the same base Class
+
 ## SDP
 
 The Syndesi Device Protocol is a light-weight and easy interface to send / receive commands with compatible devices.
-
 
 ## Usecases
 
