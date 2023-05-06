@@ -1,4 +1,37 @@
-# Syndesi Python
+# Syndesi Python Implementation
+
+
+
+
+## Installation
+
+The syndesi Python package can be installed through pip
+
+``pip install syndesi``
+
+The package can also be installed locally by cloning this repository
+
+```bash
+git clone ...
+cd Syndesi/Python
+pip install .
+```
+
+## Usage
+
+To instantiate a device / testbench, one must import the device and a suitable adapter 
+
+```python
+# 1) Import the device
+from syndesi.drivers.instruments.mutlimeters.siglent.SDM3055 import SDM3055
+# 2) Import the adapter
+from syndesi.adapters import IP
+
+# 3) Instantiate using the multimeter using its IP
+mm = SDM3055(IP("192.168.1.123"))
+```
+
+
 
 The Syndesi Python package provides the user with the necessary tools to control compatible devices
 
@@ -9,17 +42,7 @@ The Syndesi Python package provides the user with the necessary tools to control
   - UART
   - USB (?)
 
-## Notes
 
-The user specifies a descriptor. The descriptor takes care of choosing the right wrapper and the correct implementation depending on the type of device
-
-```python
-
-mydevice = Device(RawTCP("182.168.1.12"))
-mydevice = Device(SyndesiDevice("182.168.1.123"))
-```
-
-The Device is the base class, it doesn't implement any session protocol, only the one(s) necessary to communicate with it.
 
 ## Layers
 
