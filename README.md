@@ -11,7 +11,6 @@ The Syndesi library is responsible for :
 
 The installation instructions are found ![here](INSTALL.md)
 
-
 ## Usage
 
 To use the library, the user needs to :
@@ -36,7 +35,7 @@ If necessary, the user can provide a custom implementation of a controller
 The configuration file must be included before the library, if the configuration file is in an include folder, the syndesi library will include it automatically (through ``__has_include``). Otherwise it can be included by the user manually beforehand
 
 ```c++
-#include "syndesi_config.h" // Onyl necessary if __has_include is unavailable, with Arduino for example
+#include "syndesi_config.h" // Only necessary if __has_include is unavailable, with Arduino for example
 #include <syndesi>
 ```
 
