@@ -1,5 +1,8 @@
 # Syndesi C++ library
 
+## Notes 29.04.2023
+
+Add a "Serial finder" protocol that is able to find a serial port even if it has changed name (it basically exludes all of the others specified in a blacklist and looks for the remaining one)
 
 ## Notes 15.08.2022
 
