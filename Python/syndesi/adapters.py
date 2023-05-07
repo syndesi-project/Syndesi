@@ -10,9 +10,9 @@
 # 
 # Note that technically VISA is not part of the media layer, only USB is.
 # This is a limitation as it is to this day not possible to communication "raw"
-# with a device through USB
+# with a device through USB yet
 
-from abc import abstractmethod, ABCMeta, ABC
+from abc import abstractmethod, ABC
 from enum import Enum
 import socket
 

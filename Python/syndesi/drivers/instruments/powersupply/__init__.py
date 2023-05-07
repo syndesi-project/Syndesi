@@ -1,45 +1,61 @@
+from abc import ABC, abstractmethod
+
 class IPowersupplyDC():
     # Provides power supply functions (one channel only)
-    def setVoltage(self, volts : float):
+    @abstractmethod
+    def set_voltage(self, volts : float):
         pass
-
-    def getVoltage(self) -> float:
+    
+    @abstractmethod
+    def get_voltage(self) -> float:
         pass
-
-    def setCurrent(self, amps : float):
+    
+    @abstractmethod
+    def set_current(self, amps : float):
         pass
-
-    def getCurrent(self) -> float:
+    
+    @abstractmethod
+    def get_current(self) -> float:
         pass
-
-    def setOutputState(self, state : bool):
+    
+    @abstractmethod
+    def set_output_state(self, state : bool):
         pass
-
-    def measureVoltage(self) -> float:
+    
+    @abstractmethod
+    def measure_dc_voltage(self) -> float:
         pass
-
-    def measureCurrent(self) -> float:
+    
+    @abstractmethod
+    def measure_dc_current(self) -> float:
         pass
 
 class IMultiChannelPowersupplyDC():
     # Provides power supply functions (multi channel)
-    def setVoltage(self, Channel : int, volts : float):
+    @abstractmethod
+    def set_voltage(self, Channel : int, volts : float):
+        pass
+    
+    @abstractmethod
+    def set_voltage(self, channel : int) -> float:
+        pass
+    
+    @abstractmethod
+    def set_current(self, channel : int, amps : float):
+        pass
+    
+    @abstractmethod
+    def get_current(self, channel : int) -> float:
+        pass
+    
+    @abstractmethod
+    def set_output_state(self, channel : int, state : bool):
         pass
 
-    def getVoltage(self, channel : int) -> float:
+    @abstractmethod
+    def measure_dc_current(self, channel) -> float:
         pass
-
-    def setCurrent(self, channel : int, amps : float):
-        pass
-
-    def getCurrent(self, channel : int) -> float:
-        pass
-
-    def setOutputState(self, channel : int, state : bool):
-        pass
-
-    def measureCurrent(self, channel) -> float:
-        pass
-
-    def measureVoltage(self, channel) -> float:
+    
+    @abstractmethod
+    def measure_dc_voltage(self, channel) -> float:
         pass
