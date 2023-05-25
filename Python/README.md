@@ -1,8 +1,5 @@
 # Syndesi Python Implementation
 
-
-
-
 ## Installation
 
 The syndesi Python package can be installed through pip
@@ -27,11 +24,12 @@ from syndesi.drivers.instruments.mutlimeters.siglent.SDM3055 import SDM3055
 # 2) Import the adapter
 from syndesi.adapters import IP
 
-# 3) Instantiate using the multimeter using its IP
+# 3) Instantiate the multimeter using its IP
 mm = SDM3055(IP("192.168.1.123"))
+
+## 4) Use
+voltage = mm.measure_dc_voltage()
 ```
-
-
 
 The Syndesi Python package provides the user with the necessary tools to control compatible devices
 
@@ -41,8 +39,6 @@ The Syndesi Python package provides the user with the necessary tools to control
   - IP (TCP / UDP)
   - UART
   - USB (?)
-
-
 
 ## Layers
 
@@ -73,14 +69,3 @@ The Syndesi Device Protocol is a light-weight and easy interface to send / recei
   - Send / receive formatted data
 - USB devices
   - Send / receive data using the USB protocol
-
-## Notes (obsolete)
-
-The user could specify the wrapper directly (IP, UART, etc...)
-
-```python
-
-mydevice = Device(IP("182.168.1.12"))
-```
-
-This assumes that the choice of the wrapper is trivial for the user.
