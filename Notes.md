@@ -25,3 +25,7 @@ The new structure is a follows : Any communication between a host and a device h
 - adapter : the low-level implementation of the physical/network layers, like IP, Serial, etc...
 - protocol : Implementation of the transport up to application layers, like Profinet, SDP, SCPI, Telnet, Modbus, HTTP or Raw
 - driver(s) : Device specific or application specific (testbenches) classes, these classe can be user-defined and may contain information on how a particular device works. In the case of a testbench driver, multiple devices (drivers) can be passed as arguments to run the testbench
+
+## Notes 28.05.2023
+
+It is possible to install multiple packages with the same base name. Thus having two repository, one for Syndesi (the core) and of for the drivers is possible. One will provide ``syndesi.drivers`` the other will provide ``syndesi.whatever``. This allows the drivers to have their own repo (like nixpkgs)
