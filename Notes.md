@@ -28,4 +28,10 @@ The new structure is a follows : Any communication between a host and a device h
 
 ## Notes 28.05.2023
 
-It is possible to install multiple packages with the same base name. Thus having two repository, one for Syndesi (the core) and of for the drivers is possible. One will provide ``syndesi.drivers`` the other will provide ``syndesi.whatever``. This allows the drivers to have their own repo (like nixpkgs)
+The Syndesi and Syndesi-drivers packages should not overlap (i.e provide the same syndesi module) as this will cause problems. It's better for each to provide its own module (syndesi and syndesi_drivers for example)
+
+## Notes 02.06.2023
+
+The protocol is specified by the device itself, if multiple protocols are available for a particular device, a method is implemented to choose (or take a default one)
+
+
