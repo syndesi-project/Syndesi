@@ -111,6 +111,21 @@ class Serial(IAdapter):
         """
         pass
 
+    def flushRead(self):
+        pass
+
+    def open(self):
+        pass
+
+    def close(self):
+        pass
+            
+    def write(self, data : bytearray):
+        pass
+    
+    def read(self):
+        pass
+
 class USBVisa(IAdapter):
     def __init__(self, descriptor : str):
         """
@@ -121,4 +136,19 @@ class USBVisa(IAdapter):
         descriptor : str
             IP description
         """
+        pass
+
+    def flushRead(self):
+        pass
+
+    def open(self):
+        pass
+
+    def close(self):
+        pass
+            
+    def write(self, data : bytearray):
+        pass
+    
+    def read(self):
         pass

@@ -9,7 +9,7 @@ To instanciate a device, the user provides a identifier either as a string (that
 from syndesi.drivers.xxx.DeviceX
 
 # From a string (IPv4)
-myDevice = DeviceX("192.168.1.12")
+myDevice = DeviceX("192.168.1.12") # not implemented yet
 # From a class (IPv4)
 myDevice = DeviceX(IP("192.168.1.12"))
 # From a class (usb VID/PID)
