@@ -45,11 +45,11 @@ class IP(IAdapter):
             self.open()
         self._socket.send(data)
 
-    def read(self, ):
+    def read(self):
         if self._status == self.Status.DISCONNECTED:
             self.open()
         
-        self._socket.settimeout(5)
+        self._socket.settimeout(10)
 
         buffer = b''
         while True:
@@ -57,6 +57,11 @@ class IP(IAdapter):
                 recv = self._socket.recv(10)
                 self._socket.settimeout(0.05)
                 buffer += recv
-            except TimeoutError:
+            except socket.timeout as e:
                 break
         return buffer
+
+    def write_read(self, data : bytearray):
+        self.write(data)
+        return self.read()
+        

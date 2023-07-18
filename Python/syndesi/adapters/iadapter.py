@@ -6,7 +6,7 @@
 # The following classes are provided, which all are derived from the main Adapter class 
 #   - IP
 #   - Serial
-#   - USBVisa
+#   - VISA
 # 
 # Note that technically VISA is not part of the media layer, only USB is.
 # This is a limitation as it is to this day not possible to communication "raw"

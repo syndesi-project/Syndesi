@@ -3,7 +3,7 @@ from pyvisa import ResourceManager
 
 from .iadapter import IAdapter
 
-class USBVisa(IAdapter):
+class VISA(IAdapter):
     def __init__(self, descriptor : str):
         """
         USB VISA stack adapter
@@ -15,6 +15,14 @@ class USBVisa(IAdapter):
         """
         self._rm = ResourceManager()
         self._inst = self._rm.open_resource(descriptor)
+
+    def list_devices(self=None):
+        """
+        Returns a list of VISA devices
+        """
+        rm = ResourceManager()
+
+        return rm.list_resources()
 
     def flushRead(self):
         pass
