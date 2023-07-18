@@ -34,4 +34,6 @@ The Syndesi and Syndesi-drivers packages should not overlap (i.e provide the sam
 
 The protocol is specified by the device itself, if multiple protocols are available for a particular device, a method is implemented to choose (or take a default one)
 
+## Notes 18.07.2023
 
+new-structure and sync branches are considered close, development will continue on main
