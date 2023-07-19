@@ -10,7 +10,7 @@ class IP(IAdapter):
     class Protocol(Enum):
         TCP = 0
         UDP = 1
-    def __init__(self, descriptor : str, port = None, transport : Protocol = Protocol.TCP):
+    def __init__(self, descriptor : str, port, transport : Protocol = Protocol.TCP):
         """
         IP stack adapter
 
