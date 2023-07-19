@@ -10,7 +10,7 @@ class IP(IAdapter):
     class Protocol(Enum):
         TCP = 0
         UDP = 1
-    def __init__(self, descriptor : str, port, transport : Protocol = Protocol.TCP):
+    def __init__(self, descriptor : str, port = None, transport : Protocol = Protocol.TCP):
         """
         IP stack adapter
 
@@ -28,6 +28,20 @@ class IP(IAdapter):
         self._ip = descriptor # TODO : update this
         self._port = port
         self._status = self.Status.DISCONNECTED
+
+    def set_default_port(self, port):
+        """
+        Sets IP port if no port has been set yet.
+
+        This way, the user can leave the port empty
+        and the driver/protocol can specify it later
+        
+        Parameters
+        ----------
+        port : int
+        """
+        if self._port is None:
+            self._port = port
 
 
     def flushRead(self):
