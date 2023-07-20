@@ -1,0 +1,1 @@
+from syndesi.protocols.iprotocol import IProtocol
