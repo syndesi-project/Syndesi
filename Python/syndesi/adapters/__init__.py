@@ -1,4 +1,4 @@
 from .iadapter import IAdapter
-from .IP import IP
+from .ip import IP
 from .serial import Serial
-from .VISA import VISA
+from .visa import VISA
