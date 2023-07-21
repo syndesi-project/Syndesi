@@ -1,28 +1,36 @@
 from .iadapter import IAdapter
 
+import serial
+
 class Serial(IAdapter):
-    def __init__(self, descriptor : str):
+    def __init__(self, port : str, baudrate=115200):
         """
         Serial communication adapter
 
         Parameters
         ----------
-        descriptor : str
+        port : str
             Serial port (COMx or ttyACMx)
         """
-        pass
+        self._port = serial.Serial(port=port, baudrate=baudrate)
 
     def flushRead(self):
-        pass
+        self._port.flush()
 
     def open(self):
-        pass
+        self._port.open()
 
     def close(self):
-        pass
+        self._port.close()
             
     def write(self, data : bytearray):
-        pass
+        self._port.write(data)
     
     def read(self):
-        pass
+        # TODO : Implement timeout strategy
+        return self._port.read_all()
+
+    def query(self, data : bytearray):
+        self.flushRead()
+        self.write(data)
+        return self.read()
