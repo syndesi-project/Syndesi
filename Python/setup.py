@@ -17,7 +17,7 @@ setup(
     long_description=long_description,
     scripts=['bin/syndesi'],
     packages=find_packages(),
-    install_requires=['numpy'],
+    install_requires=[''],
     keywords=['python', 'syndesi', 'interface', 'ethernet'],
     classifiers=[
         "Development Status :: 3 - Alpha",
