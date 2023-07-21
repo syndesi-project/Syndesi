@@ -63,7 +63,7 @@ class IAdapter(ABC):
         pass
 
     @abstractmethod
-    def write_read(self, data : bytearray, timeout=None, continuation_timeout=None):
+    def query(self, data : bytearray, timeout=None, continuation_timeout=None):
         """
         Shortcut function that combines
         - flush_read

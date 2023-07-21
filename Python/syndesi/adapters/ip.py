@@ -75,7 +75,8 @@ class IP(IAdapter):
                 break
         return buffer
 
-    def write_read(self, data : bytearray):
+    def query(self, data : bytearray):
+        self.flushRead()
         self.write(data)
         return self.read()
         
