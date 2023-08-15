@@ -32,20 +32,19 @@ class SCPI(IProtocol):
     def _unformatCommand(self, payload):
         return payload.replace(self._end, '')
     
-    def _checkCommand(self, command : bytearray):
+    def _checkCommand(self, command : str):
         for c in ['\n', '\r']:
             if c in command:
                 raise ValueError(f"Invalid char '{c}' in command")
 
-    def write(self, command : bytearray) -> None:
+    def write(self, command : str) -> None:
         self._checkCommand(command)
-        command = self._to_bytearray(command)
-        self._adapter.write(self._formatCommand(command))
+        payload = self._to_bytearray(self._formatCommand(command))
+        self._adapter.write(payload)
 
     def query(self, command : str) -> str:
-        data = self._to_bytearray(command)
         self._adapter.flushRead()
-        self.write(data)
+        self.write(command)
         return self.read()
 
     def read(self) -> str:
