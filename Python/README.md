@@ -69,3 +69,7 @@ The Syndesi Device Protocol is a light-weight and easy interface to send / recei
   - Send / receive formatted data
 - USB devices
   - Send / receive data using the USB protocol
+
+## Notes
+
+15.08.2023 : The adapters must work with bytearray data only
