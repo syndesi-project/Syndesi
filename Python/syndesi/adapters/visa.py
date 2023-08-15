@@ -15,6 +15,8 @@ class VISA(IAdapter):
         """
         self._rm = ResourceManager()
         self._inst = self._rm.open_resource(descriptor)
+        self._inst.write_termination = ''
+        self._inst.read_termination = ''
 
     def list_devices(self=None):
         """
@@ -39,7 +41,7 @@ class VISA(IAdapter):
     def read(self):
         return self._inst.read()
 
-    def query(self, data : bytearray, timeout=None, continuation_timeout=None):
+    def query(self, data : bytearray, timeout=None, continuation_timeout=None) -> bytearray:
         """
         Shortcut function that combines
         - flush_read

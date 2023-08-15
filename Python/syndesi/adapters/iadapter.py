@@ -56,14 +56,14 @@ class IAdapter(ABC):
         pass
     
     @abstractmethod
-    def read(self, timeout=None, continuation_timeout=None, until_char=None):
+    def read(self, timeout=None, continuation_timeout=None, until_char=None) -> bytearray:
         """
         Read data from the device
         """
         pass
 
     @abstractmethod
-    def query(self, data : bytearray, timeout=None, continuation_timeout=None):
+    def query(self, data : bytearray, timeout=None, continuation_timeout=None) -> bytearray:
         """
         Shortcut function that combines
         - flush_read
