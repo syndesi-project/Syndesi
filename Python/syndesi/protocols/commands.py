@@ -44,8 +44,8 @@ class RawCommands(IProtocol):
         command = self._to_bytearray(command)
         self._adapter.write(self._format_command(command))
 
-    def query(self, data : bytearray) -> bytearray:
-        command = self._to_bytearray(data)
+    def query(self, command : bytearray) -> bytearray:
+        data = self._to_bytearray(command)
         self._adapter.flushRead()
         self.write(data)
         return self.read()
