@@ -41,3 +41,24 @@ new-structure and sync branches are considered close, development will continue 
 ## 16.08.2023
 
 Syndesi ressembles a prime factor decomposition, it aims to decompose a multitude of tasks into their fundamental base elements, some of which could be made with Syndesi.
+
+Function looping could be achieved with some kind of Sequencer class, the user would give a Sequence instead of a parameter and a decorator around the driver's function would take care of it
+
+```python
+# Driver
+
+@sequencable
+def device_function(int arg):
+    print("arg is {arg}")
+
+# User code
+
+device.device_function(Sequence(1,2))
+```
+
+Output :
+
+```console
+arg is 1
+arg is 2
+```
