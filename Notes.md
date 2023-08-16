@@ -37,3 +37,7 @@ The protocol is specified by the device itself, if multiple protocols are availa
 ## Notes 18.07.2023
 
 new-structure and sync branches are considered close, development will continue on main
+
+## 16.08.2023
+
+Syndesi ressembles a prime factor decomposition, it aims to decompose a multitude of tasks into their fundamental base elements, some of which could be made with Syndesi.
