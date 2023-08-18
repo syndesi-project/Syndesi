@@ -2,8 +2,8 @@ from .iprotocol import IProtocol
 from ..adapters import IAdapter
 
 
-class RawCommands(IProtocol):
-    def __init__(self, adapter : IAdapter, end=b'\n', format_response=True) -> None:
+class Commands(IProtocol):
+    def __init__(self, adapter : IAdapter, termination='\n', format_response=True) -> None:
         """
         Command-based protocol, with LF, CR or CRLF termination
 
@@ -19,9 +19,9 @@ class RawCommands(IProtocol):
         """
         super().__init__(adapter)
 
-        if not isinstance(end, bytes):
-            raise ValueError(f"end argument must be of type bytes, not {type(end)}")
-        self._end = end
+        if not isinstance(termination, str):
+            raise ValueError(f"end argument must be of type str, not {type(termination)}")
+        self._termination = termination
         self._response_formatting = format_response
 
     def _to_bytearray(self, command) -> bytearray:
@@ -31,27 +31,48 @@ class RawCommands(IProtocol):
             return command
         else:
             raise ValueError(f'Invalid command type : {type(command)}')
-
-    def _format_command(self, command : bytearray) -> bytearray:
-        return command + self._end
     
-    def _format_response(self, response : bytearray) -> bytearray:
-        if response.endswith(self._end):
-            response = response[:-len(self._end)]
+    def _from_bytearray(self, payload) -> str:
+        if isinstance(payload, bytearray):
+            return payload.decode('ASCII')
+        else:
+            raise ValueError(f"Invalid payload type : {type(payload)}")
+        
+
+    def _format_command(self, command : str) -> str:
+        return command + self._termination
+    
+    def _format_response(self, response : str) -> str:
+        if response.endswith(self._termination):
+            response = response[:-len(self._termination)]
         return response
 
-    def write(self, command : bytearray):
-        command = self._to_bytearray(command)
-        self._adapter.write(self._format_command(command))
+    def write(self, command : str):
+        command = self._format_command(command)
+        self._adapter.write(self._to_bytearray(command))
 
-    def query(self, command : bytearray) -> bytearray:
-        data = self._to_bytearray(command)
+    def query(self, command : str) -> str:
+        """
+        Writes then reads from the device then return the result
+        
+        """
         self._adapter.flushRead()
-        self.write(data)
+        self.write(command)
         return self.read()
 
-    def read(self) -> bytearray:
+
+    def read(self) -> str:
+        """
+        Reads command and formats it as an str
+        """
+        output = self._from_bytearray(self._adapter.read())
         if self._response_formatting:
-            return self._format_response(self._adapter.read())
+            return self._format_response(output)
         else:
-            return self._adapter.read()
+            return output
+
+    def read_raw(self) -> bytearray:
+        """
+        Returns the raw bytes instead of str
+        """
+        return self._adapter.read()

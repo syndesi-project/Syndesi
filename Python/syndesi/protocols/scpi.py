@@ -21,10 +21,14 @@ class SCPI(IProtocol):
     def _to_bytearray(self, command):
         if isinstance(command, str):
             return command.encode('ASCII')
-        elif isinstance(command, bytes) or isinstance(command, bytearray):
-            return command
         else:
             raise ValueError(f'Invalid command type : {type(command)}')
+    
+    def _from_bytearray(self, payload):
+        if isinstance(payload, bytearray):
+            return payload.decode('ASCII')
+        else:
+            raise ValueError(f"Invalid payload type : {type(payload)}")
 
     def _formatCommand(self, command):
         return command + self._end
@@ -48,5 +52,11 @@ class SCPI(IProtocol):
         return self.read()
 
     def read(self) -> str:
-        data = self._adapter.read().decode('ASCII')
-        return self._unformatCommand(data)
+        output = self._from_bytearray(self._adapter.read())
+        return self._unformatCommand(output)
+
+    def read_raw(self) -> str:
+        """
+        Return the raw bytes instead of str
+        """
+        return self._adapter.read()
