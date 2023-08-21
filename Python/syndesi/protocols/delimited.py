@@ -2,10 +2,10 @@ from .iprotocol import IProtocol
 from ..adapters import IAdapter
 
 
-class Commands(IProtocol):
+class Delimited(IProtocol):
     def __init__(self, adapter : IAdapter, termination='\n', format_response=True) -> None:
         """
-        Command-based protocol, with LF, CR or CRLF termination
+        Protocol with delimiter, like LF, CR, etc... '\\n' is used by default
 
         No presentation or application layers
 
