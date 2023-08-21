@@ -38,8 +38,8 @@ class VISA(IAdapter):
     def write(self, data : bytearray):
         self._inst.write(data.decode('ASCII'))
     
-    def read(self):
-        return self._inst.read()
+    def read(self) -> bytearray:
+        return self._inst.read_raw()
 
     def query(self, data : bytearray, timeout=None, continuation_timeout=None) -> bytearray:
         """
