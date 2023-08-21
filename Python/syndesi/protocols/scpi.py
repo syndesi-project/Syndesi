@@ -1,6 +1,6 @@
 from ..adapters import IAdapter, IP
 from .iprotocol import IProtocol
-
+from ..tools.types import is_byte_instance
 
 class SCPI(IProtocol):
     DEFAULT_PORT = 5025
@@ -24,8 +24,8 @@ class SCPI(IProtocol):
         else:
             raise ValueError(f'Invalid command type : {type(command)}')
     
-    def _from_bytearray(self, payload):
-        if isinstance(payload, bytearray):
+    def _from_bytearray(self, payload : bytearray):
+        if is_byte_instance(payload):
             return payload.decode('ASCII')
         else:
             raise ValueError(f"Invalid payload type : {type(payload)}")
