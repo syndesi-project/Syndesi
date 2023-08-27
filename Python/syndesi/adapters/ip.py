@@ -2,6 +2,7 @@
 import socket
 from enum import Enum
 from .iadapter import IAdapter
+from ..tools.types import assert_byte_instance
 
 class IP(IAdapter):
     class Status(Enum):
@@ -55,6 +56,7 @@ class IP(IAdapter):
         self._socket.close()
             
     def write(self, data : bytearray):
+        assert_byte_instance(data)
         if self._status == self.Status.DISCONNECTED:
             self.open()
         self._socket.send(data)
@@ -62,7 +64,7 @@ class IP(IAdapter):
     def read(self):
         if self._status == self.Status.DISCONNECTED:
             self.open()
-        
+
         self._socket.settimeout(10)
 
         buffer = b''

@@ -1,6 +1,6 @@
 from .iadapter import IAdapter
-
 import serial
+from ..tools.types import assert_byte_instance
 
 class Serial(IAdapter):
     def __init__(self, port : str, baudrate=115200):
@@ -24,6 +24,7 @@ class Serial(IAdapter):
         self._port.close()
             
     def write(self, data : bytearray):
+        assert_byte_instance(data)
         self._port.write(data)
     
     def read(self):

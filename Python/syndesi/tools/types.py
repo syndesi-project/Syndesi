@@ -15,7 +15,6 @@ def is_instance_of_any(X, *types):
     result = any(isinstance(X, t) for t in types)
     return result
 
-
 def is_byte_instance(X):
     """
     Check if the given X is an instance of bytearray or bytes
@@ -31,6 +30,19 @@ def is_byte_instance(X):
     result = is_instance_of_any(X, bytearray, bytes)
     return result
 
+def assert_byte_instance(*args):
+    """
+    Checks if the given argument(s) is of type bytearray
+    or bytes. A TypeError is raised if it isn't the case
+
+    Parameters
+    ----------
+    args
+    """
+    for arg in args:
+        if not is_byte_instance(arg):
+            raise TypeError(f"Variable {arg} should be of type bytearray or bytes")
+
 def is_number(X):
     """
     Check if the given X is an instance of int or float
@@ -45,3 +57,18 @@ def is_number(X):
     """
     result = is_instance_of_any(X, int, float)
     return result
+
+def assert_number(*args):
+    """
+    Checks if the given argument(s) is a number.
+    A TypeError is raised if it isn't the case
+
+    Parameters
+    ----------
+    args
+    """
+    for arg in args:
+        if not is_number(arg):
+            raise TypeError(f"Variable {arg} should be a number")
+
+

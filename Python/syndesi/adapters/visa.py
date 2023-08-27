@@ -2,6 +2,7 @@
 from pyvisa import ResourceManager
 
 from .iadapter import IAdapter
+from ..tools.types import assert_byte_instance
 
 class VISA(IAdapter):
     def __init__(self, descriptor : str):
@@ -36,7 +37,8 @@ class VISA(IAdapter):
         self._inst.close()
             
     def write(self, data : bytearray):
-        self._inst.write(data.decode('ASCII'))
+        assert_byte_instance(data)
+        self._inst.write_raw(data)
     
     def read(self) -> bytearray:
         return self._inst.read_raw()
