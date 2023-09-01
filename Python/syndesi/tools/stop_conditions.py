@@ -11,13 +11,15 @@ class StopCondition:
         """
         self._and = None
         self._or = None
-        self._start = None
+        self._start_time = None
         self._response_start = None
+        # Time at which the evaluation command is run
+        self._eval_time = None
 
     def initiate_read(self):
-        self._start = time.now()
-        # Time
-        pass
+        if self._start_time is not None:
+            # It hasn't been set by an other StopCondition istance
+            self._start_time = time.now()
 
     def initiate_continuation(self):
         self._response_start = time.now()
@@ -27,7 +29,7 @@ class StopCondition:
         pass
 
     def _check_init(self):
-        if self._start is None:
+        if self._start_time is None:
             raise RuntimeError("Cannot evaluate stop condition if initiate_read wasn't called first")
 
 
@@ -51,17 +53,35 @@ class StopConditionExpression(StopCondition):
         self._operation = operation
 
     def evaluate(self, data: bytearray) -> Tuple[bool, int]:
+        if self._eval_time is None:
+            # First function to be called
+            self._eval_time = time()
         super()._check_init()
-        a_evaluation = self._A.evaluate(data, continuation)
-        b_evaluation = self._B.evaluate(data, continuation)
+        a_evaluation._eval_time = self._eval_time
+        b_evaluation._eval_time = self._eval_time
+        a_evaluation = self._A.evaluate(data)
+        b_evaluation = self._B.evaluate(data)
         if self._operation == StopConditionOperation.OR:
             return a_evaluation or b_evaluation
         elif self._operation == StopConditionOperation.AND:
             return a_evaluation and b_evaluation
+        self._eval_time = None
+    
+    def initiate_read(self):
+        super().initiate_read()
+        self._A._start_time = self._start_time
+        self._A.initiate_read()
+        self._B._start_time = self._start_time
+        self._B.initiate_read()
 
 class Timeout(StopCondition):
     DEFAULT_CONTINUATION_TIMEOUT = 5e-3
     DEFAULT_TOTAL_TIMEOUT = 5
+
+    class State(Enum):
+        WAIT_FOR_RESPONSE = 0
+        CONTINUATION = 1
+
     def __init__(self, response, continuation=DEFAULT_CONTINUATION_TIMEOUT, total=DEFAULT_TOTAL_TIMEOUT) -> None:
         """
         A class to manage timeouts
@@ -82,21 +102,28 @@ class Timeout(StopCondition):
         total : float
         """
 
+        self._state = self.State.WAIT_FOR_RESPONSE
         self._response = response
         self._continuation = continuation
         self._total = total
 
-    def evaluate(self, data: bytearray) -> Tuple[bool, int]:
-        super()._check_init()
-        t = time.now()
-        if self._total is not None:
-            # First check if the total timeout is reached
-            if t - self._start >= self._total:
-                return True, 0
-        if self._continuation is not None:
-            if t - self._response_start
+    def initiate_read(self):
+        super().initiate_read()
+        self._state = self.State.WAIT_FOR_RESPONSE
 
-            # TODO : Find a way to alert whenever a single byte is receivedd
+    def evaluate(self, data: bytearray) -> Tuple[bool, int]:
+        if self._eval_time is None:
+            # First to be called
+            self._eval_time = time()
+        super()._check_init()
+        
+        # Always return False and 0 as the timeout will never
+        # tell directly that time is up, it will notify it asynchronously (somehow)
+        # It isn't able to tell when to crop either as communication isn't real-time enough
+        return False, 0
+
+        # TODO : Find a way for the timeout to asynchronously tell the adapter that
+        # a timeout has been reached and return
     
 
 class Termination(StopCondition):
@@ -138,6 +165,11 @@ class Length(StopCondition):
         super().__init__()
         self._N = N
         self._allow_exceed = allow_exceed
+        self._counter = 0
+
+    def initiate_read(self):
+        super().initiate_read()
+        self._counter = 0
 
     def evaluate(self, data: bytearray) -> Tuple[bool, int]:
         super()._check_init()
