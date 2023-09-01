@@ -51,4 +51,5 @@ class VISA(IAdapter):
         - read
         """
         # TODO : implement timeouts
-        return self._inst.query(data.encode('ASCII'))
+        self.write(data)
+        return self.read()
