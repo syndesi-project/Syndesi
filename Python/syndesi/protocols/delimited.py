@@ -1,5 +1,6 @@
 from .iprotocol import IProtocol
 from ..adapters import IAdapter
+from syndesi.tools.types import assert_byte_instance
 
 
 class Delimited(IProtocol):
@@ -33,11 +34,8 @@ class Delimited(IProtocol):
             raise ValueError(f'Invalid command type : {type(command)}')
     
     def _from_bytearray(self, payload) -> str:
-        if isinstance(payload, bytearray):
-            return payload.decode('ASCII')
-        else:
-            raise ValueError(f"Invalid payload type : {type(payload)}")
-        
+        assert_byte_instance(payload)
+        return payload.decode('utf-8', errors='replace')
 
     def _format_command(self, command : str) -> str:
         return command + self._termination
