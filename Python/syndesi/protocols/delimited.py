@@ -1,5 +1,6 @@
 from .iprotocol import IProtocol
 from ..adapters import IAdapter
+from ..tools.types import assert_byte_instance, assert_byte_instance
 
 
 class Delimited(IProtocol):
@@ -27,17 +28,14 @@ class Delimited(IProtocol):
     def _to_bytearray(self, command) -> bytearray:
         if isinstance(command, str):
             return command.encode('ASCII')
-        elif isinstance(command, bytes) or isinstance(command, bytearray):
+        elif assert_byte_instance(command):
             return command
         else:
             raise ValueError(f'Invalid command type : {type(command)}')
     
     def _from_bytearray(self, payload) -> str:
-        if isinstance(payload, bytearray):
-            return payload.decode('ASCII')
-        else:
-            raise ValueError(f"Invalid payload type : {type(payload)}")
-        
+        assert_byte_instance(payload)
+        return payload.decode('ASCII')        
 
     def _format_command(self, command : str) -> str:
         return command + self._termination
