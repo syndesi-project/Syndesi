@@ -49,21 +49,21 @@ class IAdapter(ABC):
         pass
             
     @abstractmethod
-    def write(self, data : bytearray):
+    def write(self, data : bytes):
         """
         Send data to the device
         """
         pass
     
     @abstractmethod
-    def read(self, timeout=None, continuation_timeout=None, until_char=None) -> bytearray:
+    def read(self, timeout=None, continuation_timeout=None, until_char=None) -> bytes:
         """
         Read data from the device
         """
         pass
 
     @abstractmethod
-    def query(self, data : bytearray, timeout=None, continuation_timeout=None) -> bytearray:
+    def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:
         """
         Shortcut function that combines
         - flush_read

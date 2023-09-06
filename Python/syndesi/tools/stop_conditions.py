@@ -22,7 +22,7 @@ class StopCondition:
     def initiate_continuation(self):
         self._response_start = time.now()
 
-    def evaluate(self, data : bytearray) -> Tuple[bool, int]:
+    def evaluate(self, data : bytes) -> Tuple[bool, int]:
         # Will be implemented by each stop condition
         pass
 
@@ -50,7 +50,7 @@ class StopConditionExpression(StopCondition):
         self._B = B
         self._operation = operation
 
-    def evaluate(self, data: bytearray) -> Tuple[bool, int]:
+    def evaluate(self, data: bytes) -> Tuple[bool, int]:
         super()._check_init()
         a_evaluation = self._A.evaluate(data, continuation)
         b_evaluation = self._B.evaluate(data, continuation)
@@ -86,7 +86,7 @@ class Timeout(StopCondition):
         self._continuation = continuation
         self._total = total
 
-    def evaluate(self, data: bytearray) -> Tuple[bool, int]:
+    def evaluate(self, data: bytes) -> Tuple[bool, int]:
         super()._check_init()
         t = time.now()
         if self._total is not None:
@@ -100,7 +100,7 @@ class Timeout(StopCondition):
     
 
 class Termination(StopCondition):
-    def __init__(self, sequence : Union[bytes, bytearray]) -> None:
+    def __init__(self, sequence : Union[bytes, bytes]) -> None:
         """
         Stop reading once the desired sequence is detected
 
@@ -111,7 +111,7 @@ class Termination(StopCondition):
         super().__init__()
         self._sequence = sequence
 
-    def evaluate(self, data: bytearray) -> Tuple[bool, int]:
+    def evaluate(self, data: bytes) -> Tuple[bool, int]:
         super()._check_init()
         try:
             pos = data.index(self._sequence)
@@ -139,7 +139,7 @@ class Length(StopCondition):
         self._N = N
         self._allow_exceed = allow_exceed
 
-    def evaluate(self, data: bytearray) -> Tuple[bool, int]:
+    def evaluate(self, data: bytes) -> Tuple[bool, int]:
         super()._check_init()
         if len(data) >= self._N:
             return True, len(data) - self._N

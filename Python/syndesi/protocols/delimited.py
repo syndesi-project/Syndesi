@@ -13,7 +13,7 @@ class Delimited(IProtocol):
         Parameters
         ----------
         adapter : IAdapter
-        end : bytearray
+        end : bytes
             Command termination, '\n' by default
         format_response : bool
             Apply formatting to the response (i.e removing the termination)
@@ -25,7 +25,7 @@ class Delimited(IProtocol):
         self._termination = termination
         self._response_formatting = format_response
 
-    def _to_bytearray(self, command) -> bytearray:
+    def _to_bytes(self, command) -> bytes:
         if isinstance(command, str):
             return command.encode('ASCII')
         elif assert_byte_instance(command):
@@ -33,7 +33,7 @@ class Delimited(IProtocol):
         else:
             raise ValueError(f'Invalid command type : {type(command)}')
     
-    def _from_bytearray(self, payload) -> str:
+    def _from_bytes(self, payload) -> str:
         assert_byte_instance(payload)
         return payload.decode('ASCII')        
 
@@ -47,7 +47,7 @@ class Delimited(IProtocol):
 
     def write(self, command : str):
         command = self._format_command(command)
-        self._adapter.write(self._to_bytearray(command))
+        self._adapter.write(self._to_bytes(command))
 
     def query(self, command : str) -> str:
         """
@@ -63,13 +63,13 @@ class Delimited(IProtocol):
         """
         Reads command and formats it as an str
         """
-        output = self._from_bytearray(self._adapter.read())
+        output = self._from_bytes(self._adapter.read())
         if self._response_formatting:
             return self._format_response(output)
         else:
             return output
 
-    def read_raw(self) -> bytearray:
+    def read_raw(self) -> bytes:
         """
         Returns the raw bytes instead of str
         """

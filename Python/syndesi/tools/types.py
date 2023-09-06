@@ -32,7 +32,7 @@ def is_byte_instance(X):
 
 def assert_byte_instance(*args):
     """
-    Checks if the given argument(s) is of type bytearray
+    Checks if the given argument(s) is of type bytes
     or bytes. A TypeError is raised if it isn't the case
 
     Parameters
@@ -41,7 +41,7 @@ def assert_byte_instance(*args):
     """
     for arg in args:
         if not is_byte_instance(arg):
-            raise TypeError(f"Variable {arg} should be of type bytearray or bytes")
+            raise TypeError(f"Variable {arg} should be of type bytes or bytes")
 
 def is_number(X):
     """
