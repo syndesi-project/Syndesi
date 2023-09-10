@@ -16,15 +16,15 @@ class Raw(IProtocol):
         """
         super().__init__(adapter)
 
-    def write(self, data : bytearray):
+    def write(self, data : bytes):
         self._adapter.write(data)
 
-    def query(self, data : bytearray) -> bytearray:
+    def query(self, data : bytes) -> bytes:
         self._adapter.flushRead()
         self.write(data)
         return self.read()
 
-    def read(self) -> bytearray:
+    def read(self) -> bytes:
         return self._adapter.read()
 
 class RawStream(IProtocol):
@@ -35,7 +35,7 @@ class RawStream(IProtocol):
         Parameters
         ----------
         adapter : IAdapter
-        delimiter : bytearray
+        delimiter : bytes
             Sample delimiter
         """
         super().__init__(adapter)
@@ -46,10 +46,10 @@ class RawStream(IProtocol):
     def flushRead(self):
         self._adapter.flushRead()
 
-    def write(self, data : bytearray):
+    def write(self, data : bytes):
         self._adapter.write(data)
 
-    def query(self, data : bytearray) -> bytearray:
+    def query(self, data : bytes) -> bytes:
         self._adapter.flushRead()
         self.write(data)
         return self.read()

@@ -73,3 +73,5 @@ The Syndesi Device Protocol is a light-weight and easy interface to send / recei
 ## Notes
 
 15.08.2023 : The adapters must work with bytearray data only
+
+06.09.2023 : bytearray is changed to bytes everywhere

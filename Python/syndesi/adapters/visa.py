@@ -36,14 +36,14 @@ class VISA(IAdapter):
     def close(self):
         self._inst.close()
             
-    def write(self, data : bytearray):
+    def write(self, data : bytes):
         assert_byte_instance(data)
         self._inst.write_raw(data)
     
-    def read(self) -> bytearray:
+    def read(self) -> bytes:
         return self._inst.read_raw()
 
-    def query(self, data : bytearray, timeout=None, continuation_timeout=None) -> bytearray:
+    def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:
         """
         Shortcut function that combines
         - flush_read

@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.1.4'
+VERSION = '0.1.5'
 DESCRIPTION = 'Syndesi'
 
 with open("README.md", "r", encoding="utf-8") as fh:

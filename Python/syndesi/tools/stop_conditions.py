@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Callable
 from enum import Enum
 from time import time
 
@@ -16,22 +16,21 @@ class StopCondition:
         # Time at which the evaluation command is run
         self._eval_time = None
 
-    def initiate_read(self):
+    def initiate_read(self, timeout_callback : Callable):
         if self._start_time is not None:
             # It hasn't been set by an other StopCondition istance
             self._start_time = time.now()
 
-    def initiate_continuation(self):
+    def initiate_continuation(self, continuation_timeout_callback : Callable):
         self._response_start = time.now()
 
-    def evaluate(self, data : bytearray) -> Tuple[bool, int]:
+    def evaluate(self, buffer : bytes) -> Tuple[bool, int]:
         # Will be implemented by each stop condition
         pass
 
     def _check_init(self):
         if self._start_time is None:
             raise RuntimeError("Cannot evaluate stop condition if initiate_read wasn't called first")
-
 
     def __or__(self, sc):
         assert isinstance(sc, StopCondition), f"Cannot do or operator between StopCondition and {type(sc)}"
@@ -56,7 +55,7 @@ class StopConditionExpression(StopCondition):
         if self._eval_time is None:
             # First function to be called
             self._eval_time = time()
-        super()._check_init()
+
         a_evaluation._eval_time = self._eval_time
         b_evaluation._eval_time = self._eval_time
         a_evaluation = self._A.evaluate(data)
@@ -107,9 +106,20 @@ class Timeout(StopCondition):
         self._continuation = continuation
         self._total = total
 
+
     def initiate_read(self):
         super().initiate_read()
         self._state = self.State.WAIT_FOR_RESPONSE
+
+    def evaluate(self, data: bytes) -> Tuple[bool, int]:
+        super()._check_init()
+        t = time.now()
+        if self._total is not None:
+            # First check if the total timeout is reached
+            if t - self._start >= self._total:
+                return True, 0
+        if self._continuation is not None:
+            if t - self._response_start
 
     def evaluate(self, data: bytearray) -> Tuple[bool, int]:
         if self._eval_time is None:
@@ -127,7 +137,7 @@ class Timeout(StopCondition):
     
 
 class Termination(StopCondition):
-    def __init__(self, sequence : Union[bytes, bytearray]) -> None:
+    def __init__(self, sequence : Union[bytes, bytes]) -> None:
         """
         Stop reading once the desired sequence is detected
 
@@ -138,7 +148,7 @@ class Termination(StopCondition):
         super().__init__()
         self._sequence = sequence
 
-    def evaluate(self, data: bytearray) -> Tuple[bool, int]:
+    def evaluate(self, data: bytes) -> Tuple[bool, int]:
         super()._check_init()
         try:
             pos = data.index(self._sequence)
@@ -171,7 +181,7 @@ class Length(StopCondition):
         super().initiate_read()
         self._counter = 0
 
-    def evaluate(self, data: bytearray) -> Tuple[bool, int]:
+    def evaluate(self, data: bytes) -> Tuple[bool, int]:
         super()._check_init()
         if len(data) >= self._N:
             return True, len(data) - self._N

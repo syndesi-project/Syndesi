@@ -23,7 +23,7 @@ class Serial(IAdapter):
     def close(self):
         self._port.close()
             
-    def write(self, data : bytearray):
+    def write(self, data : bytes):
         assert_byte_instance(data)
         self._port.write(data)
     
@@ -31,7 +31,7 @@ class Serial(IAdapter):
         # TODO : Implement timeout strategy
         return self._port.read_all()
 
-    def query(self, data : bytearray):
+    def query(self, data : bytes):
         self.flushRead()
         self.write(data)
         return self.read()

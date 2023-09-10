@@ -95,13 +95,13 @@ class OutboundFrame():
         return buffer
 
 class InboundFrame():
-    def __init__(self, buffer : bytearray, requestFrame : OutboundFrame) -> None:
+    def __init__(self, buffer : bytes, requestFrame : OutboundFrame) -> None:
         """
         Inbound frame instance (device -> host)
         
         Parameters
         ----------
-        buffer : bytearray
+        buffer : bytes
             The buffer to parse
         ID : SyndesiID
             Device's ID
