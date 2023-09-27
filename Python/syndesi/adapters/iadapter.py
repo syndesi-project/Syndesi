@@ -21,18 +21,25 @@
 #   - continuation timeout : the time it takes for a device to continue sending the requested data
 
 from abc import abstractmethod, ABC
+from .timed_queue import TimedQueue
+from threading import Thread
+from typing import Union
+from enum import Enum
 
 class IAdapter(ABC):
-    @abstractmethod
-    def __init__(self, descriptor, *args):
-        pass
+    class Status(Enum):
+        DISCONNECTED = 0
+        CONNECTED = 1
+    def __init__(self):
+        self._read_queue = TimedQueue()
+        self._thread : Union[Thread, None] = None
+        self._status = self.Status.DISCONNECTED
 
-    @abstractmethod
     def flushRead(self):
         """
         Flush the input buffer
         """
-        pass
+        self._read_queue.clear()
 
     @abstractmethod
     def open(self):
@@ -54,13 +61,48 @@ class IAdapter(ABC):
         Send data to the device
         """
         pass
-    
+
     @abstractmethod
-    def read(self, timeout=None, continuation_timeout=None, until_char=None) -> bytes:
+    def _start_thread(self):
+        """
+        Initiate the read thread
+        """
+        pass
+
+    @abstractmethod
+    def _set_timeout(self, timeout):
+        """
+        Sets the communication timeout
+
+        Parameters
+        ----------
+        timeout : float
+            Timeout in seconds
+        """
+        pass
+    
+    def read(self) -> bytes:
         """
         Read data from the device
         """
-        pass
+        if self._status == self.Status.DISCONNECTED:
+            self.open()
+
+        self._start_thread()
+
+        timeout = self._stop_condition.initiate_read()
+        self._set_timeout(timeout)
+
+        buffer = b''
+        while True:
+            (_, byte) = self._read_queue.get(timeout)
+            if byte is None:
+                break
+            buffer += byte
+            stop, timeout = self._stop_condition.evaluate(byte)
+            if stop:
+                break
+        return buffer
 
     @abstractmethod
     def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:
