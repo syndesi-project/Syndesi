@@ -5,7 +5,7 @@ from .stop_conditions import *
 from .timed_queue import TimedQueue
 from threading import Thread
 
-class Serial(IAdapter):
+class SerialPort(IAdapter):
     def __init__(self, port : str, baudrate : int, stop_condition : StopCondition):
         """
         Serial communication adapter
