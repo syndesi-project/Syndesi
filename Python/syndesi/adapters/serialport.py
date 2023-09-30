@@ -15,8 +15,8 @@ class Serial(IAdapter):
         port : str
             Serial port (COMx or ttyACMx)
         """
+        super().__init__(stop_condition)
         self._port = serial.Serial(port=port, baudrate=baudrate)
-        self._stop_condition = stop_condition
         
         self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue))
 
@@ -31,7 +31,12 @@ class Serial(IAdapter):
             
     def write(self, data : bytes):
         assert_byte_instance(data)
+        if self._status == self.Status.DISCONNECTED:
+            self.open()
         self._port.write(data)
+
+    def _set_timeout(self, timeout):
+        return self._port.tim
 
     def _read_thread(self, port : serial.Serial , read_queue : TimedQueue):
         while True:
@@ -39,20 +44,6 @@ class Serial(IAdapter):
             if not byte:
                 break
             read_queue.put(byte)
-    
-    def read(self):
-        if not self._thread.is_alive():
-            self._thread.start()
-
-        timeout = self._stop_condition.initiate_read()
-        self._port.timeout = timeout
-
-        buffer = b''
-        while True:
-            (_, byte) = self._read_queue.get(timeout)
-
-        # TODO : Implement timeout strategy
-        return self._port.read_all()
 
     def query(self, data : bytes):
         self.flushRead()
