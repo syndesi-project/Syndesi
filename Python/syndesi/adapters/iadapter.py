@@ -25,13 +25,15 @@ from .timed_queue import TimedQueue
 from threading import Thread
 from typing import Union
 from enum import Enum
-from .stop_conditions import StopCondition
+from .stop_conditions import StopCondition, Timeout
+
+DEFAULT_STOP_CONDITION = Timeout(response=1, continuation=100e-3, total=None)
 
 class IAdapter(ABC):
     class Status(Enum):
         DISCONNECTED = 0
         CONNECTED = 1
-    def __init__(self, stop_condition : StopCondition):
+    def __init__(self, stop_condition : StopCondition = DEFAULT_STOP_CONDITION):
         self._read_queue = TimedQueue()
         self._thread : Union[Thread, None] = None
         self._status = self.Status.DISCONNECTED
@@ -71,29 +73,35 @@ class IAdapter(ABC):
         """
         pass
 
-    @abstractmethod
-    def _set_timeout(self, timeout):
-        """
-        Sets the communication timeout
+    # @abstractmethod
+    # def _set_timeout(self, timeout):
+    #     """
+    #     Sets the communication timeout
 
-        Parameters
-        ----------
-        timeout : float
-            Timeout in seconds
-        """
-        pass
+    #     Parameters
+    #     ----------
+    #     timeout : float
+    #         Timeout in seconds
+    #     """
+    #     pass
     
-    def read(self) -> bytes:
+    def read(self, **kwargs) -> bytes:
         """
         Read data from the device
+
+        A custom stop-condition can be set by passing it to stop_condition
+        or using the simplified API with timeout/response=
         """
+
+
+
         if self._status == self.Status.DISCONNECTED:
             self.open()
 
         self._start_thread()
 
         timeout = self._stop_condition.initiate_read()
-        self._set_timeout(timeout)
+        #self._set_timeout(timeout)
 
         buffer = b''
         while True:
@@ -106,7 +114,6 @@ class IAdapter(ABC):
                 break
         return buffer
 
-    @abstractmethod
     def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:
         """
         Shortcut function that combines

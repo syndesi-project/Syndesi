@@ -67,8 +67,8 @@ class IP(IAdapter):
             self.open()
         self._socket.send(data)
 
-    def _set_timeout(self, timeout):
-        self._socket.settimeout(timeout)
+    # def _set_timeout(self, timeout):
+    #     self._socket.settimeout(timeout)
 
 
     def _read_thread(self, socket : socket.socket, read_queue : TimedQueue):

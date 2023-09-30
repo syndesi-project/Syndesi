@@ -39,7 +39,7 @@ class VISA(IAdapter):
     def write(self, data : bytes):
         assert_byte_instance(data)
         self._inst.write_raw(data)
-    
+
     def read(self) -> bytes:
         return self._inst.read_raw()
 

@@ -17,8 +17,8 @@ class SerialPort(IAdapter):
         """
         super().__init__(stop_condition)
         self._port = serial.Serial(port=port, baudrate=baudrate)
-        
-        self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue))
+        if self._port.isOpen():
+            self._status = self.Status.CONNECTED
 
     def flushRead(self):
         self._port.flush()
@@ -35,8 +35,10 @@ class SerialPort(IAdapter):
             self.open()
         self._port.write(data)
 
-    def _set_timeout(self, timeout):
-        return self._port.tim
+    def _start_thread(self):
+        if self._thread is None or not self._thread.is_alive():
+            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue))
+            self._thread.start()
 
     def _read_thread(self, port : serial.Serial , read_queue : TimedQueue):
         while True:

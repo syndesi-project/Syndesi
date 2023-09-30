@@ -14,7 +14,7 @@ class Delimited(IProtocol):
         ----------
         adapter : IAdapter
         end : bytes
-            Command termination, '\n' by default
+            Command termination, '\\n' by default
         format_response : bool
             Apply formatting to the response (i.e removing the termination)
         """
@@ -51,8 +51,7 @@ class Delimited(IProtocol):
 
     def query(self, command : str) -> str:
         """
-        Writes then reads from the device then return the result
-        
+        Writes then reads from the device and return the result
         """
         self._adapter.flushRead()
         self.write(command)
@@ -61,7 +60,7 @@ class Delimited(IProtocol):
 
     def read(self) -> str:
         """
-        Reads command and formats it as an str
+        Reads command and formats it as a str
         """
         output = self._from_bytes(self._adapter.read())
         if self._response_formatting:

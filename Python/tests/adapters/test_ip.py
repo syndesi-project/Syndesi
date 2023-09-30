@@ -7,6 +7,14 @@ from syndesi.adapters.stop_conditions import *
 HOST = 'localhost'
 PORT = 8888
 
+SEQUENCE = [
+    (0.25, b'ABCDE'),
+    (0.1, b'FGHIJ'),
+    (0.5, b'KLMNO'),
+    (1, b'PQRST'),
+    (1, b'UVWXYZ')
+]
+
 def server_thread():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # look closely. The bind() function takes tuple as argument
@@ -27,7 +35,7 @@ def server_thread():
 
             # Simulate a TCP exchange in multiple parts
             # Don't know if this is the correct way of doing things
-            for t, s in SEQUENCES:
+            for t, s in SEQUENCE:
                 sleep(t)
                 try:
                     conn.send(s)
@@ -36,13 +44,7 @@ def server_thread():
     conn.close()  # close the connection
 
 # Send each sequence [1] after [0] time
-SEQUENCES = [
-    (0.25, b'ABCDE'),
-    (0.1, b'FGHIJ'),
-    (0.5, b'KLMNO'),
-    (1, b'PQRST'),
-    (1, b'UVWXYZ')
-]
+
 TIME_DELTA = 1e-3
 CLIENT_SEQUENCE = b'ABCDE'
 TIME_PER_BYTE = 0.1
@@ -58,12 +60,12 @@ def test_response_A():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=SEQUENCES[0][0] + TIME_DELTA,
+        stop_condition=Timeout(response=SEQUENCE[0][0] + TIME_DELTA,
         continuation=0.01))
     client.write(CLIENT_SEQUENCE)
     data = client.read()
     client.close()
-    assert data == SEQUENCES[0][1]
+    assert data == SEQUENCE[0][1]
     thread.join()
 
 # Test response timeout
@@ -77,7 +79,7 @@ def test_response_B():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=SEQUENCES[0][0] - TIME_DELTA,
+        stop_condition=Timeout(response=SEQUENCE[0][0] - TIME_DELTA,
         continuation=0.01))
     client.write(CLIENT_SEQUENCE)
     data = client.read()
@@ -96,12 +98,12 @@ def test_continuation():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=SEQUENCES[0][0] + TIME_DELTA,
-        continuation=SEQUENCES[1][0] + TIME_DELTA))
+        stop_condition=Timeout(response=SEQUENCE[0][0] + TIME_DELTA,
+        continuation=SEQUENCE[1][0] + TIME_DELTA))
     client.write(CLIENT_SEQUENCE)
     data = client.read()
     client.close()
-    assert data == SEQUENCES[0][1] + SEQUENCES[1][1]
+    assert data == SEQUENCE[0][1] + SEQUENCE[1][1]
     thread.join()
 
 # Test total timeout
@@ -115,16 +117,16 @@ def test_total_A():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=SEQUENCES[0][0] + TIME_DELTA,
+        stop_condition=Timeout(response=SEQUENCE[0][0] + TIME_DELTA,
             continuation=10,
             #total=sum(s[0] + TIME_DELTA for s in SEQUENCES[:3]))
-            total=sum(s[0] + TIME_DELTA for s in SEQUENCES[:3])
+            total=sum(s[0] + TIME_DELTA for s in SEQUENCE[:3])
         )
         )
     client.write(CLIENT_SEQUENCE)
     data = client.read()
     client.close()
-    assert data == b''.join(s[1] for s in SEQUENCES[:3])
+    assert data == b''.join(s[1] for s in SEQUENCE[:3])
     thread.join()
 
 # Test termination
@@ -141,7 +143,7 @@ def test_termination_A():
     client.write(CLIENT_SEQUENCE)
     data = client.read()
     client.close()
-    complete_sequence = b''.join(s[1] for s in SEQUENCES)
+    complete_sequence = b''.join(s[1] for s in SEQUENCE)
     assert data == complete_sequence[:complete_sequence.index(b'F')+1]
     thread.join()
 
@@ -160,7 +162,7 @@ def test_length():
     client.write(CLIENT_SEQUENCE)
     data = client.read()
     client.close()
-    complete_sequence = b''.join(s[1] for s in SEQUENCES)
+    complete_sequence = b''.join(s[1] for s in SEQUENCE)
     assert data == complete_sequence[:10]
     thread.join()
 
