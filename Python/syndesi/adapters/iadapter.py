@@ -25,15 +25,17 @@ from .timed_queue import TimedQueue
 from threading import Thread
 from typing import Union
 from enum import Enum
+from .stop_conditions import StopCondition
 
 class IAdapter(ABC):
     class Status(Enum):
         DISCONNECTED = 0
         CONNECTED = 1
-    def __init__(self):
+    def __init__(self, stop_condition : StopCondition):
         self._read_queue = TimedQueue()
         self._thread : Union[Thread, None] = None
         self._status = self.Status.DISCONNECTED
+        self._stop_condition = stop_condition
 
     def flushRead(self):
         """
