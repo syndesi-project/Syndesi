@@ -14,6 +14,10 @@ class TimedQueue:
             return self._queue.get(block=True, timeout=timeout)
         except queue.Empty:
             return None, None
+
+    def is_empty(self):
+        return self._queue.empty()
+        
     def clear(self):
         with self._queue.mutex:
             self._queue.queue.clear()
