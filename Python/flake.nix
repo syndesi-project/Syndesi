@@ -3,8 +3,8 @@
 # 30.09.2023
 # This flake is used to provide the Python environment for the syndesi package
 {
-    #description = "Python Syndesi Nix flake";
-
+    description = "Python Syndesi Nix flake";
+    
     inputs = {
         nixpkgs.url = "github:nixos/nixpkgs/nixos-23.05";
         flake-utils.url = "github:numtide/flake-utils";
@@ -17,12 +17,15 @@
       };
     in
     {
-      #packages.default = build;
-      #packages.build = build;
-      #packages.flash = flash;
       devShells.default = pkgs.mkShell {
         buildInputs = with pkgs; [
-          #python310full
+          python310
+          (python310.withPackages
+            (pkgs: with pkgs; [
+              pytest
+              pyserial
+              pyvisa
+            ]))
         ];
       };
     });
