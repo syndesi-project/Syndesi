@@ -26,6 +26,7 @@ from threading import Thread
 from typing import Union
 from enum import Enum
 from .stop_conditions import StopCondition, Timeout
+from time import time
 
 DEFAULT_STOP_CONDITION = Timeout(response=1, continuation=100e-3, total=None)
 
@@ -92,21 +93,20 @@ class IAdapter(ABC):
         A custom stop-condition can be set by passing it to stop_condition
         or using the simplified API with timeout/response=
         """
-
-
-
         if self._status == self.Status.DISCONNECTED:
             self.open()
 
         self._start_thread()
-
+        
+        read_start = time()
         timeout = self._stop_condition.initiate_read()
         #self._set_timeout(timeout)
 
         buffer = b''
         while True:
-            (_, byte) = self._read_queue.get(timeout)
-            if byte is None:
+            (timestamp, byte) = self._read_queue.get(timeout)
+            time_delta = timestamp - read_start
+            if byte is None or time_delta > timeout:
                 break
             buffer += byte
             stop, timeout = self._stop_condition.evaluate(byte)
