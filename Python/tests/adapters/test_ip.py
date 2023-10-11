@@ -73,8 +73,7 @@ def test_response_A():
 
 def test_response_B():
     thread = Thread(target=server_thread, daemon=True)
-    thread.start()
-    # This sould not    
+    thread.start()    
     sleep(0.1)
     client = IP(
         HOST,
@@ -93,7 +92,6 @@ def test_response_B():
 def test_continuation():
     thread = Thread(target=server_thread, daemon=True)
     thread.start()
-    # This sould not    
     sleep(0.1)
     client = IP(
         HOST,
@@ -112,7 +110,6 @@ def test_continuation():
 def test_total_A():
     thread = Thread(target=server_thread, daemon=True)
     thread.start()
-    # This sould not    
     sleep(0.1)
     client = IP(
         HOST,
@@ -133,7 +130,7 @@ def test_total_A():
 def test_termination_A():
     thread = Thread(target=server_thread, daemon=True)
     thread.start()
-    # This sould not
+    
     sleep(0.1)
     client = IP(
         HOST,
@@ -152,7 +149,7 @@ def test_termination_A():
 def test_length():
     thread = Thread(target=server_thread, daemon=True)
     thread.start()
-    # This sould not
+    
     sleep(0.1)
     client = IP(
         HOST,
