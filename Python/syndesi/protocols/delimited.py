@@ -1,6 +1,7 @@
 from .iprotocol import IProtocol
 from ..adapters import IAdapter
 from ..tools.types import assert_byte_instance, assert_byte_instance
+from time import time
 
 
 class Delimited(IProtocol):
@@ -19,6 +20,9 @@ class Delimited(IProtocol):
             Apply formatting to the response (i.e removing the termination)
         """
         super().__init__(adapter)
+
+        # Temporary solution before implementing stop conditions
+        self._buffer = ''
 
         if not isinstance(termination, str):
             raise ValueError(f"end argument must be of type str, not {type(termination)}")
@@ -58,19 +62,40 @@ class Delimited(IProtocol):
         self.write(command)
         return self.read()
 
+    # Note : for later revisions of the delimited module, the buffer should be removed as the
+    # adapter will take care of that using the stop conditions
+    #
+    # For now the delimited module will take care of it
+    #
+    # Stop conditions should also be added inside the delimited module (unclear yet how)
 
-    def read(self) -> str:
+    def read(self, timeout=2) -> str:
         """
         Reads command and formats it as an str
         """
-        output = self._from_bytes(self._adapter.read())
+        if self._termination not in self._buffer:
+            # Read the adapter only if there isn't a fragment already in the buffer
+            start = time()
+            while True:
+                # Continuously read the adapter as long as no termination is caught
+                data = self._from_bytes(self._adapter.read())
+                self._buffer += data
+                if self._termination in data or time() > start + timeout:
+                    break
+
+        # Send up to the termination
+        fragment, self._buffer = self._buffer.split(self._termination, maxsplit=1)
         if self._response_formatting:
-            return self._format_response(output)
+            # Only send the fragment (no termination)
+            return fragment
         else:
-            return output
+            # Add the termination back in
+            return fragment + self._termination
 
     def read_raw(self) -> bytes:
         """
         Returns the raw bytes instead of str
         """
+        if len(self._buffer) > 0:
+            print("Warning : The buffer wasn't empty, standard (non raw) data is still in it")
         return self._adapter.read()
