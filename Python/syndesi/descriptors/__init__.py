@@ -1,1 +1,0 @@
-from descriptor import Descriptor
