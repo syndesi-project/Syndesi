@@ -75,3 +75,5 @@ The Syndesi Device Protocol is a light-weight and easy interface to send / recei
 15.08.2023 : The adapters must work with bytearray data only
 
 06.09.2023 : bytearray is changed to bytes everywhere
+
+23.10.2023 : continuation timeout isn't suitable for TCP, but it can work for UDP as a UDP server can send multiple response packets after a single packet from the client. This can be handled in different ways by firewalls. Thankfull that's none of our business so continuation timeout can be implemented
