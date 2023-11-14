@@ -35,7 +35,14 @@ class IP(IAdapter):
             Transport protocol, TCP or UDP
         """
         super().__init__()
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._transport = transport
+        if transport == self.Protocol.TCP:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        elif transport == self.Protocol.UDP:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        else:
+            raise ValueError("Invalid protocol")
+
         self._ip = descriptor # TODO : update this
         self._port = port
         self._stop_condition = stop_condition
@@ -67,25 +74,21 @@ class IP(IAdapter):
             self.open()
         self._socket.send(data)
 
-    # def _set_timeout(self, timeout):
-    #     self._socket.settimeout(timeout)
-
-
     def _read_thread(self, socket : socket.socket, read_queue : TimedQueue):
         while True:
             try:
-                byte = socket.recv(1)
+                print(f"Wait for next...")
+                byte = socket.recv(2)
             except OSError:
                 break
             if not byte:
                 break
+            print(f"Put {byte} in queue")
             read_queue.put(byte)
 
     def _start_thread(self):
-        if self._thread is None:
-            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue))
-        if not self._thread.is_alive():
-            self._thread.start()
+        self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue))
+        self._thread.start()
 
     def query(self, data : bytes):
         self.flushRead()

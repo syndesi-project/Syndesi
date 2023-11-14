@@ -26,40 +26,34 @@ class Types:
 
 def tcp_server():
     # Open the server
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind((HOST, PORT)) # bind host address and port together
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((HOST, PORT)) # bind host address and port together
+        s.listen()
+        conn, _ = s.accept()  # accept new connection
+        with conn:
+            try:
+                # We don't care about the data
+                payload = conn.recv(1024)
+            except socket.timeout:
+                raise TimeoutError("Client didn't close or didn't send data")
 
-    s.listen()
-    conn, _ = s.accept()  # accept new connection
-    with conn:
-        try:
-            # We don't care about the data
-            payload = conn.recv(1024)
-        except socket.timeout:
-            raise TimeoutError("Client didn't close or didn't send data")
+            # Decrypt the payload
+            sequences = payload_to_sequences(payload)
 
-        print(f"Payload : {payload}")
-        # Decrypt the payload
-        sequences = payload_to_sequences(payload)
-
-        # Send the sequence after the specified delay
-        for s, t in sequences:
-            print(f"Wait {t}s...")
-            sleep(t)
-            print(f"Send {s}")
-            conn.send(s)
-            break # Only send the first sequence as this is TCP
-        print("End connection")
+            # Send the sequence after the specified delay
+            for s, t in sequences:
+                sleep(t)
+                conn.send(s)
+                break # Only send the first sequence as this is TCP
     #conn.close()  # close the connection
 
 def udp_server():
-    sock = socket.socket(socket.AF_INET, # Internet
-                        socket.SOCK_DGRAM) # UDP
-    sock.bind((HOST, PORT))
-   
-    while True:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((HOST, PORT))
         try:
-            payload = sock.recvfrom(1024) # buffer size is 1024 bytes
+            payload, addr = sock.recvfrom(1024) # buffer size is 1024 bytes
         except socket.timeout:
             raise TimeoutError("Client didn't close or didn't send data")
         # Send the sequence after the specified delay
@@ -67,9 +61,9 @@ def udp_server():
         # Decrypt the payload
         sequences = payload_to_sequences(payload)
 
-        for t, s in sequences:
+        for s, t in sequences:
             sleep(t)
-            sock.send(s)
+            sock.sendto(s, addr)
 
 def main():
     parser = ArgumentParser(
@@ -89,6 +83,7 @@ def main():
 
 def payload_to_sequences(payload): 
     # Split into sequences
+    print(f"Payload : {payload}")
     raw_sequences = [x.split(DELAY_DELIMITER) for x in payload.split(SEQUENCE_DELIMITER)]
     sequences = [(x[0], float(x[1])) for x in raw_sequences]
     print(f"Sequences : {sequences}")

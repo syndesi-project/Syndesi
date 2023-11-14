@@ -155,12 +155,14 @@ class Timeout(StopCondition):
         timeout : float or None
             None is there's no timeout
         """
+        print("Initiate read of timeout stop condition")
         if self._start_time is None:
             # It hasn't been set by an other StopCondition instance
             self._start_time = time()
         self._start_time = time()
         self._state = self.State.WAIT_FOR_RESPONSE
         self._last_eval_time = None
+        print(f"Response : {self._response}")
         return self._response
 
     def evaluate(self, data: bytes) -> Tuple[bool, Union[float, None]]:

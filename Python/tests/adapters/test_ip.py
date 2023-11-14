@@ -2,24 +2,20 @@ from time import sleep
 from syndesi.adapters import IP
 from syndesi.adapters.stop_conditions import *
 import subprocess
+import pathlib
+server_file = pathlib.Path(__file__).parent / 'response_server.py'
 
 HOST = 'localhost'
 PORT = 8888
-
-SEQUENCE = [
-    (0.25, b'ABCDE'),
-    (0.1, b'FGHIJ'),
-    (0.5, b'KLMNO'),
-    (1, b'PQRST'),
-    (1, b'UVWXYZ')
-]
 
 #server_process = subprocess.run(['python', 'response_server.py', '-t', 'TCP'])
 
 def encode_sequences(sequences : list):
     output = b''
-    for sequence, delay in sequences:
-        output += f"{sequence},{delay}".encode('ASCII')
+    for i, (sequence, delay) in enumerate(sequences):
+        if i > 0:
+            output += b';'
+        output += sequence + b',' + str(delay).encode('ASCII')
     return output
 
 # Send each sequence [1] after [0] time
@@ -30,10 +26,11 @@ TIME_DELTA = 1e-3
 # long enough to catch the first sequence
 
 def test_response_A():
+    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    sleep(0.5)
     # This should catch the first sequence
-    sleep(0.1)
     delay = 0.25
-    sequence = 'ABCD'
+    sequence = b'ABCD'
     client = IP(
         HOST,
         port=PORT,
@@ -45,40 +42,49 @@ def test_response_A():
     client.close()
     assert data == sequence
 
-# # Test response timeout
-# # not long enough to catch the first sequence
+# Test response timeout
+# not long enough to catch the first sequence
 
-# def test_response_B():
-#     sleep(0.1)
-#     delay = 0.25
-#     sequence = 'ABCD'
-#     client = IP(
-#         HOST,
-#         port=PORT,
-#         stop_condition=Timeout(response=delay - TIME_DELTA,
-#         continuation=0.01))
-#     client.write(f"{sequence},{delay}")
-#     data = client.read()
-#     client.close()
-#     assert data == b''
+def test_response_B():
+    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    sleep(0.5)
+    delay = 0.25
+    sequence = b'ABCD'
+    client = IP(
+        HOST,
+        port=PORT,
+        stop_condition=Timeout(response=delay - TIME_DELTA,
+        continuation=0.01))
+    client.write(encode_sequences([(sequence, delay)]))
+    data = client.read()
+    sleep(2*TIME_DELTA)
+    assert data == b''
+    data = client.read()
+    assert data == sequence
 
-# # Test continuation timeout
-# # Long enough to catch the first two sequences
+# Test continuation timeout
+# Long enough to catch the first two sequences
 
-# def test_continuation():
-#     sleep(0.1)
-#     delay = 0.25
-#     sequence = 'ABCDE'
+def test_continuation():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    delay_response = 0.25
+    sequence_response = b'ABCDE'
+    delay_continuation = 0.3
+    sequence_continuation = b'FGHIJKL'
 
-#     client = IP(
-#         HOST,
-#         port=PORT,
-#         stop_condition=Timeout(response=delay + TIME_DELTA,
-#         continuation=SEQUENCE[1][0] + TIME_DELTA))
-#     client.write(f"{sequence},{delay}")
-#     data = client.read()
-#     client.close()
-#     #assert data == SEQUENCE[0][1] + SEQUENCE[1][1]
+    client = IP(
+        HOST,
+        port=PORT,
+        stop_condition=Timeout(response=delay_response + TIME_DELTA,
+        continuation=delay_continuation + TIME_DELTA),
+        transport=IP.Protocol.UDP)
+    client.write(encode_sequences([
+        (sequence_response, delay_response),
+        (sequence_continuation, delay_continuation)]))
+    data = client.read()
+    client.close()
+    assert data == sequence_response + sequence_continuation
 
 # # Test total timeout
 # # This should be long enough to catch the first three sequences
@@ -117,7 +123,7 @@ def test_response_A():
 
 
 # # Test length
-# def test_length():    
+# def test_length():
 #     sleep(0.1)
 #     client = IP(
 #         HOST,
