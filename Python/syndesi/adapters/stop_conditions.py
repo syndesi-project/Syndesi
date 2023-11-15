@@ -27,7 +27,7 @@ class StopCondition:
         """
         return NotImplementedError()
 
-    def evaluate(self, data: bytes) -> Tuple[bool, Union[float, None]]:
+    def evaluate(self, fragment : bytes) -> Tuple[bool, Union[float, None]]:
         """
         Evaluate the next received byte
 
@@ -36,11 +36,12 @@ class StopCondition:
         stop : bool
             False if read should continue
             True if read should stop
-        keep_last : bool
-            True if the last value should be kept
         timeout : float or None
             timeout for the next byte read
-        
+        kept_fragment : bytes
+            Part of the fragment kept for future use
+        deferred_fragment : bytes
+            Part of the fragment that was deferred because of a stop condition
         """
         raise NotImplementedError()
 
@@ -74,8 +75,8 @@ class StopConditionExpression(StopCondition):
         self._A._eval_time = self._eval_time
         self._B._eval_time = self._eval_time
         # TODO : finish this
-        a_stop, a_keep_last, a_timeout = self._A.evaluate(byte)
-        b_stop, b_keep_last, b_timeout = self._B.evaluate(byte)
+        a_stop, a_timeout = self._A.evaluate(byte)
+        b_stop, b_timeout = self._B.evaluate(byte)
 
         self._eval_time = None
         keep_last = a_keep_last if a_stop else (b_keep_last if b_stop else False)
@@ -88,7 +89,7 @@ class StopConditionExpression(StopCondition):
         else:
             raise RuntimeError("Invalid operation")
         
-        return stop, keep_last, timeout
+        return stop, timeout
     
     def initiate_read(self):
         super().initiate_read()
@@ -201,7 +202,7 @@ class Timeout(StopCondition):
             timeout = self._continuation
         else:
             timeout = None
-        return False, timeout
+        return False, timeout, data, b''
 
 class Termination(StopCondition):
     def __init__(self, sequence : bytes) -> None:
@@ -221,11 +222,19 @@ class Termination(StopCondition):
         self._sequence_index = 0
         return None
 
-    def evaluate(self, byte: bytes) -> Tuple[bool, Union[float, None]]:
-        if len(byte) != 1:
-            raise ValueError(f"Invalid byte length : {len(byte)}")
+    def evaluate(self, fragment: bytes) -> Tuple[bool, Union[float, None]]:
+        #if len(byte) != 1:
+        #    raise ValueError(f"Invalid byte length : {len(byte)}")
+        try:
+            termination_index = fragment.index(self._sequence)
+            return True, None, fragment[:termination_index], fragment[termination_index+1:]
+        except ValueError:
+            # No termination, return everything and continue
+            return False, None, fragment, b''
 
-        for b in byte:
+        # TODO : Implement partial sequence detection (if a sequence starts in a fragment and ends in the next one)
+
+        for b in fragment:
             if self._sequence[self._sequence_index] == b:
                 # The byte is in the sequence
                 self._sequence_index += 1
@@ -235,7 +244,7 @@ class Termination(StopCondition):
                     return True, None
         else:
             self._sequence_index = 0
-        return False, None
+        return False, None, 
 
 class Length(StopCondition):
     def __init__(self, N : int) -> None:

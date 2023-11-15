@@ -39,6 +39,9 @@ class IAdapter(ABC):
         self._thread : Union[Thread, None] = None
         self._status = self.Status.DISCONNECTED
         self._stop_condition = stop_condition
+        # Buffer for data that has been pulled from the queue but
+        # not used because of termination or length stop condition
+        self._deferred_buffer = b''
 
     def flushRead(self):
         """
@@ -101,20 +104,28 @@ class IAdapter(ABC):
         last_read = time()
         timeout = self._stop_condition.initiate_read()
 
-        buffer = b''
-        while True:
-            (timestamp, byte) = self._read_queue.get(timeout)
-            if byte is None:
-                break
-            time_delta = timestamp - last_read
-            last_read = timestamp
-            if time_delta > timeout:
-                break
-            buffer += byte
-            stop, timeout = self._stop_condition.evaluate(byte)
-            if stop:
-                break
-        return buffer
+        
+        # Start with the deferred buffer
+        if len(self._deferred_buffer) > 0:
+            _, _, output, self._deferred_buffer = self._stop_condition.evaluate(self._deferred_buffer)
+        else:
+            output = b''
+        # If everything is used up, read the queue
+        if len(self._deferred_buffer) == 0:
+            while True:
+                (timestamp, fragment) = self._read_queue.get(timeout)
+                if fragment is None:
+                    break # Timeout is reached while trying to read the queue
+                time_delta = timestamp - last_read
+                last_read = timestamp
+                if timeout is not None and time_delta > timeout:
+                    break
+                stop, timeout, kept_fragment, self._deferred_buffer = self._stop_condition.evaluate(fragment)
+                output += kept_fragment
+                if stop:
+                    break
+        print(f"Output : {output}")
+        return output
 
     def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:
         """

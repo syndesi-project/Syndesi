@@ -9,7 +9,7 @@ class TimedQueue:
     def put(self, fragment : bytes) -> None:
         self._queue.put((time(), fragment))
 
-    def get(self, timeout) -> Tuple[float, bytes]:
+    def get(self, timeout : float | None) -> Tuple[float, bytes]:
         try:
             return self._queue.get(block=True, timeout=timeout)
         except queue.Empty:
