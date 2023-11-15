@@ -17,6 +17,8 @@ from time import sleep
 HOST = 'localhost'
 PORT = 8888
 
+BUFFER_SIZE = 65_000
+
 SEQUENCE_DELIMITER = b';'
 DELAY_DELIMITER = b','
 
@@ -34,7 +36,7 @@ def tcp_server():
         with conn:
             try:
                 # We don't care about the data
-                payload = conn.recv(1024)
+                payload = conn.recv(BUFFER_SIZE)
             except socket.timeout:
                 raise TimeoutError("Client didn't close or didn't send data")
 
@@ -53,7 +55,7 @@ def udp_server():
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((HOST, PORT))
         try:
-            payload, addr = sock.recvfrom(1024) # buffer size is 1024 bytes
+            payload, addr = sock.recvfrom(BUFFER_SIZE) # buffer size is 1024 bytes
         except socket.timeout:
             raise TimeoutError("Client didn't close or didn't send data")
         # Send the sequence after the specified delay

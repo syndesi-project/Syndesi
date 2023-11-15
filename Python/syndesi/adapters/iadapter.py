@@ -105,18 +105,14 @@ class IAdapter(ABC):
         while True:
             (timestamp, byte) = self._read_queue.get(timeout)
             if byte is None:
-                print("Byte is none")
                 break
             time_delta = timestamp - last_read
-            print(f"Read {byte} ({time_delta})")
             last_read = timestamp
             if time_delta > timeout:
-                print(f"Time delta ({time_delta}) exceed timeout ({timeout})")
                 break
             buffer += byte
             stop, timeout = self._stop_condition.evaluate(byte)
             if stop:
-                print(f"Stop condition")
                 break
         return buffer
 

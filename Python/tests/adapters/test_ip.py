@@ -20,7 +20,7 @@ def encode_sequences(sequences : list):
 
 # Send each sequence [1] after [0] time
 
-TIME_DELTA = 1e-3
+TIME_DELTA = 5e-3
 
 # Test response timeout
 # long enough to catch the first sequence
@@ -86,40 +86,68 @@ def test_continuation():
     client.close()
     assert data == sequence_response + sequence_continuation
 
-# # Test total timeout
-# # This should be long enough to catch the first three sequences
+# Test transmission with big data over UDP
+# The UDP buffer size is 
+def test_too_big():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    delay = 0.25
+    sequence = 2000*b'A'
 
-# def test_total_A():
-#     sleep(0.1)
-#     delay = 0.25
-#     sequence = 'ABCDE'
-#     client = IP(
-#         HOST,
-#         port=PORT,
-#         stop_condition=Timeout(response=delay + TIME_DELTA,
-#             continuation=10,
-#             #total=sum(s[0] + TIME_DELTA for s in SEQUENCES[:3]))
-#             total=sum(s[0] + TIME_DELTA for s in SEQUENCE[:3])
-#         )
-#         )
-#     client.write(f"{sequence},{delay}")
-#     data = client.read()
-#     client.close()
-#     #assert data == b''.join(s[1] for s in SEQUENCE[:3])
+    client = IP(
+        HOST,
+        port=PORT,
+        stop_condition=Timeout(response=delay + TIME_DELTA,
+        continuation=TIME_DELTA),
+        transport=IP.Protocol.UDP)
+    client.write(encode_sequences([
+        (sequence, delay)]))
+    data = client.read()
+    client.close()
+    assert data != sequence
 
-# # Test termination
-# def test_termination_A():
-#     sleep(0.1)
-#     client = IP(
-#         HOST,
-#         port=PORT,
-#         stop_condition=Termination(b'F')
-#         )
-#     client.write(CLIENT_SEQUENCE)
-#     data = client.read()
-#     client.close()
-#     #complete_sequence = b''.join(s[1] for s in SEQUENCE)
-#     #assert data == complete_sequence[:complete_sequence.index(b'F')+1]
+def test_length_valid():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    delay = 0.25
+    sequence = 2000*b'A'
+
+    client = IP(
+        HOST,
+        port=PORT,
+        stop_condition=Timeout(response=delay + TIME_DELTA,
+        continuation=TIME_DELTA),
+        transport=IP.Protocol.UDP,
+        buffer_size=len(sequence))
+    client.write(encode_sequences([
+        (sequence, delay)]))
+    data = client.read()
+    client.close()
+    assert data == sequence
+
+
+# Test termination
+def test_termination_A():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    delay = 0.25
+    A = b'AAAA'
+    B = b'BBBB'
+    termination = b'X'
+    sequence = A + termination + B + termination
+
+    client = IP(
+        HOST,
+        port=PORT,
+        stop_condition=Termination(b'X'),
+        transport=IP.Protocol.UDP,
+        buffer_size=len(sequence))
+    client.write(encode_sequences([
+        (sequence, delay)]))
+    data = client.read()
+    assert data == A
+    data = client.read()
+    assert data == B
 
 
 # # Test length

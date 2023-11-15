@@ -10,6 +10,8 @@ DEFAULT_RESPONSE_TIMEOUT = 1
 DEFAULT_CONTINUATION_TIMEOUT = 1e-3
 DEFAULT_TOTAL_TIMEOUT = 5
 
+DEFAULT_BUFFER_SIZE = 1024
+
 class IP(IAdapter):
     class Protocol(Enum):
         TCP = 0
@@ -21,7 +23,8 @@ class IP(IAdapter):
                 stop_condition=Timeout(
                     response=DEFAULT_RESPONSE_TIMEOUT,
                     continuation=DEFAULT_CONTINUATION_TIMEOUT,
-                    total=DEFAULT_TOTAL_TIMEOUT)):
+                    total=DEFAULT_TOTAL_TIMEOUT),
+                buffer_size : int = DEFAULT_BUFFER_SIZE):
         """
         IP stack adapter
 
@@ -46,6 +49,7 @@ class IP(IAdapter):
         self._ip = descriptor # TODO : update this
         self._port = port
         self._stop_condition = stop_condition
+        self._buffer_size = buffer_size
 
     def set_default_port(self, port):
         """
@@ -77,14 +81,14 @@ class IP(IAdapter):
     def _read_thread(self, socket : socket.socket, read_queue : TimedQueue):
         while True:
             try:
-                print(f"Wait for next...")
-                byte = socket.recv(2)
+                payload = socket.recv(self._buffer_size)
+                if len(payload) == self._buffer_size and self._transport == self.Protocol.UDP:
+                    print(f"Warning, inbound UDP data may have been lost (max buffer size attained)")
             except OSError:
                 break
-            if not byte:
+            if not payload:
                 break
-            print(f"Put {byte} in queue")
-            read_queue.put(byte)
+            read_queue.put(payload)
 
     def _start_thread(self):
         self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue))
