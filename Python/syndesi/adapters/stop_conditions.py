@@ -302,5 +302,9 @@ class Length(StopCondition):
         self._counter = 0
 
     def evaluate(self, data: bytes) -> Tuple[bool, Union[float, None]]:
-        self._counter += len(data)
-        return self._counter >= self._N, None
+        remaining_bytes = self._N - self._counter
+        kept_fragment = data[:remaining_bytes]
+        deferred_fragment = data[remaining_bytes:]
+        self._counter += len(kept_fragment)
+        remaining_bytes = self._N - self._counter
+        return remaining_bytes == 0, None, kept_fragment, deferred_fragment

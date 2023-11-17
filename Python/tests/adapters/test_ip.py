@@ -8,8 +8,6 @@ server_file = pathlib.Path(__file__).parent / 'response_server.py'
 HOST = 'localhost'
 PORT = 8888
 
-#server_process = subprocess.run(['python', 'response_server.py', '-t', 'TCP'])
-
 def encode_sequences(sequences : list):
     output = b''
     for i, (sequence, delay) in enumerate(sequences):
@@ -17,8 +15,6 @@ def encode_sequences(sequences : list):
             output += b';'
         output += sequence + b',' + str(delay).encode('ASCII')
     return output
-
-# Send each sequence [1] after [0] time
 
 TIME_DELTA = 5e-3
 
@@ -173,17 +169,21 @@ def test_termination_partial():
     assert data == B
 
 
-# # Test length
-# def test_length():
-#     sleep(0.1)
-#     client = IP(
-#         HOST,
-#         port=PORT,
-#         stop_condition=Length(10)
-#         )
-#     client.write(CLIENT_SEQUENCE)
-#     data = client.read()
-#     client.close()
-#     #complete_sequence = b''.join(s[1] for s in SEQUENCE)
-#     #assert data == complete_sequence[:10]
+# Test length
+def test_length():
+    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    sleep(0.5)
+    sequence = b'ABCDEFGHIJKLMNOPQKRSTUVWXYZ'
+    N = 10
+    client = IP(
+        HOST,
+        port=PORT,
+        stop_condition=Length(10)
+        )
+    client.write(encode_sequences([(sequence, 0)]))
+    data = client.read()
+    assert data == sequence[:10]
+    data = client.read()
+    assert data == sequence[10:20]
+    client.close()
 
