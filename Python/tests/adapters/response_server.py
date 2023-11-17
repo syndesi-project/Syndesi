@@ -59,7 +59,6 @@ def udp_server():
         except socket.timeout:
             raise TimeoutError("Client didn't close or didn't send data")
         # Send the sequence after the specified delay
-        print(f"Payload : {payload}")
         # Decrypt the payload
         sequences = payload_to_sequences(payload)
 
@@ -85,10 +84,8 @@ def main():
 
 def payload_to_sequences(payload): 
     # Split into sequences
-    print(f"Payload : {payload}")
     raw_sequences = [x.split(DELAY_DELIMITER) for x in payload.split(SEQUENCE_DELIMITER)]
     sequences = [(x[0], float(x[1])) for x in raw_sequences]
-    print(f"Sequences : {sequences}")
     return sequences
 
 if __name__ == '__main__':

@@ -104,16 +104,23 @@ class IAdapter(ABC):
         last_read = time()
         timeout = self._stop_condition.initiate_read()
 
-        
+        # Could it be possible to use the deferred buffer to store the partial termination ??
+        # If so it would be very clean
+        # Study this !
+        #
+
         # Start with the deferred buffer
         if len(self._deferred_buffer) > 0:
-            _, _, output, self._deferred_buffer = self._stop_condition.evaluate(self._deferred_buffer)
+            stop, _, output, self._deferred_buffer = self._stop_condition.evaluate(self._deferred_buffer)
         else:
+            stop = False
             output = b''
         # If everything is used up, read the queue
-        if len(self._deferred_buffer) == 0:
+        if not stop:
             while True:
                 (timestamp, fragment) = self._read_queue.get(timeout)
+                if len(self._deferred_buffer) > 0:
+                    fragment = self._deferred_buffer + fragment
                 if fragment is None:
                     break # Timeout is reached while trying to read the queue
                 time_delta = timestamp - last_read
@@ -124,7 +131,6 @@ class IAdapter(ABC):
                 output += kept_fragment
                 if stop:
                     break
-        print(f"Output : {output}")
         return output
 
     def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:

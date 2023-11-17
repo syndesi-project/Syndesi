@@ -127,7 +127,7 @@ def test_length_valid():
 
 
 # Test termination
-def test_termination_A():
+def test_termination():
     subprocess.Popen(['python', server_file, '-t', 'UDP'])
     sleep(0.5)
     delay = 0.25
@@ -139,13 +139,36 @@ def test_termination_A():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Termination(b'X'),
-        transport=IP.Protocol.UDP,
-        buffer_size=len(sequence))
+        stop_condition=Termination(termination),# | Timeout(response=1, continuation=1),
+        transport=IP.Protocol.UDP)
     client.write(encode_sequences([
         (sequence, delay)]))
     data = client.read()
     assert data == A
+    data = client.read()
+    assert data == B
+
+# Test termination with partial transmission of the termination
+def test_termination_partial():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    delay = 0.25
+
+    A = b'AAAA'
+    B = b'BBBB'
+    termination = b'XX'
+
+    client = IP(
+        HOST,
+        port=PORT,
+        stop_condition=Termination(termination),# | Timeout(response=1, continuation=1),
+        transport=IP.Protocol.UDP)
+    client.write(encode_sequences([
+        (A + termination[:1], delay),
+        (termination[1:] + B + termination, delay)]))
+    data = client.read()
+    assert data == A
+    sleep(delay+TIME_DELTA)
     data = client.read()
     assert data == B
 
