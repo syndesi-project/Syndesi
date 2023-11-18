@@ -104,6 +104,7 @@ class Timeout(StopCondition):
         timeout : float or None
             None is there's no timeout
         """
+        print(f"Initiate read")
         if self._start_time is None:
             # It hasn't been set by an other StopCondition instance
             self._start_time = time()
@@ -112,13 +113,11 @@ class Timeout(StopCondition):
         self._last_eval_time = None
         return self._response
 
-    def evaluate(self, data: bytes) -> Tuple[bool, Union[float, None]]:
+    def evaluate(self, fragment: bytes) -> Tuple[bool, Union[float, None]]:
         if self._eval_time is None:
             self._eval_time = time()
         stop = False
-        # Update the state
-        if self._state == self.State.WAIT_FOR_RESPONSE:
-            self._state = self.State.CONTINUATION
+        timeout = None    
 
         # Check total
         if self._total is not None:
@@ -131,14 +130,18 @@ class Timeout(StopCondition):
         
         # Check response time
         if self._response is not None and self._state == self.State.WAIT_FOR_RESPONSE:
-            if self._eval_time - self._start_time >= self._response:
+            response_time = self._eval_time - self._start_time
+            if response_time >= self._response:
                 stop = True
+
+        # Update the state
+        if self._state == self.State.WAIT_FOR_RESPONSE:
+            self._state = self.State.CONTINUATION
 
         if not stop:
             self._last_eval_time = self._eval_time
             self._eval_time = None
             # No timeouts were reached, return the next one
-            timeout = None
             # Return the timeout (state is always CONTINUATION at this stage)
             # Take the smallest between continuation and total
             if self._total is not None and self._continuation is not None:
@@ -150,9 +153,13 @@ class Timeout(StopCondition):
             else:
                 timeout = None
 
-            return False, timeout, data, b''
+            kept_fragment = fragment
+            deferred_fragment = b''
         else:
-            return True, None, b'', data
+            kept_fragment = b''
+            deferred_fragment = fragment
+
+        return stop, timeout, kept_fragment, deferred_fragment
             
 
 class Termination(StopCondition):
@@ -270,8 +277,8 @@ class StopConditionExpression(StopCondition):
         self._B = B
         self._operation = operation
         # Make a dummy evaluation to validate that the combination is suitable
-        self.initiate_read()
-        self.evaluate(b'')
+        #self.initiate_read()
+        #self.evaluate(b'')
 
     def evaluate(self, fragment : bytes) -> Tuple[bool, Union[float, None], bytes, bytes]:
         if self._eval_time is None:

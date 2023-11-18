@@ -30,7 +30,7 @@ def test_response_A():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=delay + TIME_DELTA + 1,
+        stop_condition=Timeout(response=delay + TIME_DELTA,
         continuation=0.01))
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()

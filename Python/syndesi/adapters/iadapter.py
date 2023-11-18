@@ -76,18 +76,6 @@ class IAdapter(ABC):
         Initiate the read thread
         """
         pass
-
-    # @abstractmethod
-    # def _set_timeout(self, timeout):
-    #     """
-    #     Sets the communication timeout
-
-    #     Parameters
-    #     ----------
-    #     timeout : float
-    #         Timeout in seconds
-    #     """
-    #     pass
     
     def read(self, **kwargs) -> bytes:
         """
@@ -103,11 +91,6 @@ class IAdapter(ABC):
 
         last_read = time()
         timeout = self._stop_condition.initiate_read()
-
-        # Could it be possible to use the deferred buffer to store the partial termination ??
-        # If so it would be very clean
-        # Study this !
-        #
 
         # Start with the deferred buffer
         if len(self._deferred_buffer) > 0:
