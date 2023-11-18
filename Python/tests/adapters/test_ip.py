@@ -168,7 +168,6 @@ def test_termination_partial():
     data = client.read()
     assert data == B
 
-
 # Test length
 def test_length():
     subprocess.Popen(['python', server_file, '-t', 'TCP'])
@@ -185,5 +184,57 @@ def test_length():
     assert data == sequence[:10]
     data = client.read()
     assert data == sequence[10:20]
+    client.close()
+
+# Test length with short timeout
+def test_length_short_timeout():
+    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    sleep(0.5)
+    sequence = b'ABCDEFGHIJKLMNOPQKRSTUVWXYZ'
+    N = 10
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        stop_condition=Length(10) | Timeout(response=delay - TIME_DELTA)
+        )
+    client.write(encode_sequences([(sequence, delay)]))
+    data = client.read()
+    assert data == b''
+    client.close()
+
+# Test length with short timeout
+def test_length_long_timeout():
+    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    sleep(0.5)
+    sequence = b'ABCDEFGHIJKLMNOPQKRSTUVWXYZ'
+    N = 10
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        stop_condition=Length(10) | Timeout(response=delay + TIME_DELTA)
+        )
+    client.write(encode_sequences([(sequence, delay)]))
+    data = client.read()
+    assert data == sequence[:N]
+    client.close()
+
+# Test length with short timeout
+def test_termination_long_timeout():
+    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        stop_condition=Timeout(response=delay + TIME_DELTA) | Termination(termination)
+        )
+    client.write(encode_sequences([(A, delay), (B, delay)]))
+    data = client.read()
+    assert data == A
     client.close()
 

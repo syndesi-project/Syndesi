@@ -11,6 +11,10 @@ class StopCondition:
         """
         self._and = None
         self._or = None
+
+        self._start_time = None
+        self._eval_time = None
+
         # Time at which the evaluation command is run
 
     def initiate_read(self) -> Union[float, None]:
@@ -47,68 +51,14 @@ class StopCondition:
 
     def __or__(self, sc):
         assert isinstance(sc, StopCondition), f"Cannot do or operator between StopCondition and {type(sc)}"
-        return StopConditionOperation(self, sc, operation=StopConditionOperation.OR)
+        return StopConditionExpression(self, sc, operation=StopConditionOperation.OR)
     
     def __and__(self, sc):
         assert isinstance(sc, StopCondition), f"Cannot do and operator between StopCondition and {type(sc)}"
-        return StopConditionOperation(self, sc, operation=StopConditionOperation.AND)
+        return StopConditionExpression(self, sc, operation=StopConditionOperation.AND)
 
     def get_timeout(self) -> Union[float, None]:
         raise NotImplementedError()
-
-class StopConditionOperation(Enum):
-    OR = 0
-    AND = 1
-
-class StopConditionExpression(StopCondition):
-    def __init__(self, A : StopCondition, B : StopCondition, operation : StopConditionOperation) -> None:
-        super().__init__()
-        self._A = A
-        self._B = B
-        self._operation = operation
-
-    def evaluate(self, byte : bytes) -> Tuple[bool, Union[float, None]]:
-        if self._eval_time is None:
-            # First function to be called
-            self._eval_time = time()
-
-        self._A._eval_time = self._eval_time
-        self._B._eval_time = self._eval_time
-        # TODO : finish this
-        a_stop, a_timeout = self._A.evaluate(byte)
-        b_stop, b_timeout = self._B.evaluate(byte)
-
-        self._eval_time = None
-        keep_last = a_keep_last if a_stop else (b_keep_last if b_stop else False)
-        if self._operation == StopConditionOperation.OR:
-            stop = a_stop or b_stop
-            timeout = min(a_timeout, b_timeout)
-        elif self._operation == StopConditionOperation.AND:
-            stop = a_stop and b_stop
-            timeout = max(a_timeout, b_timeout)
-        else:
-            raise RuntimeError("Invalid operation")
-        
-        return stop, timeout
-    
-    def initiate_read(self):
-        super().initiate_read()
-        self._A._start_time = self._start_time
-        self._A.initiate_read()
-        self._B._start_time = self._start_time
-        self._B.initiate_read()
-
-    def get_timeout(self) -> Union[float, None]:
-        timeout_A = self._A.get_timeout()
-        timeout_B = self._B.get_timeout()
-        if timeout_B is None:
-            return timeout_A
-        elif timeout_A is None:
-            return timeout_B
-        elif timeout_A < timeout_B:
-            return timeout_A
-        else:
-            return timeout_B
 
 class Timeout(StopCondition):
     DEFAULT_CONTINUATION_TIMEOUT = 5e-3
@@ -135,13 +85,11 @@ class Timeout(StopCondition):
         continuation : float
         total : float
         """
-
+        super().__init__()
         self._state = self.State.WAIT_FOR_RESPONSE
         self._response = response
         self._continuation = continuation
         self._total = total
-        self._start_time = None
-        self._eval_time = None
 
 
     def initiate_read(self) -> Union[float, None]:
@@ -185,24 +133,27 @@ class Timeout(StopCondition):
         if self._response is not None and self._state == self.State.WAIT_FOR_RESPONSE:
             if self._eval_time - self._start_time >= self._response:
                 stop = True
-        if stop:
-            return True, None
-            
-        self._last_eval_time = self._eval_time
-        self._eval_time = None
-        # No timeouts were reached, return the next one
-        timeout = None
-        # Return the timeout (state is always CONTINUATION at this stage)
-        # Take the smallest between continuation and total
-        if self._total is not None and self._continuation is not None:
-            timeout = min((self._start_time + self._total) - time(), self._continuation)
-        elif self._total is not None:
-            timeout = time() - (self._start_time + self._total)
-        elif self._continuation is not None:
-            timeout = self._continuation
-        else:
+
+        if not stop:
+            self._last_eval_time = self._eval_time
+            self._eval_time = None
+            # No timeouts were reached, return the next one
             timeout = None
-        return False, timeout, data, b''
+            # Return the timeout (state is always CONTINUATION at this stage)
+            # Take the smallest between continuation and total
+            if self._total is not None and self._continuation is not None:
+                timeout = min((self._start_time + self._total) - time(), self._continuation)
+            elif self._total is not None:
+                timeout = time() - (self._start_time + self._total)
+            elif self._continuation is not None:
+                timeout = self._continuation
+            else:
+                timeout = None
+
+            return False, timeout, data, b''
+        else:
+            return True, None, b'', data
+            
 
 class Termination(StopCondition):
     def __init__(self, sequence : bytes) -> None:
@@ -282,7 +233,6 @@ class Termination(StopCondition):
         self._fragment_store = b''
         return output
 
-
 class Length(StopCondition):
     def __init__(self, N : int) -> None:
         """
@@ -308,3 +258,96 @@ class Length(StopCondition):
         self._counter += len(kept_fragment)
         remaining_bytes = self._N - self._counter
         return remaining_bytes == 0, None, kept_fragment, deferred_fragment
+
+class StopConditionOperation(Enum):
+    OR = 0
+    AND = 1
+
+class StopConditionExpression(StopCondition):
+    def __init__(self, A : StopCondition, B : StopCondition, operation : StopConditionOperation) -> None:
+        super().__init__()
+        self._A = A
+        self._B = B
+        self._operation = operation
+        # Make a dummy evaluation to validate that the combination is suitable
+        self.initiate_read()
+        self.evaluate(b'')
+
+    def evaluate(self, fragment : bytes) -> Tuple[bool, Union[float, None], bytes, bytes]:
+        if self._eval_time is None:
+            # First function to be called
+            self._eval_time = time()
+
+        self._A._eval_time = self._eval_time
+        self._B._eval_time = self._eval_time
+
+        # Treat each combination of A, B and operation
+        match (self._A, self._B, self._operation):
+            # Timeout - Timeout
+            case (Timeout(), Timeout(), StopConditionOperation.OR):
+                pass
+            case (Timeout(), Timeout(), StopConditionOperation.AND):
+                pass
+            case (Length(), Timeout(), StopConditionOperation.OR) | (Timeout(), Length(), StopConditionOperation.OR) \
+                | (Termination(), Timeout(), StopConditionOperation.OR) | (Timeout(), Termination(), StopConditionOperation.OR):
+                _Timeout, _Length = (self._A, self._B) if isinstance(self._A, Timeout) else (self._B, self._A)
+                # Apply the timeout first
+                print(f"Fragment : {fragment}")
+                t_stop, timeout, t_kept_fragment, t_deferred_fragment = _Timeout.evaluate(fragment)
+                print(f"Timeout stop : {t_stop}")
+                print(f"Timeout : {t_kept_fragment}, {t_deferred_fragment}")
+                if t_stop:
+                    # If everything is deferred, stop here
+                    stop = True
+                    deferred_fragment = t_deferred_fragment
+                    kept_fragment = t_kept_fragment
+                else:
+                    # Otherwise query the other stop condition
+                    stop, _, kept_fragment, deferred_fragment = _Length.evaluate(t_kept_fragment)
+
+            case _:
+                raise RuntimeError(f"Invalid expression combination : {type(self._A).__name__}, {type(self._B).__name__}, {self._operation}")
+            
+        # print(f"A : {a_output}, {a_deferred_buffer}")
+        # b_stop, b_timeout, b_output, b_deferred_buffer = self._B.evaluate(byte)
+        # print(f"B : {b_output}, {b_deferred_buffer}")
+
+        # self._eval_time = None
+
+        # if a_timeout is None:
+        #     timeout = b_timeout
+        # elif b_timeout is None:
+        #     timeout = a_timeout
+        # elif self._operation == StopConditionOperation.OR:
+        #     timeout = min(a_timeout, b_timeout)
+        # else: # self._operation == StopConditionOperation.AND
+        #     timeout = max(a_timeout, b_timeout)
+
+        # if self._operation == StopConditionOperation.OR:
+        #     stop = a_stop or b_stop
+        # else: # self._operation == StopConditionOperation.AND
+        #     stop = a_stop and b_stop
+
+        return stop, timeout, kept_fragment, deferred_fragment
+    
+    def initiate_read(self):
+        print("Initiate read (expression)")
+        super().initiate_read()
+        if isinstance(self._A, Timeout):
+            self._A._start_time = self._start_time
+        self._A.initiate_read()
+        if isinstance(self._B, Timeout):
+            self._B._start_time = self._start_time
+        self._B.initiate_read()
+
+    def get_timeout(self) -> Union[float, None]:
+        timeout_A = self._A.get_timeout()
+        timeout_B = self._B.get_timeout()
+        if timeout_B is None:
+            return timeout_A
+        elif timeout_A is None:
+            return timeout_B
+        elif timeout_A < timeout_B:
+            return timeout_A
+        else:
+            return timeout_B
