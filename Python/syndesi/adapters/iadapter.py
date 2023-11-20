@@ -27,18 +27,23 @@ from typing import Union
 from enum import Enum
 from .stop_conditions import StopCondition, Timeout
 from time import time
+from typing import Union
 
-DEFAULT_STOP_CONDITION = Timeout(response=1, continuation=100e-3, total=None)
+DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
+DEFAUT_STOP_CONDITION = None
 
 class IAdapter(ABC):
     class Status(Enum):
         DISCONNECTED = 0
         CONNECTED = 1
-    def __init__(self, stop_condition : StopCondition = DEFAULT_STOP_CONDITION):
+    def __init__(self,
+        timeout : Union[float, Timeout] = DEFAULT_TIMEOUT,
+        stop_condition : Union[StopCondition, None] = DEFAUT_STOP_CONDITION):
+        self._timeout = timeout
+        self._stop_condition = stop_condition
         self._read_queue = TimedQueue()
         self._thread : Union[Thread, None] = None
         self._status = self.Status.DISCONNECTED
-        self._stop_condition = stop_condition
         # Buffer for data that has been pulled from the queue but
         # not used because of termination or length stop condition
         self._deferred_buffer = b''
@@ -94,7 +99,7 @@ class IAdapter(ABC):
 
         # Start with the deferred buffer
         if len(self._deferred_buffer) > 0:
-            stop, _, output, self._deferred_buffer = self._stop_condition.evaluate(self._deferred_buffer)
+            stop, output, self._deferred_buffer = self._stop_condition.evaluate(self._deferred_buffer)
         else:
             stop = False
             output = b''
@@ -102,18 +107,27 @@ class IAdapter(ABC):
         if not stop:
             while True:
                 (timestamp, fragment) = self._read_queue.get(timeout)
-                if len(self._deferred_buffer) > 0:
-                    fragment = self._deferred_buffer + fragment
-                if fragment is None:
-                    break # Timeout is reached while trying to read the queue
-                time_delta = timestamp - last_read
-                last_read = timestamp
-                if timeout is not None and time_delta > timeout:
-                    break
-                stop, timeout, kept_fragment, self._deferred_buffer = self._stop_condition.evaluate(fragment)
+                # 1) Evaluate the timeout
+                
+
+
+                # 2) Evaluate the stop condition
+
+                stop, kept_fragment, self._deferred_buffer = self._stop_condition.evaluate(fragment)
                 output += kept_fragment
                 if stop:
                     break
+
+                # if len(self._deferred_buffer) > 0:
+                #     fragment = self._deferred_buffer + fragment
+                # if fragment is None:
+                #     break # Timeout is reached while trying to read the queue
+                # time_delta = timestamp - last_read
+                # last_read = timestamp
+                # if timeout is not None and time_delta > timeout:
+                #     break
+                
+                
         return output
 
     def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:
