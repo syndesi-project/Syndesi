@@ -1,6 +1,7 @@
 from time import sleep
 from syndesi.adapters import IP
 from syndesi.adapters.stop_conditions import *
+from syndesi.adapters.timeout import Timeout
 import subprocess
 import pathlib
 server_file = pathlib.Path(__file__).parent / 'response_server.py'
@@ -30,8 +31,8 @@ def test_response_A():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=delay + TIME_DELTA,
-        continuation=0.01))
+        timeout=delay + TIME_DELTA,
+        stop_condition=None)
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     print(f"Data : {data}")
@@ -49,8 +50,8 @@ def test_response_B():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=delay - TIME_DELTA,
-        continuation=0.01))
+        timeout=delay - TIME_DELTA,
+        stop_condition=None)
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     sleep(2*TIME_DELTA)
@@ -72,8 +73,8 @@ def test_continuation():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=delay_response + TIME_DELTA,
-        continuation=delay_continuation + TIME_DELTA),
+        timeout=Timeout(response=delay_response + TIME_DELTA, continuation=delay_continuation + TIME_DELTA),
+        stop_condition=None,
         transport=IP.Protocol.UDP)
     client.write(encode_sequences([
         (sequence_response, delay_response),
@@ -93,8 +94,9 @@ def test_too_big():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=delay + TIME_DELTA,
+        timeout=Timeout(response=delay + TIME_DELTA,
         continuation=TIME_DELTA),
+        stop_condition=None,
         transport=IP.Protocol.UDP)
     client.write(encode_sequences([
         (sequence, delay)]))
@@ -111,8 +113,9 @@ def test_length_valid():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=delay + TIME_DELTA,
+        timeout=Timeout(response=delay + TIME_DELTA,
         continuation=TIME_DELTA),
+        stop_condition=None,
         transport=IP.Protocol.UDP,
         buffer_size=len(sequence))
     client.write(encode_sequences([
@@ -135,7 +138,8 @@ def test_termination():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Termination(termination),# | Timeout(response=1, continuation=1),
+        timeout=Timeout(response=delay+TIME_DELTA,continuation=delay+TIME_DELTA),
+        stop_condition=Termination(termination),
         transport=IP.Protocol.UDP)
     client.write(encode_sequences([
         (sequence, delay)]))

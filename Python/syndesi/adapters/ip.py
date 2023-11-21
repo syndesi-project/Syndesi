@@ -2,15 +2,21 @@ import socket
 from enum import Enum
 from .iadapter import IAdapter
 from ..tools.types import assert_byte_instance
-from .stop_conditions import Timeout
+from .timeout import Timeout
 from threading import Thread
 from .timed_queue import TimedQueue
+from typing import Union
 
 DEFAULT_RESPONSE_TIMEOUT = 1
 DEFAULT_CONTINUATION_TIMEOUT = 1e-3
 DEFAULT_TOTAL_TIMEOUT = 5
 
 DEFAULT_BUFFER_SIZE = 1024
+
+DEFAULT_TIMEOUT = Timeout(
+                    response=DEFAULT_RESPONSE_TIMEOUT,
+                    continuation=DEFAULT_CONTINUATION_TIMEOUT,
+                    total=DEFAULT_TOTAL_TIMEOUT)
 
 class IP(IAdapter):
     class Protocol(Enum):
@@ -20,10 +26,8 @@ class IP(IAdapter):
                 descriptor : str,
                 port = None,
                 transport : Protocol = Protocol.TCP,
-                stop_condition=Timeout(
-                    response=DEFAULT_RESPONSE_TIMEOUT,
-                    continuation=DEFAULT_CONTINUATION_TIMEOUT,
-                    total=DEFAULT_TOTAL_TIMEOUT),
+                timeout : Union[Timeout, float] = DEFAULT_TIMEOUT,
+                stop_condition=None,
                 buffer_size : int = DEFAULT_BUFFER_SIZE):
         """
         IP stack adapter
@@ -37,7 +41,7 @@ class IP(IAdapter):
         transport : Transport
             Transport protocol, TCP or UDP
         """
-        super().__init__()
+        super().__init__(timeout=timeout, stop_condition=stop_condition)
         self._transport = transport
         if transport == self.Protocol.TCP:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -48,7 +52,6 @@ class IP(IAdapter):
 
         self._ip = descriptor # TODO : update this
         self._port = port
-        self._stop_condition = stop_condition
         self._buffer_size = buffer_size
 
     def set_default_port(self, port):

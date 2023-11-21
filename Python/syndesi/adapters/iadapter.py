@@ -25,9 +25,11 @@ from .timed_queue import TimedQueue
 from threading import Thread
 from typing import Union
 from enum import Enum
-from .stop_conditions import StopCondition, Timeout
+from .stop_conditions import StopCondition
+from .timeout import Timeout
 from time import time
 from typing import Union
+from ..tools.types import is_number
 
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
 DEFAUT_STOP_CONDITION = None
@@ -39,7 +41,14 @@ class IAdapter(ABC):
     def __init__(self,
         timeout : Union[float, Timeout] = DEFAULT_TIMEOUT,
         stop_condition : Union[StopCondition, None] = DEFAUT_STOP_CONDITION):
-        self._timeout = timeout
+
+        if is_number(timeout):
+            self._timeout = Timeout(response=timeout, continuation=100e-3)
+        elif isinstance(timeout, Timeout):
+            self._timeout = timeout
+        else:
+            raise ValueError(f"Invalid timeout type : {type(timeout)}")
+
         self._stop_condition = stop_condition
         self._read_queue = TimedQueue()
         self._thread : Union[Thread, None] = None
@@ -94,12 +103,15 @@ class IAdapter(ABC):
 
         self._start_thread()
 
-        last_read = time()
-        timeout = self._stop_condition.initiate_read()
+        timeout = self._timeout.initiate_read()
+        if self._stop_condition is not None:
+            self._stop_condition.initiate_read()
 
         # Start with the deferred buffer
         if len(self._deferred_buffer) > 0:
+            print(f"Start with deferred buffer : {self._deferred_buffer}")
             stop, output, self._deferred_buffer = self._stop_condition.evaluate(self._deferred_buffer)
+            print(f"Output : {output}, deferred buffer : {self._deferred_buffer}")
         else:
             stop = False
             output = b''
@@ -108,13 +120,25 @@ class IAdapter(ABC):
             while True:
                 (timestamp, fragment) = self._read_queue.get(timeout)
                 # 1) Evaluate the timeout
-                
-
+                if fragment is None:
+                    print(f"Timeout reached while reading the queue")
+                    break # Timeout is reached while trying to read the queue
+                if self._timeout is not None:
+                    stop, timeout = self._timeout.evaluate(timestamp)
+                    if stop:
+                        print("Timeout reached")
+                        break
 
                 # 2) Evaluate the stop condition
-
-                stop, kept_fragment, self._deferred_buffer = self._stop_condition.evaluate(fragment)
-                output += kept_fragment
+                if self._stop_condition is not None:
+                    print(f"Evaluate fragment : {fragment}")
+                    stop, kept_fragment, self._deferred_buffer = self._stop_condition.evaluate(fragment)
+                    print(f"Kept fragment : {kept_fragment}, deferred buffer : {self._deferred_buffer}")
+                    if stop:
+                        print(f"Stop condition reached : {kept_fragment}, {self._deferred_buffer}")
+                else:
+                    kept_fragment = fragment
+                output += kept_fragment 
                 if stop:
                     break
 

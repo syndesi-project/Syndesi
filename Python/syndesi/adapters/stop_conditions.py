@@ -113,7 +113,7 @@ class Termination(StopCondition):
             termination_index = len(fragment) - b_in_a
             deferred_from = termination_index
 
-        return stop, None, fragment[:termination_index], fragment[deferred_from:]
+        return stop, fragment[:termination_index], fragment[deferred_from:]
         
     def recover_stored_fragment(self):
         """
@@ -152,4 +152,4 @@ class Length(StopCondition):
         deferred_fragment = data[remaining_bytes:]
         self._counter += len(kept_fragment)
         remaining_bytes = self._N - self._counter
-        return remaining_bytes == 0, None, kept_fragment, deferred_fragment
+        return remaining_bytes == 0, kept_fragment, deferred_fragment

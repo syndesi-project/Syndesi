@@ -2,11 +2,17 @@ from .iadapter import IAdapter
 import serial
 from ..tools.types import assert_byte_instance
 from .stop_conditions import *
+from .timeout import Timeout
 from .timed_queue import TimedQueue
 from threading import Thread
+from typing import Union
 
 class SerialPort(IAdapter):
-    def __init__(self, port : str, baudrate : int, stop_condition : StopCondition):
+    def __init__(self,  
+                port : str,
+                baudrate : int,
+                timeout : Union[Timeout, float],
+                stop_condition : StopCondition = None):
         """
         Serial communication adapter
 
@@ -15,7 +21,7 @@ class SerialPort(IAdapter):
         port : str
             Serial port (COMx or ttyACMx)
         """
-        super().__init__(stop_condition)
+        super().__init__(timeout=timeout, stop_condition=stop_condition)
         self._port = serial.Serial(port=port, baudrate=baudrate)
         if self._port.isOpen():
             self._status = self.Status.CONNECTED

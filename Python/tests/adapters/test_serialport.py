@@ -26,8 +26,9 @@ def test_response_A():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        stop_condition=Timeout(response=SEQUENCE[0][0] + TIME_DELTA,
-        continuation=0.01))
+        timeout=1,
+        stop_condition=None#Timeout(response=SEQUENCE[0][0] + TIME_DELTA,continuation=0.01)
+        )
     client.write(CLIENT_SEQUENCE)
     data = client.read()
     print(f"Data : {data}")

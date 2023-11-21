@@ -51,17 +51,13 @@ class Timeout():
             None is there's no timeout
         """
         print(f"Initiate read")
-        if self._start_time is None:
-            # It hasn't been set by an other StopCondition instance
-            self._start_time = time()
         self._start_time = time()
         self._state = self.State.WAIT_FOR_RESPONSE
         self._last_eval_time = None
         return self._response
 
-    def evaluate(self, fragment: bytes) -> Tuple[bool, Union[float, None]]:
-        if self._eval_time is None:
-            self._eval_time = time()
+    def evaluate(self, timestamp : float) -> Tuple[bool, Union[float, None]]:
+        self._eval_time = time()
         stop = False
 
         # Check total
@@ -98,10 +94,4 @@ class Timeout():
             else:
                 timeout = None
 
-            kept_fragment = fragment
-            deferred_fragment = b''
-        else:
-            kept_fragment = b''
-            deferred_fragment = fragment
-
-        return stop, timeout, kept_fragment, deferred_fragment
+        return stop, timeout
