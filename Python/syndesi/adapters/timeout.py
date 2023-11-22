@@ -8,11 +8,15 @@ from time import time
 
 class Timeout():
     DEFAULT_CONTINUATION_TIMEOUT = 5e-3
-    class State(Enum):
+
+    class DataStrategy(Enum):
+        DISCARD = 0
+        RETAIN = 1
+    class _State(Enum):
         WAIT_FOR_RESPONSE = 0
         CONTINUATION = 1
 
-    def __init__(self, response, continuation=DEFAULT_CONTINUATION_TIMEOUT, total=None) -> None:
+    def __init__(self, response, continuation=DEFAULT_CONTINUATION_TIMEOUT, total=None, data_strategy=DataStrategy.DISCARD) -> None:
         """
         A class to manage timeouts
 
@@ -30,13 +34,18 @@ class Timeout():
         response : float
         continuation : float
         total : float
+        data_strategy : Mode
+            Strategy of data processing upon timeout event.
+            - DataStrategy.DISCARD : All of the data received after a timeout event is discarded
+            - DataStrategy.RETAIN : All of the data received after a timeout event is retained and
+                will be read on the next read() call
         """
         super().__init__()
-        self._state = self.State.WAIT_FOR_RESPONSE
+        self._state = self._State.WAIT_FOR_RESPONSE
         self._response = response
         self._continuation = continuation
         self._total = total
-
+        self._data_strategy = data_strategy
 
     def initiate_read(self) -> Union[float, None]:
         """
@@ -47,12 +56,17 @@ class Timeout():
 
         Returns
         -------
+        stop : bool
+            Timeout is reached
+        keep : bool
+            True if data read up to this point should be kept
+            False if data should be discarded
         timeout : float or None
             None is there's no timeout
         """
         print(f"Initiate read")
         self._start_time = time()
-        self._state = self.State.WAIT_FOR_RESPONSE
+        self._state = self._State.WAIT_FOR_RESPONSE
         self._last_eval_time = None
         return self._response
 
@@ -65,19 +79,19 @@ class Timeout():
             if self._eval_time - self._start_time >= self._total:
                 stop = True
         # Check continuation
-        if self._continuation is not None and self._state == self.State.CONTINUATION and self._last_eval_time is not None:
+        if self._continuation is not None and self._state == self._State.CONTINUATION and self._last_eval_time is not None:
             if self._eval_time - self._last_eval_time >= self._continuation:
                 stop = True
         
         # Check response time
-        if self._response is not None and self._state == self.State.WAIT_FOR_RESPONSE:
+        if self._response is not None and self._state == self._State.WAIT_FOR_RESPONSE:
             response_time = self._eval_time - self._start_time
             if response_time >= self._response:
                 stop = True
 
         # Update the state
-        if self._state == self.State.WAIT_FOR_RESPONSE:
-            self._state = self.State.CONTINUATION
+        if self._state == self._State.WAIT_FOR_RESPONSE:
+            self._state = self._State.CONTINUATION
 
         if not stop:
             self._last_eval_time = self._eval_time
@@ -94,4 +108,4 @@ class Timeout():
             else:
                 timeout = None
 
-        return stop, timeout
+        return stop, self._data_strategy == self.DataStrategy.DISCARD, timeout

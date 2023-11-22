@@ -161,7 +161,7 @@ def test_termination_partial():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Termination(termination),# | Timeout(response=1, continuation=1),
+        stop_condition=Termination(termination),
         transport=IP.Protocol.UDP)
     client.write(encode_sequences([
         (A + termination[:1], delay),

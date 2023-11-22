@@ -77,3 +77,11 @@ The Syndesi Device Protocol is a light-weight and easy interface to send / recei
 06.09.2023 : bytearray is changed to bytes everywhere
 
 23.10.2023 : continuation timeout isn't suitable for TCP, but it can work for UDP as a UDP server can send multiple response packets after a single packet from the client. This can be handled in different ways by firewalls. Thankfull that's none of our business so continuation timeout can be implemented
+
+22.11.2023 : The timeout and stop conditions strategy is a bit complicated :
+
+- What if we receive the message b'ACK\nNCK\n' using a termination stop condition but we receive b'ACK', then a timeout, then b'\nNCK\n' ?
+  - Should the first part be kept ? should an error be raised at the timeout because nothing was read ?
+    - Two kinds of timeouts ?
+      - One where "we read as much as possible during the available time"
+      - One where "we expect a response within X otherwise it's trash" 

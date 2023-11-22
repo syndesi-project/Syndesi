@@ -55,7 +55,7 @@ class IAdapter(ABC):
         self._status = self.Status.DISCONNECTED
         # Buffer for data that has been pulled from the queue but
         # not used because of termination or length stop condition
-        self._deferred_buffer = b''
+        self._previous_read_buffer = b''
 
     def flushRead(self):
         """
@@ -107,11 +107,13 @@ class IAdapter(ABC):
         if self._stop_condition is not None:
             self._stop_condition.initiate_read()
 
+        deferred_buffer = b''
+
         # Start with the deferred buffer
-        if len(self._deferred_buffer) > 0:
-            print(f"Start with deferred buffer : {self._deferred_buffer}")
-            stop, output, self._deferred_buffer = self._stop_condition.evaluate(self._deferred_buffer)
-            print(f"Output : {output}, deferred buffer : {self._deferred_buffer}")
+        if len(self._previous_read_buffer) > 0:
+            print(f"Start with deferred buffer : {self._previous_read_buffer}")
+            stop, output, self._previous_read_buffer = self._stop_condition.evaluate(self._previous_read_buffer)
+            print(f"Output : {output}, deferred buffer : {self._previous_read_buffer}")
         else:
             stop = False
             output = b''
@@ -124,21 +126,23 @@ class IAdapter(ABC):
                     print(f"Timeout reached while reading the queue")
                     break # Timeout is reached while trying to read the queue
                 if self._timeout is not None:
-                    stop, timeout = self._timeout.evaluate(timestamp)
+                    stop, keep, timeout = self._timeout.evaluate(timestamp)
                     if stop:
                         print("Timeout reached")
-                        break
+                        if keep:
+                            self._previous_read_buffer = deferred_buffer
 
                 # 2) Evaluate the stop condition
                 if self._stop_condition is not None:
                     print(f"Evaluate fragment : {fragment}")
-                    stop, kept_fragment, self._deferred_buffer = self._stop_condition.evaluate(fragment)
-                    print(f"Kept fragment : {kept_fragment}, deferred buffer : {self._deferred_buffer}")
+                    stop, kept_fragment, deferred_buffer = self._stop_condition.evaluate(fragment)
+                    print(f"Kept fragment : {kept_fragment}, deferred buffer : {deferred_buffer}")
                     if stop:
-                        print(f"Stop condition reached : {kept_fragment}, {self._deferred_buffer}")
+                        self._previous_read_buffer = deferred_buffer
+                        print(f"Stop condition reached")
                 else:
                     kept_fragment = fragment
-                output += kept_fragment 
+                output += kept_fragment
                 if stop:
                     break
 
@@ -151,7 +155,7 @@ class IAdapter(ABC):
                 # if timeout is not None and time_delta > timeout:
                 #     break
                 
-                
+        print(f"Return {output}")
         return output
 
     def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:
