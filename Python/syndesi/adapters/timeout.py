@@ -10,8 +10,9 @@ class Timeout():
     DEFAULT_CONTINUATION_TIMEOUT = 5e-3
 
     class DataStrategy(Enum):
-        DISCARD = 0
-        RETAIN = 1
+        DISCARD = 0 # If a timeout is reached, everything is trashed
+        RETURN = 1 # If a timeout is reached, data is returned (timeout acts as a stop condition)
+        STORE = 2 # If a timeout is reached, data is stored and returned on the next read() call
     class _State(Enum):
         WAIT_FOR_RESPONSE = 0
         CONTINUATION = 1
@@ -93,6 +94,8 @@ class Timeout():
         if self._state == self._State.WAIT_FOR_RESPONSE:
             self._state = self._State.CONTINUATION
 
+        timeout = None
+
         if not stop:
             self._last_eval_time = self._eval_time
             self._eval_time = None
@@ -105,7 +108,6 @@ class Timeout():
                 timeout = time() - (self._start_time + self._total)
             elif self._continuation is not None:
                 timeout = self._continuation
-            else:
-                timeout = None
+                
 
         return stop, self._data_strategy == self.DataStrategy.DISCARD, timeout

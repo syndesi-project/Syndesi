@@ -120,41 +120,48 @@ class IAdapter(ABC):
         # If everything is used up, read the queue
         if not stop:
             while True:
+                print(f"Read the queue ({timeout:.3f})...")
                 (timestamp, fragment) = self._read_queue.get(timeout)
                 # 1) Evaluate the timeout
-                if fragment is None:
+                if timestamp is None:
+                    # Stop directly
                     print(f"Timeout reached while reading the queue")
-                    break # Timeout is reached while trying to read the queue
+                    print(f"Output buffer : {output}")
+                    break
+                
+                # Add the deferred buffer
+                if len(deferred_buffer) > 0:
+                    fragment = deferred_buffer + fragment
+
                 if self._timeout is not None:
                     stop, keep, timeout = self._timeout.evaluate(timestamp)
                     if stop:
                         print("Timeout reached")
-                        if keep:
-                            self._previous_read_buffer = deferred_buffer
+                        if self._timeout._data_strategy == Timeout.DataStrategy.DISCARD:
+                            # Trash everything
+                            output = b''
+                        elif self._timeout._data_strategy == Timeout.DataStrategy.RETURN:
+                            # Return the data that has been read up to this point
+                            output += fragment
+                        elif self._timeout._data_strategy == Timeout.DataStrategy.STORE:
+                            # Store the data
+                            self._previous_read_buffer = output
+                            output = b''
+                        break
 
                 # 2) Evaluate the stop condition
                 if self._stop_condition is not None:
                     print(f"Evaluate fragment : {fragment}")
                     stop, kept_fragment, deferred_buffer = self._stop_condition.evaluate(fragment)
-                    print(f"Kept fragment : {kept_fragment}, deferred buffer : {deferred_buffer}")
+                    print(f"stop : {stop}, Kept fragment : {kept_fragment}, deferred buffer : {deferred_buffer}")
+                    output += kept_fragment
                     if stop:
                         self._previous_read_buffer = deferred_buffer
                         print(f"Stop condition reached")
                 else:
-                    kept_fragment = fragment
-                output += kept_fragment
+                    output += fragment
                 if stop:
                     break
-
-                # if len(self._deferred_buffer) > 0:
-                #     fragment = self._deferred_buffer + fragment
-                # if fragment is None:
-                #     break # Timeout is reached while trying to read the queue
-                # time_delta = timestamp - last_read
-                # last_read = timestamp
-                # if timeout is not None and time_delta > timeout:
-                #     break
-                
         print(f"Return {output}")
         return output
 

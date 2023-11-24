@@ -161,6 +161,7 @@ def test_termination_partial():
     client = IP(
         HOST,
         port=PORT,
+        timeout=Timeout(response=delay+TIME_DELTA,continuation=delay+TIME_DELTA),
         stop_condition=Termination(termination),
         transport=IP.Protocol.UDP)
     client.write(encode_sequences([
@@ -200,7 +201,8 @@ def test_length_short_timeout():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Length(10) | Timeout(response=delay - TIME_DELTA)
+        timeout=Timeout(response=delay - TIME_DELTA),
+        stop_condition=Length(10),
         )
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
@@ -217,7 +219,8 @@ def test_length_long_timeout():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Length(10) | Timeout(response=delay + TIME_DELTA)
+        timeout=Timeout(response=delay + TIME_DELTA, data_strategy=Timeout.DataStrategy.RETURN),
+        stop_condition=Length(10),
         )
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
@@ -235,7 +238,8 @@ def test_termination_long_timeout():
     client = IP(
         HOST,
         port=PORT,
-        stop_condition=Timeout(response=delay + TIME_DELTA) | Termination(termination)
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay+TIME_DELTA),
+        stop_condition=Termination(termination)
         )
     client.write(encode_sequences([(A, delay), (B, delay)]))
     data = client.read()
