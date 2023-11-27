@@ -26,10 +26,11 @@ from threading import Thread
 from typing import Union
 from enum import Enum
 from .stop_conditions import StopCondition
-from .timeout import Timeout
+from .timeout import Timeout, TimeoutException
 from time import time
 from typing import Union
 from ..tools.types import is_number
+import logging
 
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
 DEFAUT_STOP_CONDITION = None
@@ -127,18 +128,22 @@ class IAdapter(ABC):
                 stop, timeout = self._timeout.evaluate(timestamp)
                 if stop:
                     print(f"Timeout reached ({'stop' if stop else 'fragment'})")
-                    if self._timeout._data_strategy == Timeout.DataStrategy.DISCARD:
+                    data_strategy, origin = self._timeout.dataStrategy()
+                    print(f"Data strategy : {data_strategy}")
+                    if data_strategy == Timeout.DataStrategy.DISCARD:
                         # Trash everything
                         output = b''
-                    elif self._timeout._data_strategy == Timeout.DataStrategy.RETURN:
+                    elif data_strategy == Timeout.DataStrategy.RETURN:
                         # Return the data that has been read up to this point
                         output += deferred_buffer
                         if fragment is not None:
                             output += fragment
-                    elif self._timeout._data_strategy == Timeout.DataStrategy.STORE:
+                    elif data_strategy == Timeout.DataStrategy.STORE:
                         # Store the data
                         self._previous_read_buffer = output
                         output = b''
+                    elif data_strategy == Timeout.DataStrategy.ERROR:
+                        raise TimeoutException(origin)
                     break
                 
                 

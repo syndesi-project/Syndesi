@@ -1,7 +1,7 @@
 from time import sleep
 from syndesi.adapters import IP
 from syndesi.adapters.stop_conditions import *
-from syndesi.adapters.timeout import Timeout
+from syndesi.adapters.timeout import Timeout, TimeoutException
 import subprocess
 import pathlib
 server_file = pathlib.Path(__file__).parent / 'response_server.py'
@@ -326,4 +326,90 @@ def test_return_timeout_long():
     assert data == A
     data = client.read()
     assert data == B
+    client.close()
+
+# Test on_response='discard'
+def test_response_discard():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay-TIME_DELTA, on_continuation='discard'),
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
+        )
+    client.write(encode_sequences([(A, delay), (termination + B, delay)]))
+    data = client.read()
+    assert data == b''
+    client.close()
+
+# Test on_response='return'
+def test_response_return():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay-TIME_DELTA, on_continuation='return'),
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
+        )
+    client.write(encode_sequences([(A, delay), (termination + B, delay)]))
+    data = client.read()
+    assert data == A
+    client.close()
+
+# Test on_response='store'
+def test_response_store():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay-TIME_DELTA, on_continuation='store'),
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
+        )
+    client.write(encode_sequences([(A, delay), (termination + B, delay)]))
+    data = client.read()
+    assert data == b''
+    data = client.read()
+    assert data == A
+    client.close()
+
+# Test on_response='error'
+def test_response_error():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay-TIME_DELTA, on_continuation='error'),
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
+        )
+    client.write(encode_sequences([(A, delay), (termination + B, delay)]))
+    try:
+        data = client.read()
+    except TimeoutException as te:
+        assert te._type == Timeout.TimeoutType.CONTINUATION
+    else:
+        raise RuntimeError("No exception raised")
     client.close()
