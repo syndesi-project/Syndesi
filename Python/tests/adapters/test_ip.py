@@ -21,7 +21,6 @@ TIME_DELTA = 5e-3
 
 # Test response timeout
 # long enough to catch the first sequence
-
 def test_response_A():
     subprocess.Popen(['python', server_file, '-t', 'TCP'])
     sleep(0.5)
@@ -35,9 +34,8 @@ def test_response_A():
         stop_condition=None)
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
-    print(f"Data : {data}")
-    client.close()
     assert data == sequence
+    client.close()
 
 # Test response timeout
 # not long enough to catch the first sequence
@@ -209,7 +207,7 @@ def test_length_short_timeout():
     assert data == b''
     client.close()
 
-# Test length with short timeout
+# Test length with long timeout
 def test_length_long_timeout():
     subprocess.Popen(['python', server_file, '-t', 'TCP'])
     sleep(0.5)
@@ -219,7 +217,7 @@ def test_length_long_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA, data_strategy=Timeout.DataStrategy.RETURN),
+        timeout=Timeout(response=delay + TIME_DELTA, on_response='discard'),
         stop_condition=Length(10),
         )
     client.write(encode_sequences([(sequence, delay)]))
@@ -227,9 +225,9 @@ def test_length_long_timeout():
     assert data == sequence[:N]
     client.close()
 
-# Test length with short timeout
+# Test termination with long timeout
 def test_termination_long_timeout():
-    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -239,10 +237,93 @@ def test_termination_long_timeout():
         HOST,
         port=PORT,
         timeout=Timeout(response=delay + TIME_DELTA, continuation=delay+TIME_DELTA),
-        stop_condition=Termination(termination)
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
         )
-    client.write(encode_sequences([(A, delay), (B, delay)]))
+    client.write(encode_sequences([(A, delay), (termination + B, delay)]))
     data = client.read()
     assert data == A
     client.close()
 
+# Test discard timeout (too short)
+def test_discard_timeout_short():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay-TIME_DELTA, on_continuation='discard'),
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
+        )
+    client.write(encode_sequences([(A, delay), (termination + B, delay)]))
+    data = client.read()
+    assert data == b''
+    client.close()
+
+# Test discard timeout (long enough)
+def test_discard_timeout_long():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay+TIME_DELTA, on_continuation='discard'),
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
+        )
+    client.write(encode_sequences([(A, delay), (termination + B, delay)]))
+    data = client.read()
+    assert data == A
+    client.close()
+
+
+# Test return timeout (too short)
+def test_return_timeout_short():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay-TIME_DELTA, on_continuation='return'),
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
+        )
+    client.write(encode_sequences([(A, delay), (termination + B, delay)]))
+    data = client.read()
+    assert data == A
+    client.close()
+
+# Test return timeout (long enough)
+def test_return_timeout_long():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay+TIME_DELTA, on_continuation='return'),
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
+        )
+    client.write(encode_sequences([(A, delay), (termination + B, delay)]))
+    data = client.read()
+    assert data == A
+    data = client.read()
+    assert data == B
+    client.close()

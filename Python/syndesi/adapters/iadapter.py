@@ -122,36 +122,35 @@ class IAdapter(ABC):
             while True:
                 print(f"Read the queue ({timeout:.3f})...")
                 (timestamp, fragment) = self._read_queue.get(timeout)
+
                 # 1) Evaluate the timeout
-                if timestamp is None:
-                    # Stop directly
-                    print(f"Timeout reached while reading the queue")
-                    print(f"Output buffer : {output}")
+                stop, timeout = self._timeout.evaluate(timestamp)
+                if stop:
+                    print(f"Timeout reached ({'stop' if stop else 'fragment'})")
+                    if self._timeout._data_strategy == Timeout.DataStrategy.DISCARD:
+                        # Trash everything
+                        output = b''
+                    elif self._timeout._data_strategy == Timeout.DataStrategy.RETURN:
+                        # Return the data that has been read up to this point
+                        output += deferred_buffer
+                        if fragment is not None:
+                            output += fragment
+                    elif self._timeout._data_strategy == Timeout.DataStrategy.STORE:
+                        # Store the data
+                        self._previous_read_buffer = output
+                        output = b''
                     break
+                
                 
                 # Add the deferred buffer
                 if len(deferred_buffer) > 0:
                     fragment = deferred_buffer + fragment
-
-                if self._timeout is not None:
-                    stop, keep, timeout = self._timeout.evaluate(timestamp)
-                    if stop:
-                        print("Timeout reached")
-                        if self._timeout._data_strategy == Timeout.DataStrategy.DISCARD:
-                            # Trash everything
-                            output = b''
-                        elif self._timeout._data_strategy == Timeout.DataStrategy.RETURN:
-                            # Return the data that has been read up to this point
-                            output += fragment
-                        elif self._timeout._data_strategy == Timeout.DataStrategy.STORE:
-                            # Store the data
-                            self._previous_read_buffer = output
-                            output = b''
-                        break
+                if fragment is not None:
+                    print(f"Evaluate fragment : {fragment} ({timestamp-self._timeout._start_time:.3f})")
 
                 # 2) Evaluate the stop condition
                 if self._stop_condition is not None:
-                    print(f"Evaluate fragment : {fragment}")
+                    
                     stop, kept_fragment, deferred_buffer = self._stop_condition.evaluate(fragment)
                     print(f"stop : {stop}, Kept fragment : {kept_fragment}, deferred buffer : {deferred_buffer}")
                     output += kept_fragment
