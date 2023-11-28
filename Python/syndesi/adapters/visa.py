@@ -39,7 +39,7 @@ class VISA(IAdapter):
     def write(self, data : bytes):
         assert_byte_instance(data)
         self._inst.write_raw(data)
-    
+
     def read(self) -> bytes:
         return self._inst.read_raw()
 
@@ -51,4 +51,5 @@ class VISA(IAdapter):
         - read
         """
         # TODO : implement timeouts
-        return self._inst.query(data.encode('ASCII'))
+        self.write(data)
+        return self.read()
