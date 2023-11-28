@@ -31,7 +31,6 @@ def test_response_A():
         )
     client.write(CLIENT_SEQUENCE)
     data = client.read()
-    print(f"Data : {data}")
     while True:
         if b'Z' in client.read(timeout=3):
             break

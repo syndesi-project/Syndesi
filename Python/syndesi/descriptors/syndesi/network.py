@@ -23,7 +23,6 @@ class Network:
         """
 
         PSDU = requestFrame.data()
-        #print(f"Sending frame {PSDU}")
 
         # TODO : Add protocol check (only IP for now)
         # TODO : Change IP address

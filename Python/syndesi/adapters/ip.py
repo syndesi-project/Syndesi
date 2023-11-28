@@ -6,6 +6,7 @@ from .timeout import Timeout
 from threading import Thread
 from .timed_queue import TimedQueue
 from typing import Union
+import logging
 
 DEFAULT_RESPONSE_TIMEOUT = 1
 DEFAULT_CONTINUATION_TIMEOUT = 1e-3
@@ -86,7 +87,7 @@ class IP(IAdapter):
             try:
                 payload = socket.recv(self._buffer_size)
                 if len(payload) == self._buffer_size and self._transport == self.Protocol.UDP:
-                    print(f"Warning, inbound UDP data may have been lost (max buffer size attained)")
+                    logging.warning("Warning, inbound UDP data may have been lost (max buffer size attained)")
             except OSError:
                 break
             if not payload:

@@ -104,7 +104,7 @@ class IAdapter(ABC):
 
         self._start_thread()
 
-        timeout = self._timeout.initiate_read()
+        timeout = self._timeout.initiate_read(len(self._previous_read_buffer) > 0)
         if self._stop_condition is not None:
             self._stop_condition.initiate_read()
 
@@ -112,24 +112,19 @@ class IAdapter(ABC):
 
         # Start with the deferred buffer
         if len(self._previous_read_buffer) > 0:
-            print(f"Start with deferred buffer : {self._previous_read_buffer}")
             stop, output, self._previous_read_buffer = self._stop_condition.evaluate(self._previous_read_buffer)
-            print(f"Output : {output}, deferred buffer : {self._previous_read_buffer}")
         else:
             stop = False
             output = b''
         # If everything is used up, read the queue
         if not stop:
             while True:
-                print(f"Read the queue ({timeout:.3f})...")
                 (timestamp, fragment) = self._read_queue.get(timeout)
 
                 # 1) Evaluate the timeout
                 stop, timeout = self._timeout.evaluate(timestamp)
                 if stop:
-                    print(f"Timeout reached ({'stop' if stop else 'fragment'})")
                     data_strategy, origin = self._timeout.dataStrategy()
-                    print(f"Data strategy : {data_strategy}")
                     if data_strategy == Timeout.DataStrategy.DISCARD:
                         # Trash everything
                         output = b''
@@ -150,23 +145,16 @@ class IAdapter(ABC):
                 # Add the deferred buffer
                 if len(deferred_buffer) > 0:
                     fragment = deferred_buffer + fragment
-                if fragment is not None:
-                    print(f"Evaluate fragment : {fragment} ({timestamp-self._timeout._start_time:.3f})")
-
                 # 2) Evaluate the stop condition
                 if self._stop_condition is not None:
-                    
                     stop, kept_fragment, deferred_buffer = self._stop_condition.evaluate(fragment)
-                    print(f"stop : {stop}, Kept fragment : {kept_fragment}, deferred buffer : {deferred_buffer}")
                     output += kept_fragment
                     if stop:
                         self._previous_read_buffer = deferred_buffer
-                        print(f"Stop condition reached")
                 else:
                     output += fragment
                 if stop:
                     break
-        print(f"Return {output}")
         return output
 
     def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:

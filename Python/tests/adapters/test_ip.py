@@ -328,8 +328,53 @@ def test_return_timeout_long():
     assert data == B
     client.close()
 
-# Test on_response='discard'
-def test_response_discard():
+# Test on_response=whatever except 'error'
+def test_response_no_error():
+    for r in ['discard', 'return', 'store']:
+        subprocess.Popen(['python', server_file, '-t', 'UDP'])
+        sleep(0.5)
+        A = b'ABCDEFGH'
+        B = b'IJKLMNOPQKRSTUVWXYZ'
+        termination = b'\n'
+        delay = 0.5
+        client = IP(
+            HOST,
+            port=PORT,
+            timeout=Timeout(response=delay - TIME_DELTA, on_response=r),
+            stop_condition=Termination(termination),
+            transport=IP.Protocol.UDP
+            )
+        client.write(encode_sequences([(A, delay)]))
+        data = client.read()
+        assert data == b''
+        client.close()
+
+# Test on_response='error'
+def test_response_error():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay - TIME_DELTA, on_response='error'),
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
+        )
+    client.write(encode_sequences([(A, delay)]))
+    try:
+        client.read()
+    except TimeoutException as te:
+        assert te._type == Timeout.TimeoutType.RESPONSE
+    else:
+        raise RuntimeError("No exception raised")
+    client.close()
+
+# Test on_continuation='discard'
+def test_continuation_discard():
     subprocess.Popen(['python', server_file, '-t', 'UDP'])
     sleep(0.5)
     A = b'ABCDEFGH'
@@ -348,8 +393,8 @@ def test_response_discard():
     assert data == b''
     client.close()
 
-# Test on_response='return'
-def test_response_return():
+# Test on_continuation='return'
+def test_continuation_return():
     subprocess.Popen(['python', server_file, '-t', 'UDP'])
     sleep(0.5)
     A = b'ABCDEFGH'
@@ -368,8 +413,8 @@ def test_response_return():
     assert data == A
     client.close()
 
-# Test on_response='store'
-def test_response_store():
+# Test on_continuation='store'
+def test_continuation_store():
     subprocess.Popen(['python', server_file, '-t', 'UDP'])
     sleep(0.5)
     A = b'ABCDEFGH'
@@ -390,8 +435,8 @@ def test_response_store():
     assert data == A
     client.close()
 
-# Test on_response='error'
-def test_response_error():
+# Test on_continuation='error'
+def test_continuation_error():
     subprocess.Popen(['python', server_file, '-t', 'UDP'])
     sleep(0.5)
     A = b'ABCDEFGH'

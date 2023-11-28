@@ -80,7 +80,7 @@ class Timeout():
         self._queue_timeout_type = self.TimeoutType.RESPONSE
         self._last_data_strategy_origin = self.TimeoutType.RESPONSE
 
-    def initiate_read(self) -> Union[float, None]:
+    def initiate_read(self, deferred_buffer : bool = False) -> Union[float, None]:
         """
         Initiate a read sequence.
 
@@ -97,15 +97,20 @@ class Timeout():
         timeout : float or None
             None is there's no timeout
         """
-        print(f"Initiate read")
         self._start_time = time()
-        self._state = self._State.WAIT_FOR_RESPONSE
-        self._queue_timeout_type = self.TimeoutType.CONTINUATION
+        if deferred_buffer:
+            self._state = self._State.CONTINUATION
+            self._data_strategy = self._on_continuation
+            self._queue_timeout_type = self.TimeoutType.CONTINUATION
+        else:
+            self._state = self._State.WAIT_FOR_RESPONSE
+            self._data_strategy = self._on_response
+            self._queue_timeout_type = self.TimeoutType.RESPONSE
         self._last_timestamp = None
+        
         return self._response
 
     def evaluate(self, timestamp : float) -> Tuple[bool, Union[float, None]]:
-        #self._eval_time = time()
         stop = False
         self._data_strategy = None
 
