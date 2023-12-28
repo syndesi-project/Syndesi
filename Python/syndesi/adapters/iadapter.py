@@ -125,19 +125,19 @@ class IAdapter(ABC):
                 stop, timeout = self._timeout.evaluate(timestamp)
                 if stop:
                     data_strategy, origin = self._timeout.dataStrategy()
-                    if data_strategy == Timeout.DataStrategy.DISCARD:
+                    if data_strategy == Timeout.OnTimeoutStrategy.DISCARD:
                         # Trash everything
                         output = b''
-                    elif data_strategy == Timeout.DataStrategy.RETURN:
+                    elif data_strategy == Timeout.OnTimeoutStrategy.RETURN:
                         # Return the data that has been read up to this point
                         output += deferred_buffer
                         if fragment is not None:
                             output += fragment
-                    elif data_strategy == Timeout.DataStrategy.STORE:
+                    elif data_strategy == Timeout.OnTimeoutStrategy.STORE:
                         # Store the data
                         self._previous_read_buffer = output
                         output = b''
-                    elif data_strategy == Timeout.DataStrategy.ERROR:
+                    elif data_strategy == Timeout.OnTimeoutStrategy.ERROR:
                         raise TimeoutException(origin)
                     break
                 

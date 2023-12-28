@@ -8,24 +8,19 @@ from time import time
 
 class Timeout():
     DEFAULT_CONTINUATION_TIMEOUT = 5e-3
+    DEFAULT_TOTAL_TIMEOUT = None
 
-    class DataStrategy(Enum):
-        DISCARD = 0 # If a timeout is reached, everything is trashed
-        RETURN = 1 # If a timeout is reached, data is returned (timeout acts as a stop condition)
-        STORE = 2 # If a timeout is reached, data is stored and returned on the next read() call
-        ERROR = 3 # If a timeout is reached, raise an error
-
-    _dataStrategyMap = {
-        'discard' : DataStrategy.DISCARD,
-        'return' : DataStrategy.RETURN,
-        'store' : DataStrategy.STORE,
-        'error' : DataStrategy.ERROR
-    }
+    class OnTimeoutStrategy(Enum):
+        DISCARD = 'discard' # If a timeout is reached, data is discarded
+        RETURN = 'return' #  If a timeout is reached, data is returned (timeout acts as a stop condition)
+        STORE = 'store' # If a timeout is reached, data is stored and returned on the next read() call
+        ERROR = 'error' # If a timeout is reached, raise an error
 
     class TimeoutType(Enum):
         RESPONSE = 0
         CONTINUATION = 1
         TOTAL = 2
+        
     class _State(Enum):
         WAIT_FOR_RESPONSE = 0
         CONTINUATION = 1
@@ -35,7 +30,7 @@ class Timeout():
         on_response='discard',
         continuation=DEFAULT_CONTINUATION_TIMEOUT,
         on_continuation='return',
-        total=None,
+        total=DEFAULT_TOTAL_TIMEOUT,
         on_total='discard') -> None:
         """
         A class to manage timeouts
@@ -48,35 +43,38 @@ class Timeout():
         - total timeout : maximum time from start to end of transmission.
             This timeout can stop a communication mid-way. It is used to
             prevent a host from getting stuck reading a constantly streaming device
+
+        Each timeout is specified in seconds
         
         Actions
         - discard : Discard all of data obtained during the read() call if the specified timeout if reached
         - return : Return all of the data read up to this point when the specified timeout is reached
         - store : Store all of the data read up to this point in a buffer. Data will be available at the next read() call
+        - error : Produce an error
 
         Parameters
         ----------
         response : float
         on_response : str
-            Action on response timeout ('discard', 'return' or 'store')
+            Action on response timeout (see Actions), 'discard' by default
         continuation : float
         on_continuation : str
-            Action on continuation timeout ('discard', 'return' or 'store')
+            Action on continuation timeout (see Actions), 'return' by default
         total : float
         on_total : str
-            Action on total timeout ('discard', 'return' or 'store')
+            Action on total timeout (see Actions), 'discard' by default
         """
         super().__init__()
-        self._state = self._State.WAIT_FOR_RESPONSE
-        for on_x in [on_response, on_continuation, on_total]:
-            if on_x not in self._dataStrategyMap:
-                raise ValueError(f"Invalid on_xxx value : {on_x}")
+        # Timeout values (response, continuation and total)
         self._response = response
-        self._on_response = self._dataStrategyMap[on_response]
+        self._on_response = self.OnTimeoutStrategy(on_response)
         self._continuation = continuation
-        self._on_continuation = self._dataStrategyMap[on_continuation]
+        self._on_continuation = self.OnTimeoutStrategy(on_continuation)
         self._total = total
-        self._on_total = self._dataStrategyMap[on_total]
+        self._on_total = self.OnTimeoutStrategy(on_total)
+
+        # State machine flags
+        self._state = self._State.WAIT_FOR_RESPONSE
         self._queue_timeout_type = self.TimeoutType.RESPONSE
         self._last_data_strategy_origin = self.TimeoutType.RESPONSE
 
