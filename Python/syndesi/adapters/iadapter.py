@@ -12,13 +12,8 @@
 # This is a limitation as it is to this day not possible to communication "raw"
 # with a device through USB yet
 #
-#
-#
-#
-# Timeout system
-# We can differentiate two kinds of timeout :
-#   - transmission timeout (aka "timeout"): the time it takes for a device to start transmitting what we expect
-#   - continuation timeout : the time it takes for a device to continue sending the requested data
+# An adapter is meant to work with bytes objects but it can accept strings.
+# Strings will automatically be converted to bytes using utf-8 encoding
 
 from abc import abstractmethod, ABC
 from .timed_queue import TimedQueue
@@ -36,6 +31,8 @@ DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
 DEFAUT_STOP_CONDITION = None
 
 class IAdapter(ABC):
+    TIMEOUT_ARGUMENT = 'timeout'
+
     class Status(Enum):
         DISCONNECTED = 0
         CONNECTED = 1
@@ -58,6 +55,7 @@ class IAdapter(ABC):
         # not used because of termination or length stop condition
         self._previous_read_buffer = b''
 
+    @abstractmethod
     def flushRead(self):
         """
         Flush the input buffer
@@ -79,9 +77,13 @@ class IAdapter(ABC):
         pass
             
     @abstractmethod
-    def write(self, data : bytes):
+    def write(self, data : Union[bytes, str]):
         """
         Send data to the device
+
+        Parameters
+        ----------
+        data : bytes or str
         """
         pass
 
@@ -92,13 +94,26 @@ class IAdapter(ABC):
         """
         pass
     
-    def read(self, **kwargs) -> bytes:
+    def read(self, timeout=None, stop_condition=None) -> bytes:
         """
         Read data from the device
 
-        A custom stop-condition can be set by passing it to stop_condition
-        or using the simplified API with timeout/response=
+        Parameters
+        ----------
+        timeout : Timeout or None
+            Set a custom timeout, if None (default), the adapter timeout is used
+        stop_condition : StopCondition or None
+            Set a custom stop condition, if None (Default), the adapater stop condition is used
         """
+        if timeout is None:
+            read_timeout = self._timeout
+        else:
+            read_timeout = timeout
+        
+        if stop_condition is not None:
+            
+
+
         if self._status == self.Status.DISCONNECTED:
             self.open()
 
@@ -157,7 +172,7 @@ class IAdapter(ABC):
                     break
         return output
 
-    def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:
+    def query(self, data : Union[bytes, str], timeout=None, stop_condition=None) -> bytes:
         """
         Shortcut function that combines
         - flush_read
