@@ -458,3 +458,27 @@ def test_continuation_error():
     else:
         raise RuntimeError("No exception raised")
     client.close()
+
+# Test if a new configuration is correctly applied
+def test_read_timeout_reconfiguration():
+    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    termination = b'\n'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay-TIME_DELTA, on_continuation='discard'),
+        stop_condition=Termination(termination),
+        transport=IP.Protocol.UDP
+        )
+    client.write(encode_sequences([(A, delay), (termination + B, delay)]))
+    try:
+        client.read(timeout=Timeout(response=delay + TIME_DELTA, continuation=delay-TIME_DELTA, on_continuation='error'))
+    except TimeoutException as te:
+        assert te._type == Timeout.TimeoutType.CONTINUATION
+    else:
+        raise RuntimeError("No exception raised")
+    client.close()

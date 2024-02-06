@@ -4,7 +4,7 @@ from ..tools.types import assert_byte_instance
 from .stop_conditions import *
 from .timeout import Timeout
 from .timed_queue import TimedQueue
-from threading import Thread
+from threading import Thread, Event
 from typing import Union
 
 class SerialPort(IAdapter):
@@ -25,6 +25,11 @@ class SerialPort(IAdapter):
         self._port = serial.Serial(port=port, baudrate=baudrate)
         if self._port.isOpen():
             self._status = self.Status.CONNECTED
+        else:
+            self._status = self.Status.DISCONNECTED
+        
+        self._stop_event = Event()
+
 
     def flushRead(self):
         self._port.flush()
@@ -33,6 +38,7 @@ class SerialPort(IAdapter):
         self._port.open()
 
     def close(self):
+        self._stop_event.set()
         self._port.close()
             
     def write(self, data : bytes):
@@ -43,11 +49,11 @@ class SerialPort(IAdapter):
 
     def _start_thread(self):
         if self._thread is None or not self._thread.is_alive():
-            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue))
+            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue, self._stop_event))
             self._thread.start()
 
-    def _read_thread(self, port : serial.Serial , read_queue : TimedQueue):
-        while True:
+    def _read_thread(self, port : serial.Serial , read_queue : TimedQueue, stop_event : Event):
+        while not stop_event.is_set():
             byte = port.read(1)
             if not byte:
                 break

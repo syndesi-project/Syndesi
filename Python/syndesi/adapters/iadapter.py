@@ -31,11 +31,11 @@ DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
 DEFAUT_STOP_CONDITION = None
 
 class IAdapter(ABC):
-    TIMEOUT_ARGUMENT = 'timeout'
 
     class Status(Enum):
         DISCONNECTED = 0
         CONNECTED = 1
+
     def __init__(self,
         timeout : Union[float, Timeout] = DEFAULT_TIMEOUT,
         stop_condition : Union[StopCondition, None] = DEFAUT_STOP_CONDITION):
@@ -105,6 +105,9 @@ class IAdapter(ABC):
         stop_condition : StopCondition or None
             Set a custom stop condition, if None (Default), the adapater stop condition is used
         """
+        if self._status == self.Status.DISCONNECTED:
+            self.open()
+
         # Use adapter values if no custom value is specified
         if timeout is None:
             timeout = self._timeout
