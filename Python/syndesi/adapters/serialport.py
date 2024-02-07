@@ -1,6 +1,6 @@
 from .iadapter import IAdapter
 import serial
-from ..tools.types import assert_byte_instance
+from ..tools.types import to_bytes
 from .stop_conditions import *
 from .timeout import Timeout
 from .timed_queue import TimedQueue
@@ -42,7 +42,7 @@ class SerialPort(IAdapter):
         self._port.close()
             
     def write(self, data : bytes):
-        assert_byte_instance(data)
+        data = to_bytes(data)
         if self._status == self.Status.DISCONNECTED:
             self.open()
         self._port.write(data)

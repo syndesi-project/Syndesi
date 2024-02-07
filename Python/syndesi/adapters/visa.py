@@ -2,7 +2,8 @@
 from pyvisa import ResourceManager
 
 from .iadapter import IAdapter
-from ..tools.types import assert_byte_instance
+from ..tools.types import to_bytes
+from typing import Union
 
 class VISA(IAdapter):
     def __init__(self, descriptor : str):
@@ -36,8 +37,8 @@ class VISA(IAdapter):
     def close(self):
         self._inst.close()
             
-    def write(self, data : bytes):
-        assert_byte_instance(data)
+    def write(self, data : Union[bytes, str]):
+        data = to_bytes(data)
         self._inst.write_raw(data)
 
     def read(self) -> bytes:

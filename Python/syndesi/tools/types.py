@@ -60,4 +60,21 @@ def assert_number(*args):
         if not is_number(arg):
             raise TypeError(f"Variable {arg} should be a number")
 
+def to_bytes(data):
+    """
+    Convert data to bytes array
+    bytearray -> bytearray
+    bytes -> bytes
+    str -> bytes (UTF-8 encoding by default)
+    """
+    if isinstance(data, bytes):
+        return data
+    elif isinstance(data, str):
+        return data.encode('utf-8')
+    else:
+        return ValueError(f"Invalid data type : {type(data)}")
+
+
+
+
 
