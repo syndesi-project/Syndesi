@@ -44,7 +44,7 @@ class VISA(IAdapter):
     def read(self) -> bytes:
         return self._inst.read_raw()
 
-    def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:
+    def query(self, data : Union[bytes, str], timeout=None, continuation_timeout=None) -> bytes:
         """
         Shortcut function that combines
         - flush_read

@@ -98,7 +98,7 @@ class IP(IAdapter):
         self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue))
         self._thread.start()
 
-    def query(self, data : bytes):
+    def query(self, data : Union[bytes, str]):
         self.flushRead()
         self.write(data)
         return self.read()

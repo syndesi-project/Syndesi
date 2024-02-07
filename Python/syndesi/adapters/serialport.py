@@ -59,7 +59,7 @@ class SerialPort(IAdapter):
                 break
             read_queue.put(byte)
 
-    def query(self, data : bytes):
+    def query(self, data : Union[bytes, str]):
         self.flushRead()
         self.write(data)
         return self.read()
