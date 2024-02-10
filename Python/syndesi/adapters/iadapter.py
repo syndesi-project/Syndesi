@@ -119,7 +119,11 @@ class IAdapter(ABC):
         if self._status == self.Status.DISCONNECTED:
             self.open()
 
-        self._start_thread()
+        if self._thread is None or not self._thread.is_alive():
+            print(f"Thread is none : {self._thread is None}")
+            if self._thread is not None:
+                print(f"Thread is alive : {self._thread.is_alive()}")
+            self._start_thread()
 
         timeout_ms = timeout.initiate_read(len(self._previous_read_buffer) > 0)
 
@@ -138,6 +142,8 @@ class IAdapter(ABC):
         if not stop:
             while True:
                 (timestamp, fragment) = self._read_queue.get(timeout_ms)
+                if timestamp is not None:
+                    print(f'{fragment} at {timestamp - timeout._start_time}')
 
                 # 1) Evaluate the timeout
                 stop, timeout_ms = timeout.evaluate(timestamp)

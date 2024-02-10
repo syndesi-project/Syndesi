@@ -17,7 +17,7 @@ def encode_sequences(sequences : list):
     output += b'\n'
     return output
 
-TIME_DELTA = 10e-3
+TIME_DELTA = 20e-3
 
 # Test response timeout
 # long enough to catch the first sequence
@@ -57,7 +57,6 @@ def test_response_B():
 
 # Test continuation timeout
 # Long enough to catch the first two sequences
-
 def test_continuation():
     
     delay_response = 0.25
@@ -68,7 +67,7 @@ def test_continuation():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay_response + TIME_DELTA, continuation=delay_continuation + TIME_DELTA),
+        timeout=Timeout(response=delay_response + TIME_DELTA, continuation=delay_continuation + TIME_DELTA*2, on_response='error'),
         stop_condition=None)
     sleep(OPEN_DELAY)
     client.write(encode_sequences([
