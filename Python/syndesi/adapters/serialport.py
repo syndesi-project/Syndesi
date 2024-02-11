@@ -20,11 +20,13 @@ else:
 TIOCM_zero_str = struct.pack('I', 0)
 import os
 
+DEFAULT_TIMEOUT = Timeout(response=0.5, continuation=10e-3, total=None)
+
 class SerialPort(IAdapter):
     def __init__(self,  
                 port : str,
                 baudrate : int,
-                timeout : Union[Timeout, float],
+                timeout : Union[Timeout, float] = DEFAULT_TIMEOUT,
                 stop_condition : StopCondition = None):
         """
         Serial communication adapter
@@ -48,6 +50,9 @@ class SerialPort(IAdapter):
 
     def open(self):
         self._port.open()
+        buf = b'0'
+        while buf:
+            buf = os.read(self._port.fd)
 
     def close(self):
         if self._thread.is_alive():
@@ -83,7 +88,7 @@ class SerialPort(IAdapter):
             # Else, read as many bytes as possible
             fragment = os.read(port.fd, 1000) # simplified version of port.read()
             if fragment:
-                print(f"Fragment : {fragment} at {(time() - start_time)*1e3:.0f}ms")
+                print(f"({hash(start_time)}) Fragment : {fragment} at {(time() - start_time)*1e3:.0f}ms")
                 read_queue.put(fragment)
 
         print(f"Stopping thread !")

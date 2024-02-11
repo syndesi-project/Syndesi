@@ -142,8 +142,10 @@ class IAdapter(ABC):
         if not stop:
             while True:
                 (timestamp, fragment) = self._read_queue.get(timeout_ms)
-                if timestamp is not None:
-                    print(f'{fragment} at {timestamp - timeout._start_time}')
+                if timestamp is None:
+                    print(f"Timestamp : {timestamp}, fragment : {fragment}")
+                else:
+                    print(f'Timestamp : {(timestamp - timeout._start_time)*1e3:.0f} ms, fragment : {fragment}')
 
                 # 1) Evaluate the timeout
                 stop, timeout_ms = timeout.evaluate(timestamp)

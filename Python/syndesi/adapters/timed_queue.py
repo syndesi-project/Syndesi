@@ -7,12 +7,20 @@ class TimedQueue:
         self._queue = queue.Queue()
 
     def put(self, fragment : bytes) -> None:
+        print(f"Add {fragment} to queue...")
         self._queue.put((time(), fragment))
 
     def get(self, timeout : float | None) -> Tuple[float, bytes]:
+        """
+        Return an element of the timed queue. Waits at most the amount of time specified by timeout
+
+        Parameters
+        ----------
+        timeout : float, None
+        """
         try:
             return self._queue.get(block=True, timeout=timeout)
-        except queue.Empty:
+        except queue.Empty: # No item after timeout
             return None, None
 
     def is_empty(self):
