@@ -175,6 +175,7 @@ class IAdapter(ABC):
                 # 2) Evaluate the stop condition
                 if stop_condition is not None:
                     stop, kept_fragment, deferred_buffer = stop_condition.evaluate(fragment)
+                    print(f"Stop : {stop}, kept_fragment : {kept_fragment}, deferred_buffer : {deferred_buffer}")
                     output += kept_fragment
                     if stop:
                         self._previous_read_buffer = deferred_buffer
@@ -192,3 +193,6 @@ class IAdapter(ABC):
         - read
         """
         pass
+
+    def __del__(self):
+        self.close()

@@ -3,7 +3,7 @@ from syndesi.adapters import SerialPort
 from syndesi.adapters.stop_conditions import *
 from syndesi.adapters.timeout import Timeout, TimeoutException
 
-PORT = '/dev/ttyACM0'
+PORT = '/dev/ttyACM1'
 BAUDRATE = 115200
 
 OPEN_DELAY = 2
@@ -115,6 +115,7 @@ def test_termination():
     data = client.read()
     assert data == A
     data = client.read()
+    client.close()
     assert data == B
 
 # Test termination with partial transmission of the termination
@@ -138,6 +139,7 @@ def test_termination_partial():
     assert data == A
     sleep(delay+TIME_DELTA)
     data = client.read()
+    client.close()
     assert data == B
 
 # Test length
@@ -189,7 +191,7 @@ def test_length_long_timeout():
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     assert data == sequence[:N]
-    client.close()
+    #client.close()
 
 # Test termination with long timeout
 def test_termination_long_timeout():
@@ -225,7 +227,7 @@ def test_discard_timeout_short():
     client.write(encode_sequences([(A, delay), (termination + B, delay)]))
     data = client.read()
     assert data == b''
-    client.close()
+    #client.close()
 
 # Test discard timeout (long enough)
 def test_discard_timeout_long():
@@ -393,11 +395,12 @@ def test_continuation_error():
         timeout=Timeout(response=delay + TIME_DELTA, continuation=delay-TIME_DELTA, on_continuation='error'),
         stop_condition=Termination(termination)
         )
+    sleep(OPEN_DELAY)
     client.write(encode_sequences([(A, delay), (termination + B, delay)]))
     try:
         data = client.read()
     except TimeoutException as te:
         assert te._type == Timeout.TimeoutType.CONTINUATION
     else:
-        raise RuntimeError("No exception raised")
+        raise RuntimeError(f"No exception raised")
     client.close()
