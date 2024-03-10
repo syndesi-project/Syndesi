@@ -24,8 +24,8 @@ class IP(IAdapter):
         TCP = 0
         UDP = 1
     def __init__(self,
-                descriptor : str,
-                port = None,
+                address : str,
+                port : int,
                 transport : Protocol = Protocol.TCP,
                 timeout : Union[Timeout, float] = DEFAULT_TIMEOUT,
                 stop_condition=None,
@@ -35,10 +35,10 @@ class IP(IAdapter):
 
         Parameters
         ----------
-        descriptor : str
+        address : str
             IP description
         port : int
-            port used (optional, can be specified in descriptor)
+            IP port
         transport : Transport
             Transport protocol, TCP or UDP
         """
@@ -51,7 +51,7 @@ class IP(IAdapter):
         else:
             raise ValueError("Invalid protocol")
 
-        self._ip = descriptor # TODO : update this
+        self._address = address
         self._port = port
         self._buffer_size = buffer_size
 
@@ -70,7 +70,7 @@ class IP(IAdapter):
             self._port = port        
 
     def open(self):
-        self._socket.connect((self._ip, self._port))
+        self._socket.connect((self._address, self._port))
         self._status = self.Status.CONNECTED
 
     def close(self):
