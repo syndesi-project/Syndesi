@@ -76,10 +76,8 @@ def main():
     args = parser.parse_args()
 
     if args.type == Types.TCP:
-        print("Starting TCP server...")
         tcp_server()
     else:
-        print("Starting UDP server...")
         udp_server()
 
 def payload_to_sequences(payload): 

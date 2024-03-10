@@ -95,7 +95,6 @@ class Timeout():
         timeout : float or None
             None is there's no timeout
         """
-        print(f"Initiate read, setting start time")
         self._start_time = time()
         if deferred_buffer:
             self._state = self._State.CONTINUATION

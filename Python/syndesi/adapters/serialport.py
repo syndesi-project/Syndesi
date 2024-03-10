@@ -4,9 +4,8 @@ from ..tools.types import to_bytes
 from .stop_conditions import *
 from .timeout import Timeout
 from .timed_queue import TimedQueue
-from threading import Thread, Event
+from threading import Thread
 from typing import Union
-from time import sleep
 import select
 
 # From pyserial - serialposix.py
@@ -56,7 +55,6 @@ class SerialPort(IAdapter):
 
     def close(self):
         if self._thread.is_alive():
-            print(f"Stopping the thread...")
             os.write(self._stop_event_pipe_write, b'1')
             self._thread.join()
         self._port.close()
@@ -73,8 +71,6 @@ class SerialPort(IAdapter):
             self._thread.start()
 
     def _read_thread(self, port : serial.Serial , read_queue : TimedQueue, stop_event_pipe):
-        print(f"Start read thread")
-        start_time = time()
         while True:
 
             # It looks like using the raw implementation of port.in_waiting and port.read is better, there's no more warnings
@@ -88,10 +84,7 @@ class SerialPort(IAdapter):
             # Else, read as many bytes as possible
             fragment = os.read(port.fd, 1000) # simplified version of port.read()
             if fragment:
-                print(f"({hash(start_time)}) Fragment : {fragment} at {(time() - start_time)*1e3:.0f}ms")
                 read_queue.put(fragment)
-
-        print(f"Stopping thread !")
 
     def query(self, data : Union[bytes, str]):
         self.flushRead()

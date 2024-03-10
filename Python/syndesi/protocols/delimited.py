@@ -2,6 +2,7 @@ from .iprotocol import IProtocol
 from ..adapters import IAdapter
 from ..tools.types import assert_byte_instance, assert_byte_instance
 from time import time
+import warnings
 
 
 class Delimited(IProtocol):
@@ -96,5 +97,5 @@ class Delimited(IProtocol):
         Returns the raw bytes instead of str
         """
         if len(self._buffer) > 0:
-            print("Warning : The buffer wasn't empty, standard (non raw) data is still in it")
+            warnings.warn("Warning : The buffer wasn't empty, standard (non raw) data is still in it")
         return self._adapter.read()

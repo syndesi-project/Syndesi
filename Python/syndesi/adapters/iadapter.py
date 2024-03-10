@@ -22,10 +22,8 @@ from typing import Union
 from enum import Enum
 from .stop_conditions import StopCondition
 from .timeout import Timeout, TimeoutException
-from time import time
 from typing import Union
 from ..tools.types import is_number
-import logging
 
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
 DEFAUT_STOP_CONDITION = None
@@ -120,9 +118,6 @@ class IAdapter(ABC):
             self.open()
 
         if self._thread is None or not self._thread.is_alive():
-            print(f"Thread is none : {self._thread is None}")
-            if self._thread is not None:
-                print(f"Thread is alive : {self._thread.is_alive()}")
             self._start_thread()
 
         timeout_ms = timeout.initiate_read(len(self._previous_read_buffer) > 0)
@@ -142,10 +137,6 @@ class IAdapter(ABC):
         if not stop:
             while True:
                 (timestamp, fragment) = self._read_queue.get(timeout_ms)
-                if timestamp is None:
-                    print(f"Timestamp : {timestamp}, fragment : {fragment}")
-                else:
-                    print(f'Timestamp : {(timestamp - timeout._start_time)*1e3:.0f} ms, fragment : {fragment}')
 
                 # 1) Evaluate the timeout
                 stop, timeout_ms = timeout.evaluate(timestamp)
@@ -175,7 +166,6 @@ class IAdapter(ABC):
                 # 2) Evaluate the stop condition
                 if stop_condition is not None:
                     stop, kept_fragment, deferred_buffer = stop_condition.evaluate(fragment)
-                    print(f"Stop : {stop}, kept_fragment : {kept_fragment}, deferred_buffer : {deferred_buffer}")
                     output += kept_fragment
                     if stop:
                         self._previous_read_buffer = deferred_buffer
