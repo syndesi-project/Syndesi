@@ -28,7 +28,8 @@ class IP(IAdapter):
                 port : int,
                 transport : Protocol = Protocol.TCP,
                 timeout : Union[Timeout, float] = DEFAULT_TIMEOUT,
-                stop_condition=None,
+                stop_condition = None,
+                log = False,
                 buffer_size : int = DEFAULT_BUFFER_SIZE):
         """
         IP stack adapter
@@ -54,6 +55,7 @@ class IP(IAdapter):
         self._address = address
         self._port = port
         self._buffer_size = buffer_size
+        self._log = log
 
     def set_default_port(self, port):
         """
@@ -67,7 +69,7 @@ class IP(IAdapter):
         port : int
         """
         if self._port is None:
-            self._port = port        
+            self._port = port
 
     def open(self):
         self._socket.connect((self._address, self._port))
