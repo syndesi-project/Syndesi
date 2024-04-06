@@ -9,7 +9,7 @@
 #   - VISA
 # 
 # Note that technically VISA is not part of the media layer, only USB is.
-# This is a limitation as it is to this day not possible to communication "raw"
+# This is a limitation as it is to this day not possible to communicate "raw"
 # with a device through USB yet
 #
 # An adapter is meant to work with bytes objects but it can accept strings.
@@ -24,6 +24,7 @@ from .stop_conditions import StopCondition
 from .timeout import Timeout, TimeoutException
 from typing import Union
 from ..tools.types import is_number
+from ..tools.logger import AdapterLogger
 
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
 DEFAUT_STOP_CONDITION = None
@@ -36,7 +37,22 @@ class IAdapter(ABC):
 
     def __init__(self,
         timeout : Union[float, Timeout] = DEFAULT_TIMEOUT,
-        stop_condition : Union[StopCondition, None] = DEFAUT_STOP_CONDITION):
+        stop_condition : Union[StopCondition, None] = DEFAUT_STOP_CONDITION,
+        log_level : int = 0):
+        """
+        IAdapter instance
+
+        Parameters
+        ----------
+        timeout : float or Timeout instance
+            Default timeout is Timeout(response=1, continuation=0.1, total=None)
+        stop_condition : StopCondition or None
+            Default to None
+        log : int
+            0 : basic logging
+            1 : detailed logging
+            2 : complete logging
+        """
 
         if is_number(timeout):
             self._timeout = Timeout(response=timeout, continuation=100e-3)
@@ -52,6 +68,10 @@ class IAdapter(ABC):
         # Buffer for data that has been pulled from the queue but
         # not used because of termination or length stop condition
         self._previous_read_buffer = b''
+
+        self._logger = AdapterLogger('adapter')
+        self._logger.set_log_level(log_level)
+        self._logger.log_status('Initializing adapter', 0)
 
     def flushRead(self):
         """
@@ -173,6 +193,9 @@ class IAdapter(ABC):
                     output += fragment
                 if stop:
                     break
+            if self._logger:
+                self._logger.log_read(output, self._previous_read_buffer)
+
         return output
 
     def query(self, data : Union[bytes, str], timeout=None, stop_condition=None) -> bytes:
