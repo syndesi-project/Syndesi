@@ -1,10 +1,10 @@
-from ..adapters import IAdapter, IP
+from ..adapters import Adapter, IP
 from .iprotocol import IProtocol
 from ..tools.types import is_byte_instance
 
 class SCPI(IProtocol):
     DEFAULT_PORT = 5025
-    def __init__(self, adapter: IAdapter, end = '\n') -> None:
+    def __init__(self, adapter: Adapter, end = '\n') -> None:
         """
         SDP (Syndesi Device Protocol) compatible device
 

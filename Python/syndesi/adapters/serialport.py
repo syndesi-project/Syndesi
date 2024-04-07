@@ -1,4 +1,4 @@
-from .iadapter import IAdapter
+from .adapter import Adapter
 import serial
 from ..tools.types import to_bytes
 from .stop_conditions import *
@@ -21,7 +21,7 @@ import os
 
 DEFAULT_TIMEOUT = Timeout(response=0.5, continuation=10e-3, total=None)
 
-class SerialPort(IAdapter):
+class SerialPort(Adapter):
     def __init__(self,  
                 port : str,
                 baudrate : int,

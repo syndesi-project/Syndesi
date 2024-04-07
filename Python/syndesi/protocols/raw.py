@@ -1,4 +1,4 @@
-from ..adapters import IAdapter
+from ..adapters import Adapter
 from .iprotocol import IProtocol
 
 
@@ -6,7 +6,7 @@ from .iprotocol import IProtocol
 # without converting it to string first
 
 class Raw(IProtocol):
-    def __init__(self, adapter: IAdapter) -> None:
+    def __init__(self, adapter: Adapter) -> None:
         """
         Raw device, no presentation and application layers
 
@@ -28,7 +28,7 @@ class Raw(IProtocol):
         return self._adapter.read()
 
 class RawStream(IProtocol):
-    def __init__(self, adapter: IAdapter, delimiter = b'\n') -> None:
+    def __init__(self, adapter: Adapter, delimiter = b'\n') -> None:
         """
         Continuously streaming device with specified delimiter
 

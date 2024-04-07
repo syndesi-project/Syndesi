@@ -1,11 +1,11 @@
 
 from pyvisa import ResourceManager
 
-from .iadapter import IAdapter
+from .adapter import Adapter
 from ..tools.types import to_bytes
 from typing import Union
 
-class VISA(IAdapter):
+class VISA(Adapter):
     def __init__(self, descriptor : str):
         """
         USB VISA stack adapter

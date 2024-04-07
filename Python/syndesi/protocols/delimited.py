@@ -1,12 +1,12 @@
 from .iprotocol import IProtocol
-from ..adapters import IAdapter
+from ..adapters import Adapter
 from ..tools.types import assert_byte_instance, assert_byte_instance
 from time import time
 import warnings
 
 
 class Delimited(IProtocol):
-    def __init__(self, adapter : IAdapter, termination='\n', format_response=True) -> None:
+    def __init__(self, adapter : Adapter, termination='\n', format_response=True) -> None:
         """
         Protocol with delimiter, like LF, CR, etc... '\\n' is used by default
 

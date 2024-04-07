@@ -24,34 +24,32 @@ from .stop_conditions import StopCondition
 from .timeout import Timeout, TimeoutException
 from typing import Union
 from ..tools.types import is_number
-from ..tools.logger import AdapterLogger
+from ..tools.log import Loggers
+import logging
 
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
 DEFAUT_STOP_CONDITION = None
 
-class IAdapter(ABC):
-
+class Adapter(ABC):
     class Status(Enum):
         DISCONNECTED = 0
         CONNECTED = 1
 
     def __init__(self,
+        alias : str = '',
         timeout : Union[float, Timeout] = DEFAULT_TIMEOUT,
-        stop_condition : Union[StopCondition, None] = DEFAUT_STOP_CONDITION,
-        log_level : int = 0):
+        stop_condition : Union[StopCondition, None] = DEFAUT_STOP_CONDITION):
         """
-        IAdapter instance
+        Adapter instance
 
         Parameters
         ----------
+        alias : str
+            The alias is used to identify the class in the logs
         timeout : float or Timeout instance
             Default timeout is Timeout(response=1, continuation=0.1, total=None)
         stop_condition : StopCondition or None
             Default to None
-        log : int
-            0 : basic logging
-            1 : detailed logging
-            2 : complete logging
         """
 
         if is_number(timeout):
@@ -69,9 +67,8 @@ class IAdapter(ABC):
         # not used because of termination or length stop condition
         self._previous_read_buffer = b''
 
-        self._logger = AdapterLogger('adapter')
-        self._logger.set_log_level(log_level)
-        self._logger.log_status('Initializing adapter', 0)
+        self._alias = alias
+        self._logger = logging.getLogger(Loggers.ADAPTER)
 
     def flushRead(self):
         """
@@ -193,11 +190,14 @@ class IAdapter(ABC):
                     output += fragment
                 if stop:
                     break
-            if self._logger:
-                self._logger.log_read(output, self._previous_read_buffer)
+            if self._previous_read_buffer:
+                self._logger.debug(f'Read : {output}, previous read buffer : {self._previous_read_buffer}')
+            else:
+                self._logger.debug(f'Read : {output}')
 
         return output
 
+    @abstractmethod
     def query(self, data : Union[bytes, str], timeout=None, stop_condition=None) -> bytes:
         """
         Shortcut function that combines
