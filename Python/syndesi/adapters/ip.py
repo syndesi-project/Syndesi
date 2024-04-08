@@ -7,7 +7,7 @@ from threading import Thread
 from .timed_queue import TimedQueue
 from typing import Union
 import logging
-from ..tools.log import Logger
+from ..tools.log import LoggerAlias
 
 DEFAULT_RESPONSE_TIMEOUT = 1
 DEFAULT_CONTINUATION_TIMEOUT = 1e-3
@@ -55,10 +55,10 @@ class IP(Adapter):
         super().__init__(alias=alias, timeout=timeout, stop_condition=stop_condition)
         self._transport = transport
         if transport == self.Protocol.TCP.value:
-            self._logger.log_status("Setting up TCP IP adapter", 0)
+            self._logger.info("Setting up TCP IP adapter")
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         elif transport == self.Protocol.UDP.value:
-            self._logger.log_status("Setting up UDP IP adapter", 0)
+            self._logger.info("Setting up UDP IP adapter")
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         else:
             raise ValueError("Invalid protocol")
@@ -90,7 +90,7 @@ class IP(Adapter):
     def close(self):
         if hasattr(self, '_socket'):
             self._socket.close()
-        self._logger.info("Closed")
+        #self._logger.info("Closed")
             
     def write(self, data : Union[bytes, str]):
         data = to_bytes(data)

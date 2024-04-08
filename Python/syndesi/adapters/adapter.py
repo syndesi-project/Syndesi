@@ -24,7 +24,7 @@ from .stop_conditions import StopCondition
 from .timeout import Timeout, TimeoutException
 from typing import Union
 from ..tools.types import is_number
-from ..tools.log import Loggers
+from ..tools.log import LoggerAlias
 import logging
 
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
@@ -68,7 +68,7 @@ class Adapter(ABC):
         self._previous_read_buffer = b''
 
         self._alias = alias
-        self._logger = logging.getLogger(Loggers.ADAPTER)
+        self._logger = logging.getLogger(LoggerAlias.ADAPTER.value)
 
     def flushRead(self):
         """
