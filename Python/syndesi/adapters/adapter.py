@@ -14,21 +14,36 @@
 #
 # An adapter is meant to work with bytes objects but it can accept strings.
 # Strings will automatically be converted to bytes using utf-8 encoding
+#
 
 from abc import abstractmethod, ABC
 from .timed_queue import TimedQueue
 from threading import Thread
 from typing import Union
 from enum import Enum
-from .stop_conditions import StopCondition
+from .stop_conditions import StopCondition, Termination, Length
 from .timeout import Timeout, TimeoutException
 from typing import Union
 from ..tools.types import is_number
 from ..tools.log import LoggerAlias
 import logging
+from time import time
 
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
 DEFAUT_STOP_CONDITION = None
+
+STOP_DESIGNATORS = {
+    'timeout' : {
+        Timeout.TimeoutType.RESPONSE : 'TR',
+        Timeout.TimeoutType.CONTINUATION : 'TC',
+        Timeout.TimeoutType.TOTAL : 'TT'
+    },
+    'stop-condition' : {
+        Termination : 'ST',
+        Length : 'SL'
+    },
+    'previous-read-buffer' : 'RB'
+}
 
 class Adapter(ABC):
     class Status(Enum):
@@ -120,6 +135,7 @@ class Adapter(ABC):
         stop_condition : StopCondition or None
             Set a custom stop condition, if None (Default), the adapater stop condition is used
         """
+        read_start = time()
         if self._status == self.Status.DISCONNECTED:
             self.open()
 
@@ -145,6 +161,8 @@ class Adapter(ABC):
         deferred_buffer = b''
 
         # Start with the deferred buffer
+        # TODO : Check if data could be lost here, like the data is put in the previous_read_buffer and is never
+        # read back again because there's no stop condition
         if len(self._previous_read_buffer) > 0 and stop_condition is not None:
             stop, output, self._previous_read_buffer = stop_condition.evaluate(self._previous_read_buffer)
         else:
@@ -174,6 +192,9 @@ class Adapter(ABC):
                     elif data_strategy == Timeout.OnTimeoutStrategy.ERROR:
                         raise TimeoutException(origin)
                     break
+                else:
+                    origin = None
+                    
                 
                 
                 # Add the deferred buffer
@@ -190,10 +211,20 @@ class Adapter(ABC):
                     output += fragment
                 if stop:
                     break
-            if self._previous_read_buffer:
-                self._logger.debug(f'Read : {output}, previous read buffer : {self._previous_read_buffer}')
+            
+            if origin is not None:
+                # The stop originates from the timeout
+                designator = STOP_DESIGNATORS['timeout'][origin]
             else:
-                self._logger.debug(f'Read : {output}')
+                designator = STOP_DESIGNATORS['stop-condition'][type(stop_condition)]
+        else:
+            designator = STOP_DESIGNATORS['previous-read-buffer']
+        
+        read_duration = time() - read_start
+        if self._previous_read_buffer:
+            self._logger.debug(f'Read [{designator}, {read_duration*1e3:.3f}ms] : {output} , previous read buffer : {self._previous_read_buffer}')
+        else:
+            self._logger.debug(f'Read [{designator}, {read_duration*1e3:.3f}ms] : {output}')
 
         return output
 

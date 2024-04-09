@@ -8,6 +8,7 @@ from .timed_queue import TimedQueue
 from typing import Union
 import logging
 from ..tools.log import LoggerAlias
+from time import time
 
 DEFAULT_RESPONSE_TIMEOUT = 1
 DEFAULT_CONTINUATION_TIMEOUT = 1e-3
@@ -66,8 +67,6 @@ class IP(Adapter):
         self._port = port
         self._buffer_size = buffer_size
 
-        self._logger.info(f'Initialization of IP adapter {address}:{port}')
-
     def set_default_port(self, port):
         """
         Sets IP port if no port has been set yet.
@@ -85,19 +84,22 @@ class IP(Adapter):
     def open(self):
         self._socket.connect((self._address, self._port))
         self._status = self.Status.CONNECTED
-        self._logger.info("Opened")
+        self._logger.info("Adapter opened !")
 
     def close(self):
         if hasattr(self, '_socket'):
             self._socket.close()
-        #self._logger.info("Closed")
+        self._logger.info("Adapter closed !")
             
     def write(self, data : Union[bytes, str]):
         data = to_bytes(data)
         if self._status == self.Status.DISCONNECTED:
+            self._logger.info("Adapter is closed, opening...")
             self.open()
+        write_start = time()
         self._socket.send(data)
-        self._logger.debug(f"Written : {repr(data)}")
+        write_duration = time() - write_start
+        self._logger.debug(f"Written [{write_duration*1e3:.3f}ms]: {repr(data)}")
 
     def _read_thread(self, socket : socket.socket, read_queue : TimedQueue):
         while True:
