@@ -39,7 +39,7 @@ STOP_DESIGNATORS = {
         Timeout.TimeoutType.CONTINUATION : 'TC',
         Timeout.TimeoutType.TOTAL : 'TT'
     },
-    'stop-condition' : {
+    'stop_condition' : {
         Termination : 'ST',
         Length : 'SL'
     },
@@ -239,7 +239,7 @@ class Adapter(ABC):
                 # The stop originates from the timeout
                 designator = STOP_DESIGNATORS['timeout'][origin]
             else:
-                designator = STOP_DESIGNATORS['stop-condition'][type(stop_condition)]
+                designator = STOP_DESIGNATORS['stop_condition'][type(stop_condition)]
         else:
             designator = STOP_DESIGNATORS['previous-read-buffer']
         
