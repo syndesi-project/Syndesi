@@ -6,8 +6,6 @@ from .timeout import Timeout
 from threading import Thread
 from .timed_queue import TimedQueue
 from typing import Union
-import logging
-from ..tools.log import LoggerAlias
 from time import time
 
 DEFAULT_RESPONSE_TIMEOUT = 1
