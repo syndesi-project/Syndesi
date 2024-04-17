@@ -28,6 +28,7 @@ from ..tools.types import is_number
 from ..tools.log import LoggerAlias
 import logging
 from time import time
+from dataclasses import dataclass
 
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
 DEFAUT_STOP_CONDITION = None
@@ -44,6 +45,22 @@ STOP_DESIGNATORS = {
     },
     'previous-read-buffer' : 'RB'
 }
+
+class Origin(Enum):
+    TIMEOUT = 'timeout'
+    STOP_CONDITION = 'stop_condition'
+
+@dataclass
+class ReturnMetrics:
+    read_duration : float
+    origin : Origin
+    timeout_type : Timeout.TimeoutType
+    stop_condition : StopCondition
+    previous_read_buffer_used : bool
+    n_fragments : int
+    response_time : float
+    continuation_times : list
+    total_time : float
 
 class Adapter(ABC):
     class Status(Enum):
@@ -124,7 +141,7 @@ class Adapter(ABC):
         """
         pass
     
-    def read(self, timeout=None, stop_condition=None) -> bytes:
+    def read(self, timeout=None, stop_condition=None, return_metrics : bool = False) -> bytes:
         """
         Read data from the device
 
@@ -134,6 +151,7 @@ class Adapter(ABC):
             Set a custom timeout, if None (default), the adapter timeout is used
         stop_condition : StopCondition or None
             Set a custom stop condition, if None (Default), the adapater stop condition is used
+        return_metrics : ReturnMetrics class
         """
         read_start = time()
         if self._status == self.Status.DISCONNECTED:
@@ -165,13 +183,18 @@ class Adapter(ABC):
         # read back again because there's no stop condition
         if len(self._previous_read_buffer) > 0 and stop_condition is not None:
             stop, output, self._previous_read_buffer = stop_condition.evaluate(self._previous_read_buffer)
+            previous_read_buffer_used = True
         else:
             stop = False
             output = b''
+            previous_read_buffer_used = False
+        
+        n_fragments = 0
         # If everything is used up, read the queue
         if not stop:
             while True:
                 (timestamp, fragment) = self._read_queue.get(timeout_ms)
+                n_fragments += 1
 
                 # 1) Evaluate the timeout
                 stop, timeout_ms = timeout.evaluate(timestamp)
@@ -226,10 +249,23 @@ class Adapter(ABC):
         else:
             self._logger.debug(f'Read [{designator}, {read_duration*1e3:.3f}ms] : {output}')
 
-        return output
+        if return_metrics:
+            return output, ReturnMetrics(
+                read_duration=read_duration,
+                origin=Origin.TIMEOUT if origin is not None else Origin.STOP_CONDITION,
+                timeout_type=origin if origin is not None else None,
+                stop_condition=type(stop_condition) if origin is None else None,
+                previous_read_buffer_used=previous_read_buffer_used,
+                n_fragments=n_fragments,
+                response_time=timeout.response_time,
+                continuation_times=timeout.continuation_times,
+                total_time=timeout.total_time
+            )
+        else:
+            return output
 
     @abstractmethod
-    def query(self, data : Union[bytes, str], timeout=None, stop_condition=None) -> bytes:
+    def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False) -> bytes:
         """
         Shortcut function that combines
         - flush_read

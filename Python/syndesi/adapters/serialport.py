@@ -93,7 +93,7 @@ class SerialPort(Adapter):
             if fragment:
                 read_queue.put(fragment)
 
-    def query(self, data : Union[bytes, str]):
+    def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False):
         self.flushRead()
         self.write(data)
-        return self.read()
+        return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
