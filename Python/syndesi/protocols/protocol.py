@@ -1,7 +1,7 @@
 from ..adapters import Adapter
 
-class IProtocol:
-    def __init__(self, adapter : Adapter) -> None:
+class Protocol:
+    def __init__(self, adapter : Adapter, timeout) -> None:
         self._adapter = adapter
 
     def write(self, data):

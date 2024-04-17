@@ -1,8 +1,8 @@
 from ..adapters import Adapter, IP
-from .iprotocol import IProtocol
+from .iprotocol import Protocol
 from ..tools.types import is_byte_instance
 
-class SCPI(IProtocol):
+class SCPI(Protocol):
     DEFAULT_PORT = 5025
     def __init__(self, adapter: Adapter, end = '\n') -> None:
         """

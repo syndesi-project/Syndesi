@@ -1,11 +1,11 @@
 from ..adapters import Adapter
-from .iprotocol import IProtocol
+from .iprotocol import Protocol
 
 
 # Raw protocols provide the user with the binary data directly,
 # without converting it to string first
 
-class Raw(IProtocol):
+class Raw(Protocol):
     def __init__(self, adapter: Adapter) -> None:
         """
         Raw device, no presentation and application layers
@@ -27,7 +27,7 @@ class Raw(IProtocol):
     def read(self) -> bytes:
         return self._adapter.read()
 
-class RawStream(IProtocol):
+class RawStream(Protocol):
     def __init__(self, adapter: Adapter, delimiter = b'\n') -> None:
         """
         Continuously streaming device with specified delimiter
