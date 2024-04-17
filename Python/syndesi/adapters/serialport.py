@@ -26,7 +26,8 @@ class SerialPort(Adapter):
                 port : str,
                 baudrate : int,
                 timeout : Union[Timeout, float] = DEFAULT_TIMEOUT,
-                stop_condition : StopCondition = None):
+                stop_condition : StopCondition = None,
+                rts_cts : bool = False): # rts_cts experimental
         """
         Serial communication adapter
 
@@ -42,6 +43,8 @@ class SerialPort(Adapter):
             self._status = self.Status.CONNECTED
         else:
             self._status = self.Status.DISCONNECTED
+
+        self._rts_cts = rts_cts
         
         self._stop_event_pipe, self._stop_event_pipe_write = os.pipe()
 
@@ -64,6 +67,8 @@ class SerialPort(Adapter):
         self._logger.info("Adapter closed !")
             
     def write(self, data : bytes):
+        if self._rts_cts: # Experimental
+            self._port.setRTS(True)
         data = to_bytes(data)
         if self._status == self.Status.DISCONNECTED:
             self.open()
@@ -91,7 +96,31 @@ class SerialPort(Adapter):
             # Else, read as many bytes as possible
             fragment = os.read(port.fd, 1000) # simplified version of port.read()
             if fragment:
-                read_queue.put(fragment)
+                read_queue.put(fragment)        
+
+    def read(self, timeout=None, stop_condition=None, return_metrics: bool = False) -> bytes:
+        """
+        Read data from the device
+
+        Parameters
+        ----------
+        timeout : Timeout or None
+            Set a custom timeout, if None (default), the adapter timeout is used
+        stop_condition : StopCondition or None
+            Set a custom stop condition, if None (Default), the adapater stop condition is used
+        return_metrics : bool
+            Return a dictionary containing information about the read operation like
+                'read_duration' : float
+                'origin' : 'timeout' or 'stop_condition'
+                'timeout' : Timeout.TimeoutType
+                'stop_condition' : Length or Termination (StopCondition class)
+                'previous_read_buffer_used' : bool
+                'n_fragments' : int  
+        """
+        output = super().read(timeout, stop_condition, return_metrics)
+        if self._rts_cts: # Experimental
+            self._port.setRTS(False)
+        return output
 
     def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False):
         self.flushRead()
