@@ -4,16 +4,26 @@ from ..tools.types import is_byte_instance
 
 class SCPI(Protocol):
     DEFAULT_PORT = 5025
-    def __init__(self, adapter: Adapter, end = '\n') -> None:
+    def __init__(self, adapter: Adapter, send_termination = '\n', receive_termination = None) -> None:
         """
         SDP (Syndesi Device Protocol) compatible device
 
         Parameters
         ----------
-        wrapper : Wrapper
+        adapter : Adapter
+        send_termination : str
+            '\n' by default
+        receive_termination : str
+            None by default (copy value from send_termination)
         """
         super().__init__(adapter)
-        self._end = end
+
+        if receive_termination is None:
+            self._receive_termination = send_termination
+        else:
+            self._receive_termination = receive_termination
+
+        self._send_termination = send_termination
 
         if isinstance(self._adapter, IP):
             self._adapter.set_default_port(self.DEFAULT_PORT)
@@ -31,10 +41,10 @@ class SCPI(Protocol):
             raise ValueError(f"Invalid payload type : {type(payload)}")
 
     def _formatCommand(self, command):
-        return command + self._end
+        return command + self._send_termination
 
     def _unformatCommand(self, payload):
-        return payload.replace(self._end, '')
+        return payload.replace(self._receive_termination, '')
     
     def _checkCommand(self, command : str):
         for c in ['\n', '\r']:
