@@ -7,9 +7,6 @@ from typing import Union, Tuple
 from time import time
 
 class Timeout():
-    DEFAULT_CONTINUATION_TIMEOUT = 5e-3
-    DEFAULT_TOTAL_TIMEOUT = None
-
     class OnTimeoutStrategy(Enum):
         DISCARD = 'discard' # If a timeout is reached, data is discarded
         RETURN = 'return' #  If a timeout is reached, data is returned (timeout acts as a stop condition)
@@ -25,13 +22,19 @@ class Timeout():
         WAIT_FOR_RESPONSE = 0
         CONTINUATION = 1
 
+    DEFAULT_CONTINUATION = 5e-3
+    DEFAULT_TOTAL = None
+    DEFAULT_ON_RESPONSE = OnTimeoutStrategy.DISCARD
+    DEFAULT_ON_CONTINUATION = OnTimeoutStrategy.RETURN
+    DEFAULT_ON_TOTAL = OnTimeoutStrategy.RETURN
+
     def __init__(self, 
         response,
-        continuation=DEFAULT_CONTINUATION_TIMEOUT,
-        total=DEFAULT_TOTAL_TIMEOUT,
-        on_response='discard',
-        on_continuation='return',
-        on_total='discard') -> None:
+        continuation=None,
+        total=None,
+        on_response=None,
+        on_continuation=None,
+        on_total=None) -> None:
         """
         A class to manage timeouts
 
@@ -65,12 +68,41 @@ class Timeout():
             Action on total timeout (see Actions), 'discard' by default
         """
         super().__init__()
+        # It is possible to pass a tuple to set response/continuation/total, parse this first if it is the case
+        if isinstance(response, tuple):
+            if len(response) >= 3:
+                total = response[2]
+            if len(response) >= 2:
+                continuation = response[1]
+            response = response[0]
+
+        self._defaults = {
+            '_response' : False,
+            '_continuation' : continuation is None,
+            '_total' : total is None,
+            '_on_response' : on_response is None,
+            '_on_continuation' : on_continuation is None,
+            '_on_total' : on_total is None
+        }
+
+        # Set default values
+        if continuation is None:
+            continuation = self.DEFAULT_CONTINUATION
+        if total is None:
+            total = self.DEFAULT_TOTAL
+        if on_response is None:
+            on_response = self.DEFAULT_ON_RESPONSE
+        if on_continuation is None:
+            on_continuation = self.DEFAULT_ON_CONTINUATION
+        if on_total is None:
+            on_total = self.DEFAULT_ON_TOTAL
+
         # Timeout values (response, continuation and total)
         self._response = response
-        self._on_response = self.OnTimeoutStrategy(on_response)
         self._continuation = continuation
-        self._on_continuation = self.OnTimeoutStrategy(on_continuation)
         self._total = total
+        self._on_response = self.OnTimeoutStrategy(on_response)
+        self._on_continuation = self.OnTimeoutStrategy(on_continuation)
         self._on_total = self.OnTimeoutStrategy(on_total)
 
         # State machine flags
@@ -204,3 +236,42 @@ class TimeoutException(Exception):
     def __init__(self, type : Timeout.TimeoutType) -> None:
         super().__init__()
         self._type = type
+
+
+def timeout_fuse(high_priority, low_priority):
+    """
+    Fuse two timeout descriptions (Timeout class or float or tuple)
+    
+    Parameters
+    ----------
+    high_priority : any
+        High priority timeout description
+    low_priority : any
+        Low priority timeout description
+    """
+    # 1) Check if any is none, in that case return the other one
+    if high_priority is None:
+        return low_priority
+    if low_priority is None:
+        return high_priority
+
+    # 2) Convert each to Timeout class
+    high = Timeout(high_priority)
+    low = Timeout(low_priority)
+    
+    new_attr = {}
+    # 3) Select with parameter to keep based on where it has been set
+    for attr in [
+        '_response',
+        '_on_response',
+        '_continuation',
+        '_on_continuation',
+        '_total',
+        '_on_total']:
+        H = getattr(high, attr)
+        L = getattr(low, attr)
+        # Use low priority if the default value is used in high priority
+        new_attr[attr.removeprefix('_')] = L if high._defaults[attr] else H
+        
+    return Timeout(**new_attr)
+

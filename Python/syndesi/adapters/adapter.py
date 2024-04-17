@@ -22,7 +22,7 @@ from threading import Thread
 from typing import Union
 from enum import Enum
 from .stop_conditions import StopCondition, Termination, Length
-from .timeout import Timeout, TimeoutException
+from .timeout import Timeout, TimeoutException, timeout_fuse
 from typing import Union
 from ..tools.types import is_number
 from ..tools.log import LoggerAlias
@@ -101,6 +101,16 @@ class Adapter(ABC):
 
         self._alias = alias
         self._logger = logging.getLogger(LoggerAlias.ADAPTER.value)
+
+    def set_default_timeout(self, default_timeout : Union[Timeout, tuple, float]):
+        """
+        Set the default timeotu for this adapter. If a previous timeout has been set, it will be fused
+
+        Parameters
+        ----------
+        default_timeout : Timeout or tuple or float
+        """
+        self._timeout = timeout_fuse(self._timeout, default_timeout)
 
     def flushRead(self):
         """

@@ -1,10 +1,10 @@
-from ..adapters import Adapter, IP
-from .iprotocol import Protocol
+from ..adapters import Adapter, IP, Timeout
+from .protocol import Protocol
 from ..tools.types import is_byte_instance
 
 class SCPI(Protocol):
     DEFAULT_PORT = 5025
-    def __init__(self, adapter: Adapter, send_termination = '\n', receive_termination = None) -> None:
+    def __init__(self, adapter: Adapter, send_termination = '\n', receive_termination = None, timeout : Timeout = None) -> None:
         """
         SDP (Syndesi Device Protocol) compatible device
 
@@ -15,6 +15,8 @@ class SCPI(Protocol):
             '\n' by default
         receive_termination : str
             None by default (copy value from send_termination)
+        timeout : Timeout/float/tuple
+            Set device timeout
         """
         super().__init__(adapter)
 
@@ -27,6 +29,9 @@ class SCPI(Protocol):
 
         if isinstance(self._adapter, IP):
             self._adapter.set_default_port(self.DEFAULT_PORT)
+
+        self._adapter.set_default_timeout(timeout)
+        
 
     def _to_bytes(self, command):
         if isinstance(command, str):
