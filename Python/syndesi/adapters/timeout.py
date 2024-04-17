@@ -27,10 +27,10 @@ class Timeout():
 
     def __init__(self, 
         response,
-        on_response='discard',
         continuation=DEFAULT_CONTINUATION_TIMEOUT,
-        on_continuation='return',
         total=DEFAULT_TOTAL_TIMEOUT,
+        on_response='discard',
+        on_continuation='return',
         on_total='discard') -> None:
         """
         A class to manage timeouts
@@ -55,12 +55,12 @@ class Timeout():
         Parameters
         ----------
         response : float
+        continuation : float
+        total : float
         on_response : str
             Action on response timeout (see Actions), 'discard' by default
-        continuation : float
         on_continuation : str
             Action on continuation timeout (see Actions), 'return' by default
-        total : float
         on_total : str
             Action on total timeout (see Actions), 'discard' by default
         """
@@ -105,6 +105,10 @@ class Timeout():
             self._data_strategy = self._on_response
             self._queue_timeout_type = self.TimeoutType.RESPONSE
         self._last_timestamp = None
+
+        self.response_time = None
+        self.continuation_times = []
+        self.total_time = None
         
         return self._response
 
@@ -118,34 +122,42 @@ class Timeout():
             match self._queue_timeout_type:
                 case self.TimeoutType.RESPONSE:
                     self._data_strategy = self._on_response
+                    self.response_time = self._output_timeout # This is a test
                 case self.TimeoutType.CONTINUATION:
                     self._data_strategy = self._on_continuation
+                    self.continuation_times.append(self._output_timeout) # This is a test
                 case self.TimeoutType.TOTAL:
+                    self.total_time = self._output_timeout # This is a test
                     self._data_strategy = self._on_total
             self._last_data_strategy_origin = self._queue_timeout_type
             stop = True 
         else:
             # Check total
             if self._total is not None:
-                if timestamp - self._start_time >= self._total:
+                self.total_time = timestamp - self._start_time
+                if self.total_time >= self._total:
                     stop = True
                     self._data_strategy = self._on_total
                     self._last_data_strategy_origin = self.TimeoutType.TOTAL
             # Check continuation
-            elif self._continuation is not None and self._state == self._State.CONTINUATION and self._last_timestamp is not None:
-                if timestamp - self._last_timestamp >= self._continuation:
+            # elif
+            if self._continuation is not None and self._state == self._State.CONTINUATION and self._last_timestamp is not None:
+                continuation_time = timestamp - self._last_timestamp
+                self.continuation_times.append(continuation_time)
+                if continuation_time >= self._continuation:
                     stop = True
                     self._data_strategy = self._on_continuation
                     self._last_data_strategy_origin = self.TimeoutType.CONTINUATION
             # Check response time
-            elif self._response is not None and self._state == self._State.WAIT_FOR_RESPONSE:
-                response_time = timestamp - self._start_time
-                if response_time >= self._response:
+            # elif
+            if self._response is not None and self._state == self._State.WAIT_FOR_RESPONSE:
+                self.response_time = timestamp - self._start_time
+                if self.response_time >= self._response:
                     stop = True
                     self._data_strategy = self._on_response
                     self._last_data_strategy_origin = self.TimeoutType.RESPONSE
 
-        timeout = None
+        self._output_timeout = None
         # If we continue
         if not stop:
             # Update the state
@@ -159,20 +171,20 @@ class Timeout():
                 c = self._continuation
                 t = self._start_time + self._total
                 if c < t:
-                    timeout = c
+                    self._output_timeout = c
                     self._queue_timeout_type = self.TimeoutType.CONTINUATION
                 else:
-                    timeout = t
+                    self._output_timeout = t
                     self._queue_timeout_type = self.TimeoutType.TOTAL
             elif self._total is not None:
-                timeout = time() - (self._start_time + self._total)
+                self._output_timeout = time() - (self._start_time + self._total)
                 self._queue_timeout_type = self.TimeoutType.TOTAL
             elif self._continuation is not None:
-                timeout = self._continuation
+                self._output_timeout = self._continuation
                 self._queue_timeout_type = self.TimeoutType.CONTINUATION
                 
 
-        return stop, timeout
+        return stop, self._output_timeout
 
     def dataStrategy(self):
         """
