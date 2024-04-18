@@ -20,7 +20,7 @@ To instantiate a device / testbench, one must import the device and a suitable a
 
 ```python
 # 1) Import the device
-from syndesi.drivers.instruments.mutlimeters.siglent.SDM3055 import SDM3055
+from syndesi.drivers.instruments.multimeters.siglent.SDM3055 import SDM3055
 # 2) Import the adapter
 from syndesi.adapters import IP
 
