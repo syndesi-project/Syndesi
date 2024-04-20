@@ -56,6 +56,17 @@ class SCPI(Protocol):
             if c in command:
                 raise ValueError(f"Invalid char '{c}' in command")
 
+    def get_identification(self):
+        """
+        Return identification returned by '*IDN?\n'
+
+        Returns
+        -------
+        identification : str
+        """
+        identification = self.query('*IDN?\n')
+        return identification
+
     def write(self, command : str) -> None:
         self._checkCommand(command)
         payload = self._to_bytes(self._formatCommand(command))
