@@ -1,5 +1,5 @@
 from ..adapters import Adapter
-from .iprotocol import Protocol
+from .protocol import Protocol
 
 
 class SDP(Protocol):

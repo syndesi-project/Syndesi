@@ -1,5 +1,5 @@
 from ..adapters import Adapter
-from .iprotocol import Protocol
+from .protocol import Protocol
 
 
 # Raw protocols provide the user with the binary data directly,

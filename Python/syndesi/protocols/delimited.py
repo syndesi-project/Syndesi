@@ -1,4 +1,4 @@
-from .iprotocol import Protocol
+from .protocol import Protocol
 from ..adapters import Adapter
 from ..tools.types import assert_byte_instance, assert_byte_instance
 from time import time
