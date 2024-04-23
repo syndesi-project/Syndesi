@@ -29,9 +29,10 @@ from ..tools.log import LoggerAlias
 import logging
 from time import time
 from dataclasses import dataclass
+from ..tools.others import default_argument, is_default_argument
 
-DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
-DEFAUT_STOP_CONDITION = None
+DEFAULT_TIMEOUT = default_argument(Timeout(response=1, continuation=100e-3, total=None))
+DEFAULT_STOP_CONDITION = default_argument(StopCondition())
 
 STOP_DESIGNATORS = {
     'timeout' : {
@@ -70,7 +71,7 @@ class Adapter(ABC):
     def __init__(self,
         alias : str = '',
         timeout : Union[float, Timeout] = DEFAULT_TIMEOUT,
-        stop_condition : Union[StopCondition, None] = DEFAUT_STOP_CONDITION):
+        stop_condition : Union[StopCondition, None] = DEFAULT_STOP_CONDITION):
         """
         Adapter instance
 
@@ -104,13 +105,25 @@ class Adapter(ABC):
 
     def set_default_timeout(self, default_timeout : Union[Timeout, tuple, float]):
         """
-        Set the default timeotu for this adapter. If a previous timeout has been set, it will be fused
+        Set the default timeout for this adapter. If a previous timeout has been set, it will be fused
 
         Parameters
         ----------
         default_timeout : Timeout or tuple or float
         """
         self._timeout = timeout_fuse(self._timeout, default_timeout)
+
+    def set_default_stop_condition(self, stop_condition):
+        """
+        Set the default stop condition for this adapter.
+
+        Parameters
+        ----------
+        stop_condition : StopCondition
+        """
+        if is_default_argument(self._stop_condition):
+            self._stop_condition = stop_condition
+        
 
     def flushRead(self):
         """

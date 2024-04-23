@@ -5,6 +5,8 @@
 from enum import Enum
 from typing import Union, Tuple
 from time import time
+from ..tools.others import is_default_argument
+
 
 class Timeout():
     class OnTimeoutStrategy(Enum):
@@ -256,11 +258,17 @@ def timeout_fuse(high_priority, low_priority):
         return high_priority
 
     # 2) Convert each to Timeout class
-    high = Timeout(high_priority)
-    low = Timeout(low_priority)
+    high = high_priority if isinstance(high_priority, Timeout) else Timeout(high_priority)
+    low = low_priority if isinstance(low_priority, Timeout) else Timeout(low_priority)
+
+    # 3) If one is the default, take the other
+    if is_default_argument(high):
+        return low
+    if is_default_argument(low):
+        return high
     
     new_attr = {}
-    # 3) Select with parameter to keep based on where it has been set
+    # 4) Select with parameter to keep based on where it has been set
     for attr in [
         '_response',
         '_on_response',
