@@ -1,10 +1,11 @@
-from ..adapters import Adapter, IP, Timeout
+from ..adapters import Adapter, IP, Timeout, Termination
 from .protocol import Protocol
 from ..tools.types import is_byte_instance
+from ..tools.others import is_default_argument
 
 class SCPI(Protocol):
     DEFAULT_PORT = 5025
-    def __init__(self, adapter: Adapter, send_termination = '\n', receive_termination = None, timeout : Timeout = None) -> None:
+    def __init__(self, adapter: Adapter, send_termination = '\n', receive_termination = None, timeout : Timeout = None, encoding : str = 'utf-8') -> None:
         """
         SDP (Syndesi Device Protocol) compatible device
 
@@ -18,7 +19,7 @@ class SCPI(Protocol):
         timeout : Timeout/float/tuple
             Set device timeout
         """
-        super().__init__(adapter)
+        super().__init__(adapter=adapter, timeout=timeout)
 
         if receive_termination is None:
             self._receive_termination = send_termination
@@ -31,7 +32,9 @@ class SCPI(Protocol):
             self._adapter.set_default_port(self.DEFAULT_PORT)
 
         self._adapter.set_default_timeout(timeout)
-        
+        if is_default_argument(self._adapter._stop_condition):
+            raise ValueError('A conflicting stop-condition has been set for this adapter')
+        self._adapter._stop_condition = Termination(self._receive_termination.encode(encoding=encoding))
 
     def _to_bytes(self, command):
         if isinstance(command, str):
@@ -84,5 +87,7 @@ class SCPI(Protocol):
     def read_raw(self) -> str:
         """
         Return the raw bytes instead of str
+
+        TODO : Include custom termination option (if necessary), and specify if it should be included in the output
         """
-        return self._adapter.read()
+        return self._adapter.read(stop_condition=None)
