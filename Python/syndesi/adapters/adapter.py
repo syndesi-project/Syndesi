@@ -183,6 +183,9 @@ class Adapter(ABC):
         # Use adapter values if no custom value is specified
         if timeout is None:
             timeout = self._timeout
+        elif isinstance(timeout, float):
+            timeout = Timeout(timeout)
+        
         
         if stop_condition is None:
             stop_condition = self._stop_condition
