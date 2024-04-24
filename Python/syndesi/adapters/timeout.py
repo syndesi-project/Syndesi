@@ -143,6 +143,8 @@ class Timeout():
         self.response_time = None
         self.continuation_times = []
         self.total_time = None
+
+        self._output_timeout = None
         
         return self._response
 
