@@ -25,7 +25,7 @@ class IP(Adapter):
         UDP = 'UDP'
     def __init__(self,
                 address : str,
-                port : int,
+                port : int = None,
                 transport : str = 'TCP',
                 timeout : Union[Timeout, float] = DEFAULT_TIMEOUT,
                 stop_condition = None,
@@ -80,6 +80,8 @@ class IP(Adapter):
             self._port = port
 
     def open(self):
+        if self._port is None:
+            raise ValueError(f"Cannot open adapter without specifying a port")
         self._socket.connect((self._address, self._port))
         self._status = self.Status.CONNECTED
         self._logger.info("Adapter opened !")
