@@ -1,4 +1,4 @@
-from ..adapters import Adapter, IP, Timeout, Termination
+from ..adapters import Adapter, IP, Timeout, Termination, StopCondition
 from .protocol import Protocol
 from ..tools.types import is_byte_instance
 from ..tools.others import is_default_argument
@@ -75,19 +75,19 @@ class SCPI(Protocol):
         payload = self._to_bytes(self._formatCommand(command))
         self._adapter.write(payload)
 
-    def query(self, command : str) -> str:
+    def query(self, command : str, timeout : Timeout = None, stop_condition : StopCondition = None, return_metrics : bool = False) -> str:
         self._adapter.flushRead()
         self.write(command)
-        return self.read()
+        return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
 
-    def read(self) -> str:
-        output = self._from_bytes(self._adapter.read())
+    def read(self, timeout : Timeout = None, stop_condition : StopCondition = None, return_metrics : bool = False) -> str:
+        output = self._from_bytes(self._adapter.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics))
         return self._unformatCommand(output)
 
-    def read_raw(self) -> str:
+    def read_raw(self, timeout=None, stop_condition=None, return_metrics : bool = False) -> str:
         """
         Return the raw bytes instead of str
 
         TODO : Include custom termination option (if necessary), and specify if it should be included in the output
         """
-        return self._adapter.read(stop_condition=None)
+        return self._adapter.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
