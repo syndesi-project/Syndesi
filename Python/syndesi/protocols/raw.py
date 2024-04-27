@@ -1,4 +1,4 @@
-from ..adapters import Adapter
+from ..adapters import Adapter, Timeout
 from .protocol import Protocol
 
 
@@ -6,7 +6,7 @@ from .protocol import Protocol
 # without converting it to string first
 
 class Raw(Protocol):
-    def __init__(self, adapter: Adapter) -> None:
+    def __init__(self, adapter: Adapter, timeout : Timeout = None) -> None:
         """
         Raw device, no presentation and application layers
 
@@ -14,7 +14,7 @@ class Raw(Protocol):
         ----------
         adapter : IAdapter
         """
-        super().__init__(adapter)
+        super().__init__(adapter, timeout)
 
     def write(self, data : bytes):
         self._adapter.write(data)
