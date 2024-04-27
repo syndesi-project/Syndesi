@@ -57,18 +57,7 @@ class SCPI(Protocol):
     def _checkCommand(self, command : str):
         for c in ['\n', '\r']:
             if c in command:
-                raise ValueError(f"Invalid char '{c}' in command")
-
-    def get_identification(self):
-        """
-        Return identification returned by '*IDN?\n'
-
-        Returns
-        -------
-        identification : str
-        """
-        identification = self.query('*IDN?\n')
-        return identification
+                raise ValueError(f"Invalid char {repr(c)} in command")
 
     def write(self, command : str) -> None:
         self._checkCommand(command)
@@ -91,3 +80,36 @@ class SCPI(Protocol):
         TODO : Include custom termination option (if necessary), and specify if it should be included in the output
         """
         return self._adapter.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
+
+
+    # Standard SCPI commands
+    def get_identification(self):
+        """
+        Return identification returned by '*IDN?'
+
+        Returns
+        -------
+        identification : str
+        """
+        identification = self.query('*IDN?')
+        return identification
+    
+    def get_last_error(self):
+        """
+        Return the last error issued by the instrument
+
+        Returns
+        -------
+        error : str
+        """
+        return self.query('SYST:ERR?')
+
+    def get_version(self):
+        """
+        Get the software version of the equipment
+
+        Returns
+        -------
+        version : str
+        """
+        return self.query('SYST:VERS?')
