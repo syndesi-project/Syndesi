@@ -25,7 +25,7 @@ class IP(Adapter):
         UDP = 'UDP'
     def __init__(self,
                 address : str,
-                port : int,
+                port : int = None,
                 transport : str = 'TCP',
                 timeout : Union[Timeout, float] = DEFAULT_TIMEOUT,
                 stop_condition = None,
@@ -52,11 +52,11 @@ class IP(Adapter):
             Socket buffer size, may be removed in the future
         """
         super().__init__(alias=alias, timeout=timeout, stop_condition=stop_condition)
-        self._transport = transport
-        if transport == self.Protocol.TCP.value:
+        self._transport = self.Protocol(transport)
+        if self._transport == self.Protocol.TCP:
             self._logger.info("Setting up TCP IP adapter")
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        elif transport == self.Protocol.UDP.value:
+        elif self._transport == self.Protocol.UDP:
             self._logger.info("Setting up UDP IP adapter")
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         else:
@@ -80,6 +80,8 @@ class IP(Adapter):
             self._port = port
 
     def open(self):
+        if self._port is None:
+            raise ValueError(f"Cannot open adapter without specifying a port")
         self._socket.connect((self._address, self._port))
         self._status = self.Status.CONNECTED
         self._logger.info("Adapter opened !")

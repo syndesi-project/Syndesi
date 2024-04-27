@@ -1,10 +1,11 @@
-from ..adapters import Adapter, IP, Timeout
+from ..adapters import Adapter, IP, Timeout, Termination, StopCondition
 from .protocol import Protocol
 from ..tools.types import is_byte_instance
+from ..tools.others import is_default_argument
 
 class SCPI(Protocol):
     DEFAULT_PORT = 5025
-    def __init__(self, adapter: Adapter, send_termination = '\n', receive_termination = None, timeout : Timeout = None) -> None:
+    def __init__(self, adapter: Adapter, send_termination = '\n', receive_termination = None, timeout : Timeout = None, encoding : str = 'utf-8') -> None:
         """
         SDP (Syndesi Device Protocol) compatible device
 
@@ -18,7 +19,7 @@ class SCPI(Protocol):
         timeout : Timeout/float/tuple
             Set device timeout
         """
-        super().__init__(adapter, timeout=timeout)
+        super().__init__(adapter=adapter, timeout=timeout)
 
         if receive_termination is None:
             self._receive_termination = send_termination
@@ -29,7 +30,11 @@ class SCPI(Protocol):
 
         if isinstance(self._adapter, IP):
             self._adapter.set_default_port(self.DEFAULT_PORT)
-        
+
+        self._adapter.set_default_timeout(timeout)
+        if is_default_argument(self._adapter._stop_condition):
+            raise ValueError('A conflicting stop-condition has been set for this adapter')
+        self._adapter._stop_condition = Termination(self._receive_termination.encode(encoding=encoding))
 
     def _to_bytes(self, command):
         if isinstance(command, str):
@@ -70,17 +75,19 @@ class SCPI(Protocol):
         payload = self._to_bytes(self._formatCommand(command))
         self._adapter.write(payload)
 
-    def query(self, command : str) -> str:
+    def query(self, command : str, timeout : Timeout = None, stop_condition : StopCondition = None, return_metrics : bool = False) -> str:
         self._adapter.flushRead()
         self.write(command)
-        return self.read()
+        return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
 
-    def read(self) -> str:
-        output = self._from_bytes(self._adapter.read())
+    def read(self, timeout : Timeout = None, stop_condition : StopCondition = None, return_metrics : bool = False) -> str:
+        output = self._from_bytes(self._adapter.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics))
         return self._unformatCommand(output)
 
-    def read_raw(self) -> str:
+    def read_raw(self, timeout=None, stop_condition=None, return_metrics : bool = False) -> str:
         """
         Return the raw bytes instead of str
+
+        TODO : Include custom termination option (if necessary), and specify if it should be included in the output
         """
-        return self._adapter.read()
+        return self._adapter.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)

@@ -1,5 +1,7 @@
 # Syndesi Python Implementation
 
+Syndesi description is available [here](https://github.com/syndesi-project/Syndesi/README.md)
+
 ## Installation
 
 The syndesi Python package can be installed through pip
@@ -9,14 +11,16 @@ The syndesi Python package can be installed through pip
 The package can also be installed locally by cloning this repository
 
 ```bash
-git clone ...
+git clone https://github.com/syndesi-project/Syndesi
 cd Syndesi/Python
 pip install .
 ```
 
 ## Usage
 
-To instantiate a device / testbench, one must import the device and a suitable adapter 
+
+
+To instantiate a device, one must import the device and a suitable adapter
 
 ```python
 # 1) Import the device
@@ -30,16 +34,6 @@ mm = SDM3055(IP("192.168.1.123"))
 ## 4) Use
 voltage = mm.measure_dc_voltage()
 ```
-
-The Syndesi Python package provides the user with the necessary tools to control compatible devices
-
-- drivers : device-specific implementation
-- descriptors : Each class represents a particular way of connecting to a device, the user must provide que necessary information (IP, com port, ID, etc...)
-- communication wrapper (wrappers) : Wrappers for low-level communication (TCP, UDP, UART, etc...)
-  - IP (TCP / UDP)
-  - UART
-  - USB (?)
-
 ## Layers
 
 The first layer is the "Device" base class
@@ -71,8 +65,6 @@ The Syndesi Device Protocol is a light-weight and easy interface to send / recei
   - Send / receive data using the USB protocol
 
 ## Notes
-
-15.08.2023 : The adapters must work with bytearray data only
 
 06.09.2023 : bytearray is changed to bytes everywhere
 
