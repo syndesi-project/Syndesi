@@ -18,7 +18,7 @@ class SCPI(Protocol):
         timeout : Timeout/float/tuple
             Set device timeout
         """
-        super().__init__(adapter)
+        super().__init__(adapter, timeout=timeout)
 
         if receive_termination is None:
             self._receive_termination = send_termination
@@ -29,8 +29,6 @@ class SCPI(Protocol):
 
         if isinstance(self._adapter, IP):
             self._adapter.set_default_port(self.DEFAULT_PORT)
-
-        self._adapter.set_default_timeout(timeout)
         
 
     def _to_bytes(self, command):
