@@ -124,20 +124,3 @@ class IP(Adapter):
         self.flushRead()
         self.write(data)
         return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
-
-    def shell_parse(inp: str):
-        parser = argparse.ArgumentParser(
-        prog='',
-        description='Serial port shell parser',
-        epilog='')
-        # Parse subcommand    
-        parser.add_argument('--' + shell.Arguments.PORT.value, type=int)
-        parser.add_argument('--' + shell.Arguments.IP.value, type=str)
-        parser.add_argument('--' + shell.Arguments.UDP.value, action='store_true', default=False)
-        args = parser.parse_args(inp.split())
-
-        return {
-            'port' : getattr(args, shell.Arguments.PORT.value),
-            'address' : getattr(args, shell.Arguments.IP.value),
-            'transport' : 'UDP' if getattr(args, shell.Arguments.UDP.value) else 'TCP'
-        }

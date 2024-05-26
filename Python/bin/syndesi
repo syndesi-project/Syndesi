@@ -2,57 +2,24 @@
 
 # Syndesi CLI
 import argparse
-from cmd import Cmd
 from enum import Enum
-from syndesi.adapters import *
-
-class MyPrompt(Cmd):
-    prompt = '❯ '
-    #intro = "Welcome to the Syndesi Shell! Type ? to list commands"
-    #def __init__(self, completekey=..., stdin=..., stdout=...) -> None:
-    #    super().__init__(completekey, stdin, stdout)
-    #    self._adapter = None
-
-    def do_exit(self, inp):
-        print("Bye !")
-        return True
-    
-    def do_serial(self, inp):
-        print("Opening serial port...")
-        self._adapter = SerialPort(**SerialPort.shell_parse(inp))
-
-    def do_ip(self, inp):
-        print("Opening ip ...")
-        self._adapter = IP(**IP.shell_parse(inp))
-
-
-    def default(self, inp):
-        if hasattr(self, '_adapter'):
-            output = self._adapter.query(inp + '\n')
-            print(output)
-        else:
-            print("no adapter !")
-
-    do_EOF = do_exit # Allow CTRL+d to exit 
+from syndesi.tools.shell import ShellPrompt
 
 class SubCommands(Enum):
     SHELL = 'shell'
    
-
 def main():
     parser = argparse.ArgumentParser(
         prog='syndesi',
         description='Syndesi command line interface',
         epilog='')
-    # Parse subcommand    
+    # Parse subcommand
     parser.add_argument('subcommand', choices=[SubCommands.SHELL.value])
 
     args, extra_args = parser.parse_known_args()
 
-    print(args)
-
     if args.subcommand == SubCommands.SHELL.value:
-        p = MyPrompt()
+        p = ShellPrompt()
         if len(extra_args):
             p.cmdqueue.append(' '.join(extra_args))
         p.cmdloop()
