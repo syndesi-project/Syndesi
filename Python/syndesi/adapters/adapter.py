@@ -300,5 +300,10 @@ class Adapter(ABC):
         """
         pass
 
+    @abstractmethod
+    def shell_parse(arguments : str):
+        pass
+
+
     def __del__(self):
         self.close()

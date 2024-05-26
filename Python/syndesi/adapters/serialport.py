@@ -7,6 +7,9 @@ from .timed_queue import TimedQueue
 from threading import Thread
 from typing import Union
 import select
+import argparse
+from ..tools import shell
+from collections.abc import Sequence
 
 # From pyserial - serialposix.py
 import fcntl
@@ -60,10 +63,11 @@ class SerialPort(Adapter):
         self._logger.info("Adapter opened !")
 
     def close(self):
-        if self._thread.is_alive():
+        if self._thread is not None and self._thread.is_alive():
             os.write(self._stop_event_pipe_write, b'1')
             self._thread.join()
-        self._port.close()
+        if hasattr(self, '_port'):
+            self._port.close()
         self._logger.info("Adapter closed !")
             
     def write(self, data : bytes):
@@ -126,3 +130,20 @@ class SerialPort(Adapter):
         self.flushRead()
         self.write(data)
         return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
+
+    def shell_parse(inp: str):
+        parser = argparse.ArgumentParser(
+        prog='',
+        description='Serial port shell parser',
+        epilog='')
+        # Parse subcommand    
+        parser.add_argument('--' + shell.Arguments.PORT.value, type=str)
+        parser.add_argument('--' + shell.Arguments.BAUDRATE.value, type=int)
+        parser.add_argument('--' + shell.Arguments.ENABLE_RTS_CTS.value, action='store_true')
+        args = parser.parse_args(inp.split())
+
+        return {
+            'port' : getattr(args, shell.Arguments.PORT.value),
+            'baudrate' : getattr(args, shell.Arguments.BAUDRATE.value),
+            'rts_cts' : bool(getattr(args, shell.Arguments.ENABLE_RTS_CTS.value))
+        }
