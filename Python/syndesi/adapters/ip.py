@@ -8,21 +8,21 @@ from .timed_queue import TimedQueue
 from typing import Union
 from time import time
 
-DEFAULT_RESPONSE_TIMEOUT = 1
-DEFAULT_CONTINUATION_TIMEOUT = 1e-3
-DEFAULT_TOTAL_TIMEOUT = 5
-
-DEFAULT_BUFFER_SIZE = 1024
-
-DEFAULT_TIMEOUT = Timeout(
-                    response=DEFAULT_RESPONSE_TIMEOUT,
-                    continuation=DEFAULT_CONTINUATION_TIMEOUT,
-                    total=DEFAULT_TOTAL_TIMEOUT)
-
 class IP(Adapter):
+    DEFAULT_RESPONSE_TIMEOUT = 1
+    DEFAULT_CONTINUATION_TIMEOUT = 1e-3
+    DEFAULT_TOTAL_TIMEOUT = 5
+
+
+    DEFAULT_TIMEOUT = Timeout(
+                        response=DEFAULT_RESPONSE_TIMEOUT,
+                        continuation=DEFAULT_CONTINUATION_TIMEOUT,
+                        total=DEFAULT_TOTAL_TIMEOUT)
+    DEFAULT_BUFFER_SIZE = 1024
     class Protocol(Enum):
         TCP = 'TCP'
         UDP = 'UDP'
+
     def __init__(self,
                 address : str,
                 port : int = None,

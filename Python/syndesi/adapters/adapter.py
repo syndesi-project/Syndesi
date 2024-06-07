@@ -29,10 +29,10 @@ from ..tools.log import LoggerAlias
 import logging
 from time import time
 from dataclasses import dataclass
-from ..tools.others import default_argument, is_default_argument
+from ..tools.others import DEFAULT
 
-DEFAULT_TIMEOUT = default_argument(Timeout(response=1, continuation=100e-3, total=None))
-DEFAULT_STOP_CONDITION = default_argument(StopCondition())
+DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
+DEFAULT_STOP_CONDITION = None
 
 STOP_DESIGNATORS = {
     'timeout' : {
@@ -63,15 +63,13 @@ class ReturnMetrics:
     continuation_times : list
     total_time : float
 
+
 class Adapter(ABC):
     class Status(Enum):
         DISCONNECTED = 0
         CONNECTED = 1
 
-    def __init__(self,
-        alias : str = '',
-        timeout : Union[float, Timeout] = DEFAULT_TIMEOUT,
-        stop_condition : Union[StopCondition, None] = DEFAULT_STOP_CONDITION):
+    def __init__(self, alias : str = '', stop_condition : Union[StopCondition, None] = DEFAULT, timeout : Union[float, Timeout] = DEFAULT) -> None:
         """
         Adapter instance
 
@@ -84,24 +82,33 @@ class Adapter(ABC):
         stop_condition : StopCondition or None
             Default to None
         """
+        super().__init__()
+        self._alias = alias
 
-        if is_number(timeout):
-            self._timeout = Timeout(response=timeout, continuation=100e-3)
-        elif isinstance(timeout, Timeout):
-            self._timeout = timeout
+        self._default_stop_condition = stop_condition == DEFAULT
+        if self._default_stop_condition:
+            self._stop_condition = DEFAULT_STOP_CONDITION
         else:
-            raise ValueError(f"Invalid timeout type : {type(timeout)}")
-
-        self._stop_condition = stop_condition
+            self._stop_condition = stop_condition
         self._read_queue = TimedQueue()
         self._thread : Union[Thread, None] = None
         self._status = self.Status.DISCONNECTED
+        self._logger = logging.getLogger(LoggerAlias.ADAPTER.value)
+
         # Buffer for data that has been pulled from the queue but
         # not used because of termination or length stop condition
         self._previous_read_buffer = b''
 
-        self._alias = alias
-        self._logger = logging.getLogger(LoggerAlias.ADAPTER.value)
+        self._default_timeout = timeout == DEFAULT
+        if self._default_timeout:
+            self._timeout = DEFAULT_TIMEOUT
+        else:
+            if is_number(timeout):
+                self._timeout = Timeout(response=timeout, continuation=100e-3)
+            elif isinstance(timeout, Timeout):
+                self._timeout = timeout
+            else:
+                raise ValueError(f"Invalid timeout type : {type(timeout)}")
 
     def set_default_timeout(self, default_timeout : Union[Timeout, tuple, float]):
         """
@@ -111,7 +118,10 @@ class Adapter(ABC):
         ----------
         default_timeout : Timeout or tuple or float
         """
-        self._timeout = timeout_fuse(self._timeout, default_timeout)
+        if self._default_timeout:
+            self._timeout = default_timeout
+        else:
+            self._timeout = timeout_fuse(self._timeout, default_timeout)
 
     def set_default_stop_condition(self, stop_condition):
         """
@@ -121,9 +131,8 @@ class Adapter(ABC):
         ----------
         stop_condition : StopCondition
         """
-        if is_default_argument(self._stop_condition):
+        if self._default_stop_condition:
             self._stop_condition = stop_condition
-        
 
     def flushRead(self):
         """
