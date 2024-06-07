@@ -154,7 +154,7 @@ class Adapter(ABC):
         Stop communication with the device
         """
         pass
-            
+
     @abstractmethod
     def write(self, data : Union[bytes, str]):
         """
@@ -163,13 +163,6 @@ class Adapter(ABC):
         Parameters
         ----------
         data : bytes or str
-        """
-        pass
-
-    @abstractmethod
-    def _start_thread(self):
-        """
-        Initiate the read thread
         """
         pass
     
@@ -300,6 +293,13 @@ class Adapter(ABC):
             return output
 
     @abstractmethod
+    def _start_thread(self):
+        pass
+
+    def __del__(self):
+        self.close()
+
+    @abstractmethod
     def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False) -> bytes:
         """
         Shortcut function that combines
@@ -308,6 +308,4 @@ class Adapter(ABC):
         - read
         """
         pass
-
-    def __del__(self):
-        self.close()
+    

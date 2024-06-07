@@ -16,3 +16,38 @@
 #
 # Driver :
 #   my_device = Driver(Remote('192.168.1.1', VISA('...')))
+from .adapter import Adapter
+from . import IP, SerialPort, VISA
+from enum import Enum
+from ..tools.remote_api import *
+
+
+DEFAULT_PORT = 2806
+
+
+
+
+
+
+class Remote(Adapter):
+    def __init__(self, proxy_adapter : Adapter, remote_adapter : Adapter):
+        super().__init__()
+
+        self._proxy = proxy_adapter
+        self._remote = remote_adapter
+
+        if isinstance(proxy_adapter, IP):
+            proxy_adapter.set_default_port(DEFAULT_PORT)
+
+        with self._remote as r:
+            if isinstance(r, IP):
+                self._proxy.query(IPAdapterInstanciate(
+                    address=r._address,
+                    port=r._port,
+                    transport=r._transport,
+                    buffer_size=r._buffer_size
+                ).encode())
+
+    def open(self):
+        if isinstance(self._remote, IP):
+            self._proxy.query(IPAdapterOpen().encode())

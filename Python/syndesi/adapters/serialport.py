@@ -78,6 +78,9 @@ class SerialPort(Adapter):
         self._logger.debug(f"Written [{write_duration*1e3:.3f}ms]: {repr(data)}")
 
     def _start_thread(self):
+        """
+        Start the read thread
+        """
         self._logger.debug("Starting read thread...")
         if self._thread is None or not self._thread.is_alive():
             self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue, self._stop_event_pipe))
