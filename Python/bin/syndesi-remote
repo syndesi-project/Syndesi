@@ -1,0 +1,28 @@
+# syndesi-remote.py
+# Sébastien Deriaz
+# 28.05.2024
+import argparse
+from enum import Enum
+
+class Adapters(Enum):
+    SERIAL = 'serial'
+    IP = 'ip'
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog='syndesi-remote',
+        description='Syndesi remote server',
+        epilog='')
+    # Parse subcommand
+    parser.add_argument('-a', '--adapter', choices=[x.value for x in Adapters], default=Adapters.IP)
+    parser.add_argument('port', type=int, default=)
+
+    args = parser.parse_args()
+
+
+    
+
+
+if __name__ == '__main__':
+    main()
