@@ -4,7 +4,7 @@
 from ..adapters import IP
 import json
 from dataclasses import dataclass, fields, Field
-from typing import Tuple
+from typing import Tuple, Union
 from enum import Enum
 
 class RemoteException(Exception):
@@ -14,9 +14,9 @@ class APICall:
     action = ''
     _keyword = ''
 
-    def __init__(self, data_to_parse : dict = None) -> None:
-        if data_to_parse is not None:
-            self.parse(data_to_parse)
+    # def __init__(self, data_to_parse : dict = None) -> None:
+    #     if data_to_parse is not None:
+    #         self.parse(data_to_parse)
         
 
     def encode(self) -> bytes:
@@ -32,23 +32,19 @@ class APICall:
 
         return data
 
-    def parse(self, data : dict):
-        cls_fields: Tuple[Field, ...] = fields(self)
+    # def parse(self, data : dict):
+    #     cls_fields: Tuple[Field, ...] = fields(self)
         
-        for field in cls_fields:
-            setattr(self, field.name, data[field.name])
+    #     for field in cls_fields:
+    #         setattr(self, field.name, data[field.name])
             
-            field_data = getattr(self, field.name)
-            if isinstance(field_data, Enum):
-                entry = field_data.value
+    #         field_data = getattr(self, field.name)
+    #         if isinstance(field_data, Enum):
+    #             entry = field_data.value
 
-            data[field.name] = entry
+    #         data[field.name] = entry
 
-        return data
-
-@dataclass
-class IPAdapterOpen(APICall):
-    action = 'adapter_open'
+    #     return data
 
 @dataclass
 class IPAdapterInstanciate(APICall):
@@ -58,10 +54,43 @@ class IPAdapterInstanciate(APICall):
     transport : IP.Protocol
     buffer_size : int = IP.DEFAULT_BUFFER_SIZE
 
-ACTION_ATTRIBUTE = 'action'
-API_CALLS_PER_ACTION = {getattr(c, ACTION_ATTRIBUTE) : c for c in [IPAdapterOpen, IPAdapterInstanciate]}
+@dataclass
+class AdapterOpen(APICall):
+    action = 'adapter_open'
 
-def parse(data : str) -> APICall:
+@dataclass
+class AdapterClose(APICall):
+    action = 'adapter_close'
+
+@dataclass
+class AdapterWrite(APICall):
+    action = 'adapter_write'
+    data : bytes
+
+@dataclass
+class AdapterFlushRead(APICall):
+    action = 'adapter_flush_read'
+
+@dataclass
+class AdapterRead(APICall):
+    action = 'adapter_read'
+
+@dataclass
+class AdapterReadReturn(APICall):
+    action = 'adapter_read_return'
+    data : bytes
+    return_metrics : dict = None
+
+@dataclass
+class ReturnStatus(APICall):
+    action = 'return_status'
+    success : bool
+    error_message : str = ''
+
+ACTION_ATTRIBUTE = 'action'
+API_CALLS_PER_ACTION = {getattr(c, ACTION_ATTRIBUTE) : c for c in [AdapterOpen, IPAdapterInstanciate]}
+
+def parse(data : Union[str, bytes]) -> APICall:
     json_data = json.loads(data)
     action = json_data[ACTION_ATTRIBUTE]
     json_data.pop(ACTION_ATTRIBUTE)

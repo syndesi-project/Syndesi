@@ -136,3 +136,5 @@ class IP(Adapter):
         self.flushRead()
         self.write(data)
         return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
+    
+    

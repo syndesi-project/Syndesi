@@ -15,7 +15,12 @@ setup(
     description=DESCRIPTION,
     long_description_content_type="text/markdown",
     long_description=long_description,
-    scripts=['bin/syndesi'],
+    #scripts=['bin/syndesi'],
+    entry_points = {
+        'console_scripts': [
+            'syndesi=syndesi.shell.syndesi:main',
+            'syndesi-server=syndesi.tools.remote_server:main'],
+    },
     packages=find_packages(),
     install_requires=[''],
     keywords=['python', 'syndesi', 'interface', 'ethernet'],

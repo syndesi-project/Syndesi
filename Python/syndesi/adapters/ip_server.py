@@ -64,6 +64,7 @@ class IPServer:
         self._address = socket.gethostname() if address is None else address
         self._port = port
         self._max_clients = max_clients
+        self._opened = False
         
 
     def set_default_port(self, port):
@@ -87,17 +88,19 @@ class IPServer:
         self._logger.info(f"Listening to incoming connections on {self._address}:{self._port}")
         self._socket.bind((self._address, self._port))
         self._socket.listen(self._max_clients)
-        #self._status = self.Status.CONNECTED
+        self._opened = True
 
     def close(self):
         if hasattr(self, '_socket'):
             self._socket.close()
         self._logger.info("Adapter closed !")
-        #self._status = self.Status.DISCONNECTED
+        self._opened = False
 
     def get_client(self) -> IP:
         """
         Wait for a client to connect to the server and return the corresponding adapter
         """
+        if not self._opened:
+            raise RuntimeError("open() must be called before getting client")
         client_socket, address = self._socket.accept()
         return IP(_socket=client_socket, address=address)
