@@ -6,6 +6,8 @@ import json
 from dataclasses import dataclass, fields, Field
 from typing import Tuple, Union
 from enum import Enum
+import sys
+
 
 class RemoteException(Exception):
     pass
@@ -91,8 +93,14 @@ class ReturnStatus(APICall):
     success : bool
     error_message : str = ''
 
+current_module = sys.modules[__name__]
 ACTION_ATTRIBUTE = 'action'
-API_CALLS_PER_ACTION = {getattr(c, ACTION_ATTRIBUTE) : c for c in [AdapterOpen, IPAdapterInstanciate]}
+
+# TODO : Fix this
+API_CALLS_PER_ACTION = {getattr(obj, ACTION_ATTRIBUTE) : obj for obj in current_module.__dict__.values() if issubclass(obj, APICall)}
+print(API_CALLS_PER_ACTION)
+
+#API_CALLS_PER_ACTION = {getattr(c, ACTION_ATTRIBUTE) : c for c in [AdapterOpen, IPAdapterInstanciate]}
 
 def parse(data : Union[str, bytes]) -> APICall:
     print(f"Parsing {data}")
