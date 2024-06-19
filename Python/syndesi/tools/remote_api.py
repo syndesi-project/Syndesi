@@ -23,14 +23,19 @@ class APICall:
         cls_fields: Tuple[Field, ...] = fields(self)
         data = {}
         
+        # Add action field
+        data[ACTION_ATTRIBUTE] = self.action
+        # Add other fields
         for field in cls_fields:
             field_data = getattr(self, field.name)
             if isinstance(field_data, Enum):
                 entry = field_data.value
+            else:
+                entry = field_data
 
             data[field.name] = entry
-
-        return data
+        print(f"Data = {data}")
+        return json.dumps(data)
 
     # def parse(self, data : dict):
     #     cls_fields: Tuple[Field, ...] = fields(self)
@@ -45,7 +50,6 @@ class APICall:
     #         data[field.name] = entry
 
     #     return data
-
 @dataclass
 class IPAdapterInstanciate(APICall):
     action = 'adapter_inst'
@@ -91,6 +95,7 @@ ACTION_ATTRIBUTE = 'action'
 API_CALLS_PER_ACTION = {getattr(c, ACTION_ATTRIBUTE) : c for c in [AdapterOpen, IPAdapterInstanciate]}
 
 def parse(data : Union[str, bytes]) -> APICall:
+    print(f"Parsing {data}")
     json_data = json.loads(data)
     action = json_data[ACTION_ATTRIBUTE]
     json_data.pop(ACTION_ATTRIBUTE)

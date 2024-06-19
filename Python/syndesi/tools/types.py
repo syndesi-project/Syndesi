@@ -72,7 +72,7 @@ def to_bytes(data):
     elif isinstance(data, str):
         return data.encode('utf-8')
     else:
-        return ValueError(f"Invalid data type : {type(data)}")
+        raise ValueError(f"Invalid data type : {type(data)}")
 
 
 

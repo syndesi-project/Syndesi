@@ -26,6 +26,16 @@ DEFAULT_PORT = 2608
 
 class Remote(Adapter):
     def __init__(self, proxy_adapter : Adapter, remote_adapter : Adapter):
+        """
+        Remote adapter
+
+        Parameters
+        ----------
+        proxy_adapter : Adapter
+            Adapter to connect to the remote server
+        remote_adapter : Adapter
+            Adapter to instanciate on the remote server
+        """
         super().__init__()
 
         self._proxy = proxy_adapter
@@ -34,14 +44,15 @@ class Remote(Adapter):
         if isinstance(proxy_adapter, IP):
             proxy_adapter.set_default_port(DEFAULT_PORT)
 
-        with self._remote as r:
-            if isinstance(r, IP):
-                self._proxy.query(IPAdapterInstanciate(
-                    address=r._address,
-                    port=r._port,
-                    transport=r._transport,
-                    buffer_size=r._buffer_size
-                ).encode())
+        if isinstance(self._remote, IP):
+            data = IPAdapterInstanciate(
+                address=self._remote._address,
+                port=self._remote._port,
+                transport=self._remote._transport,
+                buffer_size=self._remote._buffer_size
+            ).encode()
+            print(f"Data : {data}")
+            self._proxy.query(data)
 
     def check(self, status : ReturnStatus):
         if not status.success:
@@ -67,5 +78,8 @@ class Remote(Adapter):
         self.check(parse(self._proxy.query(AdapterFlushRead().encode())))
         self.check(parse(self._proxy.query(AdapterWrite(data).encode())))
         return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
+
+    def _start_thread(self):
+        pass
         
 
