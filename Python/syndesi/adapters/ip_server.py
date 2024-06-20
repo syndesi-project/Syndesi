@@ -4,9 +4,10 @@
 
 import socket
 from enum import Enum
-from . import IP
+from . import IP, StopCondition, Timeout
 from time import time
 from ..tools.types import to_bytes
+from .timeout import timeout_fuse
 import logging
 from ..tools.log import LoggerAlias
 
@@ -96,11 +97,12 @@ class IPServer:
         self._logger.info("Adapter closed !")
         self._opened = False
 
-    def get_client(self) -> IP:
+    def get_client(self, stop_condition : StopCondition = None, timeout : Timeout = None) -> IP:
         """
         Wait for a client to connect to the server and return the corresponding adapter
         """
         if not self._opened:
             raise RuntimeError("open() must be called before getting client")
         client_socket, address = self._socket.accept()
-        return IP(_socket=client_socket, address=address)
+        default_timeout = Timeout(response=None, continuation=IP.DEFAULT_CONTINUATION_TIMEOUT, total=None)
+        return IP(_socket=client_socket, address=address, stop_condition=stop_condition, timeout=timeout_fuse(timeout, default_timeout))

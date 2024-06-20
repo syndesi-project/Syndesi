@@ -69,7 +69,7 @@ class Remote(Adapter):
     def write(self, data : Union[bytes, str]):
         self._proxy.query(AdapterWrite(data).encode())
 
-    def read(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False):
+    def read(self, timeout=None, stop_condition=None, return_metrics : bool = False):
         output : AdapterReadReturn
         output = parse(self._proxy.query(AdapterRead().encode()))
         return output.data
