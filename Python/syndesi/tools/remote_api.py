@@ -37,8 +37,10 @@ class APICall:
             field_data = getattr(self, field.name)
             if isinstance(field_data, Enum):
                 entry = field_data.value
-            elif isinstance(field_data, bytes) or isinstance(field_data, str):
-                entry = quopri.encodestring(field_data)
+            elif isinstance(field_data, bytes):
+                entry = quopri.encodestring(field_data).decode('ASCII')
+            elif isinstance(field_data, str):
+                entry = quopri.encodestring(field_data.encode('utf-8')).decode('ASCII')
             else:
                 entry = field_data
 

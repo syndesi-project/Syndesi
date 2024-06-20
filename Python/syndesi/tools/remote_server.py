@@ -41,6 +41,7 @@ def main():
 class RemoteServer:
     def __init__(self, adapter_type : AdapterType, port : Union[str, int], address : str, baudrate : int) -> None:
         self._adapter_type = AdapterType(adapter_type)
+        self._adapter = None
         self._port = port
         self._address = address
         self._baudrate = baudrate
@@ -77,14 +78,22 @@ class RemoteServer:
                 port=c.port)
             output = ReturnStatus(True)
         elif isinstance(c, AdapterOpen):
+            if self._adapter is None:
+                output = ReturnStatus(False, 'Cannot open uninstanciated adapter')
             self._adapter.open()
             output = ReturnStatus(True)
         elif isinstance(c, AdapterClose):
-            self._adapter.close()
-            output = ReturnStatus(True)
+            if self._adapter is None:
+                output = ReturnStatus(False, 'Cannot close uninstanciated adapter')
+            else:
+                self._adapter.close()
+                output = ReturnStatus(True)
         elif isinstance(c, AdapterWrite):
-            self._adapter.write(c.data)
-            output = ReturnStatus(True)
+            if self._adapter is None:
+                output = ReturnStatus(False, 'Cannot write to uninstanciated adapter')
+            else:
+                self._adapter.write(c.data)
+                output = ReturnStatus(True)
         elif isinstance(c, AdapterFlushRead):
             self._adapter.flushRead()
             output = ReturnStatus(True)
