@@ -4,6 +4,7 @@
 import argparse
 from enum import Enum
 from ..adapters import SerialPort
+from ..adapters.adapter import AdapterDisconnected
 from ..adapters.remote import DEFAULT_PORT
 from ..adapters.ip_server import IPServer
 from typing import Union
@@ -50,25 +51,49 @@ class RemoteServer:
 
     def start(self):
         self._logger.info(f"Starting remote server with {self._adapter_type.value} adapter")
-        if self._adapter_type == AdapterType.IP:
-            # Create a server
+        
+        if self._adapter_type == AdapterType.SERIAL:
+            # If adapter type is serial, create the adapter directly
+            self._master_adapter = SerialPort(self._address, baudrate=self._baudrate)
+        elif self._adapter_type == AdapterType.IP:
+            # Otherwise, create a server to get IP clients
             server = IPServer(port=self._port, transport='TCP', address=self._address, max_clients=1, stop_condition=None)
             server.open()
-            self._master_adapter = server.get_client()
-        elif self._adapter_type == AdapterType.SERIAL:
-            self._master_adapter = SerialPort(self._address, baudrate=self._baudrate)
 
 
+        # If the adapter type is IP, use the external while loop to get clients
         while True:
-            call_raw = self._master_adapter.read()
+            print("Waiting for client...")
+            self._master_adapter = server.get_client()
+            print("Client connected")
 
-            api_call = parse(call_raw)
+            while True:
+                try:
+                    call_raw = self._master_adapter.read()
+                except AdapterDisconnected:
+                    print(f"Client disconnected")
+                    break
 
-            self._logger.debug(f'Received {type(api_call)}')
+                api_call = parse(call_raw)
 
-            output = self.manage_call(api_call)
+                self._logger.debug(f'Received {type(api_call)}')
 
-            self._master_adapter.write(output.encode())
+                output = self.manage_call(api_call)
+
+                self._master_adapter.write(output.encode())
+
+                if self._adapter_type == AdapterType.IP:
+                    if not self._master_adapter.read_thread_alive():
+                        print("Read thread is dead, breaking read loop")
+                        break
+
+
+
+            # Loop only if we need to get a new client
+            if self._adapter_type != AdapterType.IP:
+                break
+
+        
 
     def manage_call(self, c : APICall) -> APICall:
         output = None

@@ -119,15 +119,23 @@ class IP(Adapter):
         self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue))
         self._thread.start()
 
+    # EXPERIMENTAL
+    def read_thread_alive(self):
+        return self._thread.is_alive()
+
+
     def _read_thread(self, socket : socket.socket, read_queue : TimedQueue):
         while True: # TODO : Add stop_pipe ? Maybe it was removed ?
             try:
                 payload = socket.recv(self._buffer_size)
+                print(f'payload : {payload}')
                 if len(payload) == self._buffer_size and self._transport == self.Protocol.UDP:
                     self._logger.warning("Warning, inbound UDP data may have been lost (max buffer size attained)")
             except OSError:
                 break
-            if not payload:
+            if payload == b'':
+                print(f"Payload is empty, socket has been disconnected")
+                read_queue.put(payload)
                 break
             read_queue.put(payload)
 

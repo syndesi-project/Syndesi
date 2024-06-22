@@ -20,10 +20,6 @@ class APICall:
         #if getattr(self, )
         print(f"args : {args}")
         print(f"kwargs : {kwargs}")
-
-    # def __init__(self, data_to_parse : dict = None) -> None:
-    #     if data_to_parse is not None:
-    #         self.parse(data_to_parse)
         
 
     def encode(self) -> bytes:
@@ -106,7 +102,6 @@ ACTION_ATTRIBUTE = 'action'
 
 API_CALLS_PER_ACTION : Dict[str, APICall]
 API_CALLS_PER_ACTION = {getattr(obj, ACTION_ATTRIBUTE) : obj for obj in current_module.__dict__.values() if hasattr(obj, ACTION_ATTRIBUTE)}
-print(API_CALLS_PER_ACTION)
 
 def parse(data : Union[str, bytes]) -> APICall:
     print(f"Parsing {data}")

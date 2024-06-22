@@ -34,6 +34,10 @@ from ..tools.others import DEFAULT
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
 DEFAULT_STOP_CONDITION = None
 
+
+class AdapterDisconnected(Exception):
+    pass
+
 STOP_DESIGNATORS = {
     'timeout' : {
         Timeout.TimeoutType.RESPONSE : 'TR',
@@ -62,7 +66,6 @@ class ReturnMetrics:
     response_time : float
     continuation_times : list
     total_time : float
-
 
 class Adapter(ABC):
     class Status(Enum):
@@ -166,6 +169,10 @@ class Adapter(ABC):
         """
         pass
     
+    # TODO : Return None or b'' when read thread is killed while reading
+    # This is to detect if a server socket has been closed
+
+
     def read(self, timeout=None, stop_condition=None, return_metrics : bool = False) -> bytes:
         """
         Read data from the device
@@ -223,6 +230,11 @@ class Adapter(ABC):
             while True:
                 (timestamp, fragment) = self._read_queue.get(timeout_ms)
                 n_fragments += 1
+
+                print(f"Fragment : {fragment}")
+                if fragment == b'':
+                    print("Raise adapter disconnected")
+                    raise AdapterDisconnected()
 
                 # 1) Evaluate the timeout
                 stop, timeout_ms = timeout.evaluate(timestamp)
