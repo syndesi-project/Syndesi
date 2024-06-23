@@ -1,40 +1,43 @@
-# remote.py
+# proxy.py
 # Sébastien Deriaz
 # 09.04.2024
 #
-# The remote adapter allows for commands to be issued on a different device through TCP
+# The proxy adapter allows for commands to be issued on a different device
 # The goal is to istanciate a class as such :
 #
 # Only adapter :
-#   # The remote computer is accessed with 192.168.1.1
+#   # The proxy computer is accessed with 192.168.1.1 
 #   # The device (connected to the remote computer) is accessed with 192.168.2.1
-#   my_adapter = Remote('192.168.1.1', IP('192.168.2.1'))
+#   my_adapter = Proxy('192.168.1.1', IP('192.168.2.1'))
 #
 # Protocol :
-#   my_protocol = SCPI(Remote('192.168.1.1', Serial('/dev/ttyUSB0')))
+#   my_protocol = SCPI(Proxy('192.168.1.1', Serial('/dev/ttyUSB0')))
 #
 #
 # Driver :
-#   my_device = Driver(Remote('192.168.1.1', VISA('...')))
-from .adapter import Adapter
-from . import IP, SerialPort, VISA
+#   my_device = Driver(Proxy('192.168.1.1', VISA('...')))
+
 from enum import Enum
-from ..tools.remote_api import *
 from typing import Union
+
+from .adapter import Adapter
+from .. import IP, SerialPort, VISA
+from ..proxy.proxy_api import *
+from ..api.api import parse
 
 DEFAULT_PORT = 2608
 
-class Remote(Adapter):
+class Proxy(Adapter):
     def __init__(self, proxy_adapter : Adapter, remote_adapter : Adapter):
         """
-        Remote adapter
+        Proxy adapter
 
         Parameters
         ----------
         proxy_adapter : Adapter
-            Adapter to connect to the remote server
+            Adapter to connect to the proxy server
         remote_adapter : Adapter
-            Adapter to instanciate on the remote server
+            Adapter to instanciate onto the proxy server
         """
         super().__init__()
 
@@ -45,19 +48,19 @@ class Remote(Adapter):
             proxy_adapter.set_default_port(DEFAULT_PORT)
 
         if isinstance(self._remote, IP):
-            data = IPAdapterInstanciate(
-                address=self._remote._address,
-                port=self._remote._port,
-                transport=self._remote._transport,
-                buffer_size=self._remote._buffer_size
-            ).encode()
-            print(f"Data : {data}")
-            self._proxy.query(data)
+            self._proxy.query(IPInstanciate(
+                    address=self._remote._address,
+                    port=self._remote._port,
+                    transport=self._remote._transport,
+                    buffer_size=self._remote._buffer_size
+                ).encode())
+        elif isinstance(self._remote, SerialPort):
+            self._proxy.query()
 
     def check(self, status : ReturnStatus):
         if not status.success:
             # There is an error
-            raise RemoteException(status.error_message)
+            raise ProxyException(status.error_message)
 
     def open(self):
         if isinstance(self._remote, IP):
@@ -75,7 +78,7 @@ class Remote(Adapter):
         if isinstance(output, AdapterReadReturn):
             return output.data
         elif isinstance(output, ReturnStatus):
-            raise RemoteException(output.error_message)
+            raise ProxyException(output.error_message)
         else:
             raise RuntimeError(f"Invalid return : {type(output)}")
 
@@ -87,5 +90,3 @@ class Remote(Adapter):
 
     def _start_thread(self):
         pass
-        
-

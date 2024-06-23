@@ -231,9 +231,7 @@ class Adapter(ABC):
                 (timestamp, fragment) = self._read_queue.get(timeout_ms)
                 n_fragments += 1
 
-                print(f"Fragment : {fragment}")
                 if fragment == b'':
-                    print("Raise adapter disconnected")
                     raise AdapterDisconnected()
 
                 # 1) Evaluate the timeout

@@ -11,7 +11,7 @@ from typing import List, Union
 class LoggerAlias(Enum):
     ADAPTER = 'adapter'
     PROTOCOL = 'protocol'
-    REMOTE_SERVER = 'remote_server'
+    PROXY_SERVER = 'proxy_server'
 
 default_formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
 

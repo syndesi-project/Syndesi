@@ -1,16 +1,17 @@
-# remote_server.py
+# proxy.py
 # Sébastien Deriaz
 # 28.05.2024
 import argparse
 from enum import Enum
 from ..adapters import SerialPort
 from ..adapters.adapter import AdapterDisconnected
-from ..adapters.remote import DEFAULT_PORT
+from ..adapters.proxy import DEFAULT_PORT
 from ..adapters.ip_server import IPServer
 from typing import Union
-from .remote_api import *
+from .proxy_api import *
+from ..api.api import *
 import logging
-from .log import LoggerAlias, set_log_stream
+from ..tools.log import LoggerAlias, set_log_stream
 
 class AdapterType(Enum):
     SERIAL = 'serial'
@@ -20,8 +21,8 @@ DEFAULT_BAUDRATE = 115200
 
 def main():
     parser = argparse.ArgumentParser(
-        prog='syndesi-remote',
-        description='Syndesi remote server',
+        prog='syndesi-proxy',
+        description='Syndesi proxy server',
         epilog='')
     # Parse subcommand
     parser.add_argument('-t', '--adapter_type', choices=[x.value for x in AdapterType], default=AdapterType.IP)
@@ -35,22 +36,22 @@ def main():
     if args.verbose:
         set_log_stream(True, 'DEBUG')
 
-    remote_server = RemoteServer(adapter_type=args.adapter_type, port=args.port, address=args.address, baudrate=args.baudrate)
+    proxy_server = ProxyServer(adapter_type=args.adapter_type, port=args.port, address=args.address, baudrate=args.baudrate)
 
-    remote_server.start()
+    proxy_server.start()
 
-class RemoteServer:
+class ProxyServer:
     def __init__(self, adapter_type : AdapterType, port : Union[str, int], address : str, baudrate : int) -> None:
         self._adapter_type = AdapterType(adapter_type)
         self._adapter = None
         self._port = port
         self._address = address
         self._baudrate = baudrate
-        self._logger = logging.getLogger(LoggerAlias.REMOTE_SERVER.value)
-        self._logger.info('Initializing remote server')
+        self._logger = logging.getLogger(LoggerAlias.PROXY_SERVER.value)
+        self._logger.info('Initializing proxy server')
 
     def start(self):
-        self._logger.info(f"Starting remote server with {self._adapter_type.value} adapter")
+        self._logger.info(f"Starting proxy server with {self._adapter_type.value} adapter")
         
         if self._adapter_type == AdapterType.SERIAL:
             # If adapter type is serial, create the adapter directly
@@ -63,15 +64,14 @@ class RemoteServer:
 
         # If the adapter type is IP, use the external while loop to get clients
         while True:
-            print("Waiting for client...")
             self._master_adapter = server.get_client()
-            print("Client connected")
+            self._logger.info(f'Client connected : {self._master_adapter._address}:{self._master_adapter._port}')
 
             while True:
                 try:
                     call_raw = self._master_adapter.read()
                 except AdapterDisconnected:
-                    print(f"Client disconnected")
+                    self._logger.info('Client disconnected')
                     break
 
                 api_call = parse(call_raw)
@@ -84,24 +84,27 @@ class RemoteServer:
 
                 if self._adapter_type == AdapterType.IP:
                     if not self._master_adapter.read_thread_alive():
-                        print("Read thread is dead, breaking read loop")
                         break
-
-
 
             # Loop only if we need to get a new client
             if self._adapter_type != AdapterType.IP:
                 break
 
-        
-
     def manage_call(self, c : APICall) -> APICall:
         output = None
-        if isinstance(c, IPAdapterInstanciate):
+        # IP Specific
+        if isinstance(c, IPInstanciate):
             self._adapter = IP(
                 address=c.address,
                 port=c.port)
             output = ReturnStatus(True)
+        # Serial specific
+        if isinstance(c, SerialPortInstanciate):
+            self._adapter = SerialPort(
+                port=c.port,
+                baudrate=c.baudrate
+            )
+        # Adapter
         elif isinstance(c, AdapterOpen):
             if self._adapter is None:
                 output = ReturnStatus(False, 'Cannot open uninstanciated adapter')

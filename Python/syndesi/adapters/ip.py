@@ -128,13 +128,12 @@ class IP(Adapter):
         while True: # TODO : Add stop_pipe ? Maybe it was removed ?
             try:
                 payload = socket.recv(self._buffer_size)
-                print(f'payload : {payload}')
                 if len(payload) == self._buffer_size and self._transport == self.Protocol.UDP:
                     self._logger.warning("Warning, inbound UDP data may have been lost (max buffer size attained)")
             except OSError:
                 break
+            # If payload is empty, it means the socket has been disconnected
             if payload == b'':
-                print(f"Payload is empty, socket has been disconnected")
                 read_queue.put(payload)
                 break
             read_queue.put(payload)

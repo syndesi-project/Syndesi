@@ -19,7 +19,7 @@ setup(
     entry_points = {
         'console_scripts': [
             'syndesi=syndesi.shell.syndesi:main',
-            'syndesi-server=syndesi.tools.remote_server:main'],
+            'syndesi-proxy=syndesi.proxy.proxy:main'],
     },
     packages=find_packages(),
     install_requires=[''],
