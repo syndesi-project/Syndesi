@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.1.6'
+VERSION = '0.2.0'
 DESCRIPTION = 'Syndesi'
 
 with open("README.md", "r", encoding="utf-8") as fh:
@@ -15,7 +15,6 @@ setup(
     description=DESCRIPTION,
     long_description_content_type="text/markdown",
     long_description=long_description,
-    #scripts=['bin/syndesi'],
     entry_points = {
         'console_scripts': [
             'syndesi=syndesi.shell.syndesi:main',
