@@ -60,7 +60,13 @@ class Termination(StopCondition):
         sequence : bytes
         """
         super().__init__()
-        self._termination = sequence
+        if isinstance(sequence, str):
+            self._termination = sequence.encode('utf-8')
+        elif isinstance(sequence, bytes):
+            self._termination = sequence
+        else:
+            raise ValueError(f"Invalid termination sequence type : {type(sequence)}")
+
         #self._fragment_store = b''
         #self._sequence_index = 0
 

@@ -5,7 +5,7 @@
 from enum import Enum
 from typing import Union, Tuple
 from time import time
-from ..tools.others import is_default_argument
+#from ..tools.others import is_default_argument
 
 
 class Timeout():
@@ -264,10 +264,11 @@ def timeout_fuse(high_priority, low_priority):
     low = low_priority if isinstance(low_priority, Timeout) else Timeout(low_priority)
 
     # 3) If one is the default, take the other
-    if is_default_argument(high):
-        return low
-    if is_default_argument(low):
-        return high
+    # if is_default_argument(high):
+    #     return low
+    # if is_default_argument(low):
+    #     return high
+    # 05.06.2024 : Removed because is_default_argument is obsolete, use DEFAULT is necessary
     
     new_attr = {}
     # 4) Select with parameter to keep based on where it has been set

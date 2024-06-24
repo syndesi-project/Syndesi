@@ -1,7 +1,8 @@
 from ..adapters import Adapter, IP, Timeout, Termination, StopCondition
 from .protocol import Protocol
 from ..tools.types import is_byte_instance
-from ..tools.others import is_default_argument
+#from ..tools.others import is_default_argument
+from ..tools.others import DEFAULT
 
 class SCPI(Protocol):
     DEFAULT_PORT = 5025
@@ -32,7 +33,7 @@ class SCPI(Protocol):
             self._adapter.set_default_port(self.DEFAULT_PORT)
 
         self._adapter.set_default_timeout(timeout)
-        if is_default_argument(self._adapter._stop_condition):
+        if self._adapter._stop_condition != DEFAULT:
             raise ValueError('A conflicting stop-condition has been set for this adapter')
         self._adapter._stop_condition = Termination(self._receive_termination.encode(encoding=encoding))
 
