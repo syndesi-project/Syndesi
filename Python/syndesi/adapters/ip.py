@@ -7,6 +7,8 @@ from threading import Thread
 from .timed_queue import TimedQueue
 from typing import Union
 from time import time
+import argparse
+from ..tools import shell
 
 DEFAULT_RESPONSE_TIMEOUT = 1
 DEFAULT_CONTINUATION_TIMEOUT = 1e-3
