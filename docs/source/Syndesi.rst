@@ -5,7 +5,9 @@ Syndesi
 Overview
 ++++++++
 
-Syndesi is a Python library designed to streamline communication with devices, instruments, and microcontrollers through standard interfaces such as Ethernet, Serial port, and USB. With Syndesi, users have the flexibility to choose between low-level wrapper classes for direct device interaction or high-level abstractions with advanced features, catering to diverse application requirements. The library prioritizes ease of implementation, allowing users to establish communication with devices quickly and efficiently. Whether it's fine-grained control over communication protocols or simplified device management, Syndesi simplifies the development process, making it accessible to both novice and experienced users alike.
+Syndesi is a Python library designed to streamline communication with lab instruments, microcontrollers, and various devices using standard interfaces.
+With Syndesi, users have the flexibility to choose between low-level wrapper classes for direct device interaction or high-level abstractions with advanced features,
+catering to diverse application requirements. The library prioritizes ease of implementation, allowing users to establish communication with devices quickly and efficiently.
 
 ++++++++
 Features
