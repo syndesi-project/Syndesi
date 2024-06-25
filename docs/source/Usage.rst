@@ -22,7 +22,7 @@ Example of device instantiation using low-level Adapter class::
 
     id = my_device.query('*IDN?\n') # Query its identification string (SCPI IDN command)
 
-Protocol example
+Protocol example::
 
     from syndesi.protocols import Delimited
     from syndesi.adapters import IP
@@ -32,7 +32,7 @@ Protocol example
     data = my_device.query('READ?')
     # b'1.23194e1'
 
-Driver example
+Driver example::
 
     from syndesi_drivers.instruments.multimeters.siglent import SDM3055
 
