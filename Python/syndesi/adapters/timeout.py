@@ -235,6 +235,15 @@ class Timeout():
         """
         return self._data_strategy, self._last_data_strategy_origin
 
+    def __str__(self) -> str:
+        response = f'r:{self._response:.3f}ms/{self._on_response},' if self._response is not None else ''
+        continuation = f'c:{self._continuation:.3f}ms/{self._on_continuation},' if self._continuation is not None else ''
+        total = f't:{self._total:.3f}ms/{self._on_total}' if self._total is not None else ''
+        return f'Timeout({response}{continuation}{total})'
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 class TimeoutException(Exception):
     def __init__(self, type : Timeout.TimeoutType) -> None:

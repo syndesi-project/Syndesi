@@ -134,6 +134,12 @@ class Termination(StopCondition):
         self._fragment_store = b''
         return output
 
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def __str__(self) -> str:
+        return f'Termination({repr(self._termination)})'
+
 class Length(StopCondition):
     def __init__(self, N : int) -> None:
         """
@@ -159,3 +165,9 @@ class Length(StopCondition):
         self._counter += len(kept_fragment)
         remaining_bytes = self._N - self._counter
         return remaining_bytes == 0, kept_fragment, deferred_fragment
+
+    def __repr__(self) -> str:
+        return self.__str__()
+        
+    def __str__(self) -> str:
+        return f'Length({self._N})'
