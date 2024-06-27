@@ -21,7 +21,7 @@ from enum import Enum
 from typing import Union
 
 from .adapter import Adapter
-from .. import IP, SerialPort, VISA
+from . import IP, SerialPort, VISA
 from ..proxy.proxy_api import *
 from ..api.api import parse
 
