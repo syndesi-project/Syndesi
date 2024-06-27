@@ -12,6 +12,7 @@ from .stop_conditions import *
 from .timeout import Timeout
 from .timed_queue import TimedQueue
 from ..tools import shell
+from ..tools.others import DEFAULT
 
 # From pyserial - serialposix.py
 import fcntl
@@ -23,14 +24,14 @@ else:
     TIOCINQ = getattr(termios, 'FIONREAD', 0x541B)
 TIOCM_zero_str = struct.pack('I', 0)
 
-DEFAULT_TIMEOUT = Timeout(response=0.5, continuation=10e-3, total=None)
+DEFAULT_TIMEOUT = Timeout(response=1, continuation=200e-3, total=None)
 
 class SerialPort(Adapter):
     def __init__(self,  
                 port : str,
                 baudrate : int,
-                timeout : Union[Timeout, float] = DEFAULT_TIMEOUT,
-                stop_condition : StopCondition = None,
+                timeout : Union[Timeout, float] = DEFAULT,
+                stop_condition : StopCondition = DEFAULT,
                 rts_cts : bool = False): # rts_cts experimental
         """
         Serial communication adapter
@@ -40,8 +41,11 @@ class SerialPort(Adapter):
         port : str
             Serial port (COMx or ttyACMx)
         """
+        if timeout == DEFAULT:
+            timeout = DEFAULT_TIMEOUT
+            
         super().__init__(timeout=timeout, stop_condition=stop_condition)
-        self._logger.info("Setting up SerialPort adapter")
+        self._logger.info(f"Setting up SerialPort adapter timeout:{timeout}, stop_condition:{stop_condition}")
         self._port = serial.Serial(port=port, baudrate=baudrate)
         if self._port.isOpen():
             self._status = self.Status.CONNECTED

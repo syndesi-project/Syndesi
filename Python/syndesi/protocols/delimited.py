@@ -1,12 +1,12 @@
 from .protocol import Protocol
-from ..adapters import Adapter
+from ..adapters import Adapter, Timeout, Termination
 from ..tools.types import assert_byte_instance, assert_byte_instance
 from time import time
 import warnings
 
 
 class Delimited(Protocol):
-    def __init__(self, adapter : Adapter, termination='\n', format_response=True) -> None:
+    def __init__(self, adapter : Adapter, termination='\n', format_response=True, encoding : str = 'utf-8', timeout : Timeout = None) -> None:
         """
         Protocol with delimiter, like LF, CR, etc... '\\n' is used by default
 
@@ -15,18 +15,21 @@ class Delimited(Protocol):
         Parameters
         ----------
         adapter : IAdapter
-        end : bytes
+        termination : bytes
             Command termination, '\\n' by default
         format_response : bool
-            Apply formatting to the response (i.e removing the termination)
+            Apply formatting to the response (i.e removing the termination), True by default
+        encoding : str
+        timeout : Timeout
+            None by default (default timeout)
         """
-        super().__init__(adapter)
-
-        # Temporary solution before implementing stop conditions
-        self._buffer = ''
+        adapter.set_default_stop_condition(stop_condition=Termination(sequence=termination))
+        super().__init__(adapter, timeout=timeout)
 
         if not isinstance(termination, str):
             raise ValueError(f"end argument must be of type str, not {type(termination)}")
+
+        self._encoding = encoding
         self._termination = termination
         self._response_formatting = format_response
 
@@ -62,40 +65,24 @@ class Delimited(Protocol):
         self.write(command)
         return self.read()
 
-    # Note : for later revisions of the delimited module, the buffer should be removed as the
-    # adapter will take care of that using the stop conditions
-    #
-    # For now the delimited module will take care of it
-    #
-    # Stop conditions should also be added inside the delimited module (unclear yet how)
-
-    def read(self, timeout=2) -> str:
+    def read(self, timeout : Timeout = None, decode : str = True) -> str:
         """
         Reads command and formats it as a str
+
+        Parameters
+        ----------
+        timeout : Timeout
+        decode : bool
+            Decode incoming data, True by default
         """
-        if self._termination not in self._buffer:
-            # Read the adapter only if there isn't a fragment already in the buffer
-            start = time()
-            while True:
-                # Continuously read the adapter as long as no termination is caught
-                data = self._from_bytes(self._adapter.read())
-                self._buffer += data
-                if self._termination in data or time() > start + timeout:
-                    break
 
         # Send up to the termination
-        fragment, self._buffer = self._buffer.split(self._termination, maxsplit=1)
+        data = self._adapter.read(timeout=timeout)
+        if decode:
+            data = data.decode(self._encoding)
         if self._response_formatting:
             # Only send the fragment (no termination)
-            return fragment
+            return data
         else:
             # Add the termination back in
-            return fragment + self._termination
-
-    def read_raw(self) -> bytes:
-        """
-        Returns the raw bytes instead of str
-        """
-        if len(self._buffer) > 0:
-            warnings.warn("Warning : The buffer wasn't empty, standard (non raw) data is still in it")
-        return self._adapter.read()
+            return data + self._termination 
