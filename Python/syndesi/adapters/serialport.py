@@ -1,15 +1,17 @@
-from .adapter import Adapter
+import os
 import serial
-from ..tools.types import to_bytes
-from .stop_conditions import *
-from .timeout import Timeout
-from .timed_queue import TimedQueue
 from threading import Thread
 from typing import Union
 import select
 import argparse
+#from collections.abc import Sequence
+
+from .adapter import Adapter
+from ..tools.types import to_bytes
+from .stop_conditions import *
+from .timeout import Timeout
+from .timed_queue import TimedQueue
 from ..tools import shell
-from collections.abc import Sequence
 
 # From pyserial - serialposix.py
 import fcntl
@@ -20,7 +22,6 @@ if hasattr(termios, 'TIOCINQ'):
 else:
     TIOCINQ = getattr(termios, 'FIONREAD', 0x541B)
 TIOCM_zero_str = struct.pack('I', 0)
-import os
 
 DEFAULT_TIMEOUT = Timeout(response=0.5, continuation=10e-3, total=None)
 
@@ -94,7 +95,8 @@ class SerialPort(Adapter):
         while True:
             # It looks like using the raw implementation of port.in_waiting and port.read is better, there's no more warnings
             # Equivalent of port.in_waiting :
-            in_waiting = struct.unpack('I', fcntl.ioctl(port.fd, TIOCINQ, TIOCM_zero_str))[0]
+            #in_waiting = struct.unpack('I', fcntl.ioctl(port.fd, TIOCINQ, TIOCM_zero_str))[0]
+            in_waiting = self._port.in_waiting # This is a temporary fix to get windows compatiblity back, an error might pop up
             if in_waiting == 0:
                 ready, _, _ = select.select([port.fd, stop_event_pipe], [], [], None)
                 if stop_event_pipe in ready:
