@@ -14,16 +14,6 @@ from .timed_queue import TimedQueue
 from ..tools import shell
 from ..tools.others import DEFAULT
 
-# From pyserial - serialposix.py
-import fcntl
-import termios
-import struct
-if hasattr(termios, 'TIOCINQ'):
-    TIOCINQ = termios.TIOCINQ
-else:
-    TIOCINQ = getattr(termios, 'FIONREAD', 0x541B)
-TIOCM_zero_str = struct.pack('I', 0)
-
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=200e-3, total=None)
 
 class SerialPort(Adapter):
@@ -53,8 +43,6 @@ class SerialPort(Adapter):
             self._status = self.Status.DISCONNECTED
 
         self._rts_cts = rts_cts
-        
-        self._stop_event_pipe, self._stop_event_pipe_write = os.pipe()
 
     def flushRead(self):
         self._port.flush()
@@ -68,10 +56,8 @@ class SerialPort(Adapter):
         self._logger.info("Adapter opened !")
 
     def close(self):
-        if self._thread is not None and self._thread.is_alive():
-            os.write(self._stop_event_pipe_write, b'1')
-            self._thread.join()
         if hasattr(self, '_port'):
+            # Close and the read thread will die by itself
             self._port.close()
         self._logger.info("Adapter closed !")
             
@@ -92,24 +78,19 @@ class SerialPort(Adapter):
         """
         self._logger.debug("Starting read thread...")
         if self._thread is None or not self._thread.is_alive():
-            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue, self._stop_event_pipe))
+            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue))
             self._thread.start()
 
-    def _read_thread(self, port : serial.Serial , read_queue : TimedQueue, stop_event_pipe):
+    def _read_thread(self, port : serial.Serial , read_queue : TimedQueue):
+        # NOTE : There should be some way to kill the thread, maybe check for an error on in_waiting but couldn't find it so far
         while True:
-            # It looks like using the raw implementation of port.in_waiting and port.read is better, there's no more warnings
-            # Equivalent of port.in_waiting :
-            #in_waiting = struct.unpack('I', fcntl.ioctl(port.fd, TIOCINQ, TIOCM_zero_str))[0]
+            # Check how many bytes are available
             in_waiting = self._port.in_waiting # This is a temporary fix to get windows compatiblity back, an error might pop up
-            if in_waiting == 0:
-                ready, _, _ = select.select([port.fd, stop_event_pipe], [], [], None)
-                if stop_event_pipe in ready:
-                    # Stop
-                    break
-            # Else, read as many bytes as possible
-            fragment = os.read(port.fd, 1000) # simplified version of port.read()
-            if fragment:
-                read_queue.put(fragment)        
+            if in_waiting > 0:
+                # Read those bytes
+                fragment = port.read(in_waiting)
+                if fragment:
+                    read_queue.put(fragment)        
 
     def read(self, timeout=None, stop_condition=None, return_metrics: bool = False) -> bytes:
         """
