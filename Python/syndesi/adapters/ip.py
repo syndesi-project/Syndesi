@@ -3,12 +3,14 @@ from enum import Enum
 from .adapter import Adapter
 from ..tools.types import to_bytes
 from .timeout import Timeout
+from .stop_conditions import StopCondition
 from threading import Thread
 from .timed_queue import TimedQueue
 from typing import Union
 from time import time
 import argparse
 from ..tools import shell
+from ..tools.others import DEFAULT
 
 class IP(Adapter):
     DEFAULT_RESPONSE_TIMEOUT = 1
@@ -30,7 +32,7 @@ class IP(Adapter):
                 port : int = None,
                 transport : str = 'TCP',
                 timeout : Union[Timeout, float] = DEFAULT_TIMEOUT,
-                stop_condition = None,
+                stop_condition : StopCondition = DEFAULT,
                 alias : str = '',
                 buffer_size : int = DEFAULT_BUFFER_SIZE,
                 _socket : socket.socket = None):
@@ -114,7 +116,7 @@ class IP(Adapter):
         write_start = time()
         self._socket.send(data)
         write_duration = time() - write_start
-        self._logger.debug(f"Written [{write_duration*1e3:.3f}ms]: {repr(data)}")
+        self._logger.debug(f"Write [{write_duration*1e3:.3f}ms]: {repr(data)}")
 
     def _start_thread(self):
         self._logger.debug("Starting read thread...")

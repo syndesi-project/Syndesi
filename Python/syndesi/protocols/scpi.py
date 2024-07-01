@@ -4,9 +4,11 @@ from ..tools.types import is_byte_instance
 #from ..tools.others import is_default_argument
 from ..tools.others import DEFAULT
 
+DEFAULT_TIMEOUT = Timeout(response=10, continuation=0.5, total=None, on_response='error', on_continuation='error')
+
 class SCPI(Protocol):
     DEFAULT_PORT = 5025
-    def __init__(self, adapter: Adapter, send_termination = '\n', receive_termination = None, timeout : Timeout = None, encoding : str = 'utf-8') -> None:
+    def __init__(self, adapter: Adapter, send_termination = '\n', receive_termination = None, timeout : Timeout = DEFAULT, encoding : str = 'utf-8') -> None:
         """
         SDP (Syndesi Device Protocol) compatible device
 
@@ -20,22 +22,25 @@ class SCPI(Protocol):
         timeout : Timeout/float/tuple
             Set device timeout
         """
-        super().__init__(adapter=adapter, timeout=timeout)
-
+        self._encoding = encoding
+        # Set the default timeout
+        if timeout == DEFAULT:
+            timeout = DEFAULT_TIMEOUT
+        
         if receive_termination is None:
             self._receive_termination = send_termination
         else:
             self._receive_termination = receive_termination
-
         self._send_termination = send_termination
-
-        if isinstance(self._adapter, IP):
-            self._adapter.set_default_port(self.DEFAULT_PORT)
-
-        self._adapter.set_default_timeout(timeout)
-        if self._adapter._stop_condition != DEFAULT:
-            raise ValueError('A conflicting stop-condition has been set for this adapter')
-        self._adapter._stop_condition = Termination(self._receive_termination.encode(encoding=encoding))
+        # Configure the adapter for stop-condition mode (timeouts will raise errors)
+        if not adapter._default_stop_condition:
+            raise ValueError('No stop-conditions can be set for an adapter used by SCPI protocol')
+        adapter.set_stop_condition(Termination(self._receive_termination.encode(self._encoding)))
+        adapter.set_timeout(timeout)
+        if isinstance(adapter, IP):
+            adapter.set_default_port(self.DEFAULT_PORT)
+        # Give the adapter to the Protocol base class
+        super().__init__(adapter=adapter, timeout=timeout)
 
     def _to_bytes(self, command):
         if isinstance(command, str):

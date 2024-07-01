@@ -5,7 +5,6 @@
 from enum import Enum
 from typing import Union, Tuple
 from time import time
-#from ..tools.others import is_default_argument
 
 
 class Timeout():
@@ -16,9 +15,9 @@ class Timeout():
         ERROR = 'error' # If a timeout is reached, raise an error
 
     class TimeoutType(Enum):
-        RESPONSE = 0
-        CONTINUATION = 1
-        TOTAL = 2
+        RESPONSE = 'response'
+        CONTINUATION = 'continuation'
+        TOTAL = 'total'
         
     class _State(Enum):
         WAIT_FOR_RESPONSE = 0
@@ -151,6 +150,8 @@ class Timeout():
     def evaluate(self, timestamp : float) -> Tuple[bool, Union[float, None]]:
         stop = False
         self._data_strategy = None
+        self._stop_source_overtime = '###' # When a timeout occurs, store the value that exceeded its value here
+        self._stop_source_limit = '###' # And store the limit value here
 
         # First check if the timestamp is None, that would mean the timeout was reached in the queue
         if timestamp is None:
@@ -158,15 +159,17 @@ class Timeout():
             match self._queue_timeout_type:
                 case self.TimeoutType.RESPONSE:
                     self._data_strategy = self._on_response
-                    self.response_time = self._output_timeout # This is a test
+                    self._stop_source_limit = self._response
                 case self.TimeoutType.CONTINUATION:
                     self._data_strategy = self._on_continuation
-                    self.continuation_times.append(self._output_timeout) # This is a test
+                    self._stop_source_limit = self._continuation
                 case self.TimeoutType.TOTAL:
-                    self.total_time = self._output_timeout # This is a test
                     self._data_strategy = self._on_total
+                    self._stop_source_limit = self._total
+            self._stop_source_overtime = None # We do not have the exceed time, but None will be printed as '---'
             self._last_data_strategy_origin = self._queue_timeout_type
-            stop = True 
+            stop = True
+            
         else:
             # Check total
             if self._total is not None:
@@ -175,23 +178,27 @@ class Timeout():
                     stop = True
                     self._data_strategy = self._on_total
                     self._last_data_strategy_origin = self.TimeoutType.TOTAL
+                    self._stop_source_overtime = self.total_time
+                    self._stop_source_limit = self._total
             # Check continuation
-            # elif
-            if self._continuation is not None and self._state == self._State.CONTINUATION and self._last_timestamp is not None:
+            elif self._continuation is not None and self._state == self._State.CONTINUATION and self._last_timestamp is not None:
                 continuation_time = timestamp - self._last_timestamp
                 self.continuation_times.append(continuation_time)
                 if continuation_time >= self._continuation:
                     stop = True
                     self._data_strategy = self._on_continuation
                     self._last_data_strategy_origin = self.TimeoutType.CONTINUATION
+                    self._stop_source_overtime = continuation_time
+                    self._stop_source_limit = self._continuation
             # Check response time
-            # elif
-            if self._response is not None and self._state == self._State.WAIT_FOR_RESPONSE:
+            elif self._response is not None and self._state == self._State.WAIT_FOR_RESPONSE:
                 self.response_time = timestamp - self._start_time
                 if self.response_time >= self._response:
                     stop = True
                     self._data_strategy = self._on_response
                     self._last_data_strategy_origin = self.TimeoutType.RESPONSE
+                    self._stop_source_overtime = self.response_time
+                    self._stop_source_limit = self._response
 
         self._output_timeout = None
         # If we continue
@@ -236,9 +243,9 @@ class Timeout():
         return self._data_strategy, self._last_data_strategy_origin
 
     def __str__(self) -> str:
-        response = f'r:{self._response:.3f}ms/{self._on_response},' if self._response is not None else ''
-        continuation = f'c:{self._continuation:.3f}ms/{self._on_continuation},' if self._continuation is not None else ''
-        total = f't:{self._total:.3f}ms/{self._on_total}' if self._total is not None else ''
+        response = f'r:{self._response*1e3:.3f}ms/{self._on_response.value},' if self._response is not None else ''
+        continuation = f'c:{self._continuation*1e3:.3f}ms/{self._on_continuation.value},' if self._continuation is not None else ''
+        total = f't:{self._total*1e3:.3f}ms/{self._on_total.value}' if self._total is not None else ''
         return f'Timeout({response}{continuation}{total})'
 
     def __repr__(self) -> str:
@@ -246,9 +253,29 @@ class Timeout():
 
 
 class TimeoutException(Exception):
-    def __init__(self, type : Timeout.TimeoutType) -> None:
+    def __init__(self, type : Timeout.TimeoutType, value : float, limit : float) -> None:
         super().__init__()
         self._type = type
+        self._value = value
+        self._limit = limit
+    
+    def __str__(self) -> str:
+        try:
+            value_string = f'{self._value*1e3:.3f}ms'
+        except (ValueError, TypeError):
+            value_string = '---'
+
+        try:
+            limit_string = f'{self._limit*1e3:.3f}ms'
+        except (ValueError, TypeError):
+            limit_string = '---'
+
+
+        return f'{self._type.value} : {value_string} / {limit_string}'
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 
 def timeout_fuse(high_priority, low_priority):
