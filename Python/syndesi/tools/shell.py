@@ -8,15 +8,16 @@ import argparse
 import shlex
 import sys
 import os
-from colorist import ColorRGB
+#from colorist import ColorRGB
 
 VERSION = 0.1
 
 class ShellPrompt(Cmd):
     __hiden_methods = ('do_EOF','do_clear','do_cls')
-    PROMPT_COLOR = ColorRGB(28, 90, 145)
+    #PROMPT_COLOR = ColorRGB(28, 90, 145)
 
-    prompt = f'{PROMPT_COLOR}❯ {PROMPT_COLOR.OFF}'
+    #prompt = f'{PROMPT_COLOR}❯ {PROMPT_COLOR.OFF}'
+    prompt = f'❯ '
     intro = "Welcome to the Syndesi Shell! Type ? to list commands"
 
     def get_names(self):
@@ -31,14 +32,13 @@ class ShellPrompt(Cmd):
         self._adapter = SerialPort(**SerialPort.shell_parse(inp))
 
     def do_ip(self, inp):
-        """Open IP adapter
-    -p / --port : port number
-    --ip : ip address
-    -t / --transport : TCP or UDP
-        """
+        """Open IP adapter"""
+    # -p / --port : port number
+    # --ip : ip address
+    # -t / --transport : TCP or UDP
         parser = argparse.ArgumentParser()
+        parser.add_argument('ip', type=str)
         parser.add_argument('-p', '--port', type=int, required=True)
-        parser.add_argument('--ip', type=str, required=True)
         parser.add_argument('-t', '--transport', type=str, choices=['UDP', 'TCP'], default='TCP', required=False)
         try:
             args = parser.parse_args(shlex.split(inp))

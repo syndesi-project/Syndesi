@@ -72,7 +72,7 @@ class SerialPort(Adapter):
         write_start = time()
         self._port.write(data)
         write_duration = time() - write_start
-        self._logger.debug(f"Written [{write_duration*1e3:.3f}ms]: {repr(data)}")
+        self._logger.debug(f"Write [{write_duration*1e3:.3f}ms]: {repr(data)}")
 
     def _start_thread(self):
         """

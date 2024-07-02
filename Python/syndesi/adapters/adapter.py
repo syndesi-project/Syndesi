@@ -14,7 +14,6 @@
 #
 # An adapter is meant to work with bytes objects but it can accept strings.
 # Strings will automatically be converted to bytes using utf-8 encoding
-#
 
 from abc import abstractmethod, ABC
 from .timed_queue import TimedQueue
@@ -31,7 +30,7 @@ from time import time
 from dataclasses import dataclass
 from ..tools.others import DEFAULT
 
-DEFAULT_TIMEOUT = Timeout(response=1, continuation=100e-3, total=None)
+DEFAULT_TIMEOUT = Timeout(response=5, continuation=200e-3, total=None)
 DEFAULT_STOP_CONDITION = None
 
 
@@ -81,7 +80,7 @@ class Adapter(ABC):
         alias : str
             The alias is used to identify the class in the logs
         timeout : float or Timeout instance
-            Default timeout is Timeout(response=1, continuation=0.1, total=None)
+            Default timeout is Timeout(response=5, continuation=0.2, total=None)
         stop_condition : StopCondition or None
             Default to None
         """
@@ -113,6 +112,16 @@ class Adapter(ABC):
             else:
                 raise ValueError(f"Invalid timeout type : {type(timeout)}")
 
+    def set_timeout(self, timeout : Timeout):
+        """
+        Overwrite timeout
+
+        Parameters
+        ----------
+        timeout : Timeout
+        """
+        self._timeout = timeout
+
     def set_default_timeout(self, default_timeout : Union[Timeout, tuple, float]):
         """
         Set the default timeout for this adapter. If a previous timeout has been set, it will be fused
@@ -122,9 +131,22 @@ class Adapter(ABC):
         default_timeout : Timeout or tuple or float
         """
         if self._default_timeout:
+            self._logger.debug(f'Setting default timeout to {default_timeout}')
             self._timeout = default_timeout
         else:
+            log = f'Fusing timeouts {self._timeout}+{default_timeout} -> '
             self._timeout = timeout_fuse(self._timeout, default_timeout)
+            self._logger.debug(f'{log}{self._timeout}')
+
+    def set_stop_condition(self, stop_condition):
+        """
+        Overwrite the stop-condition
+
+        Parameters
+        ----------
+        stop_condition : StopCondition
+        """
+        self._stop_condition = stop_condition
 
     def set_default_stop_condition(self, stop_condition):
         """
@@ -251,7 +273,7 @@ class Adapter(ABC):
                         self._previous_read_buffer = output
                         output = b''
                     elif data_strategy == Timeout.OnTimeoutStrategy.ERROR:
-                        raise TimeoutException(origin)
+                        raise TimeoutException(origin, timeout._stop_source_overtime, timeout._stop_source_limit)
                     break
                 else:
                     origin = None
