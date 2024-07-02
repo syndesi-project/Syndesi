@@ -3,7 +3,7 @@
 # Syndesi CLI
 import argparse
 from enum import Enum
-from syndesi.tools.shell import ShellPrompt
+from syndesi.cli.shell import ShellPrompt
 
 class SubCommands(Enum):
     SHELL = 'shell'

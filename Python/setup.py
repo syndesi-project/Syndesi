@@ -17,7 +17,7 @@ setup(
     long_description=long_description,
     entry_points = {
         'console_scripts': [
-            'syndesi=syndesi.shell.syndesi:main',
+            'syndesi=syndesi.cli.syndesi:main',
             'syndesi-proxy=syndesi.proxy.proxy:main'],
     },
     packages=find_packages(),

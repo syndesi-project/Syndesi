@@ -4,6 +4,7 @@
 from enum import Enum
 from cmd import Cmd
 from syndesi.adapters import *
+from syndesi.protocols import Delimited
 import argparse
 import shlex
 import sys
@@ -32,7 +33,7 @@ class ShellPrompt(Cmd):
         self._adapter = SerialPort(**SerialPort.shell_parse(inp))
 
     def do_ip(self, inp):
-        """Open IP adapter"""
+        """Open IP adapter with delimited protocol (\\n at the end of each line by default)"""
     # -p / --port : port number
     # --ip : ip address
     # -t / --transport : TCP or UDP
@@ -40,12 +41,13 @@ class ShellPrompt(Cmd):
         parser.add_argument('ip', type=str)
         parser.add_argument('-p', '--port', type=int, required=True)
         parser.add_argument('-t', '--transport', type=str, choices=['UDP', 'TCP'], default='TCP', required=False)
+        parser.add_argument('-e', '--end', help='Newline character, \\n by default', default='\n', required=False)
         try:
             args = parser.parse_args(shlex.split(inp))
         except SystemExit as e:
             pass
         else:
-            self._adapter = IP(address=args.ip, port=args.port, transport=args.transport)
+            self._adapter = Delimited(IP(address=args.ip, port=args.port, transport=args.transport), termination=args.end)
 
     def default(self, inp):
         if hasattr(self, '_adapter'):
