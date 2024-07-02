@@ -36,7 +36,9 @@ class SerialPort(Adapter):
             
         super().__init__(timeout=timeout, stop_condition=stop_condition)
         self._logger.info(f"Setting up SerialPort adapter timeout:{timeout}, stop_condition:{stop_condition}")
-        self._port = serial.Serial(port=port, baudrate=baudrate)
+        self._port_name = port
+        self._baudrate = baudrate
+        self._port = serial.Serial(port=self._port_name, baudrate=self._baudrate)
         if self._port.isOpen():
             self._status = self.Status.CONNECTED
         else:
