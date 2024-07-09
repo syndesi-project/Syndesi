@@ -9,9 +9,9 @@ import logging
 from typing import List, Union
 
 class LoggerAlias(Enum):
-    ADAPTER = 'adapter'
-    PROTOCOL = 'protocol'
-    PROXY_SERVER = 'proxy_server'
+    ADAPTER = 'syndesi.adapter'
+    PROTOCOL = 'syndesi.protocol'
+    PROXY_SERVER = 'syndesi.proxy_server'
 
 default_formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
 
@@ -53,21 +53,19 @@ def set_log_file(file : str, level : Union[str, int], loggers : Union[List[Logge
         file_handler.setFormatter(default_formatter)
         # 3) Add to the designated loggers
         for l in LoggerAlias:
-            if l in loggers or loggers == 'all':
+            if loggers == 'all' or l.value in loggers:
                 logger = logging.getLogger(l.value)
                 logger.addHandler(file_handler)
                 logger.setLevel(level)
     else:
         file_handler = None
     
-def set_log_stream(enabled : bool, level : Union[str, int], loggers : Union[List[LoggerAlias], str] = 'all'):
+def set_log_level(level : Union[str, int], loggers : Union[List[LoggerAlias], str] = 'all'):
     """
-    Set stdout/stderr log mode
+    Set log level, everything below or equal to the given level will be outputed to stdout/stderr.
 
     Parameters
     ----------
-    enabled : bool
-        enable / disable log to stdout / stderr
     level : str or logging level
         info     : 'INFO'     or logging.INFO
         critical : 'CRITICAL' or logging.CRITICAL
@@ -75,6 +73,7 @@ def set_log_stream(enabled : bool, level : Union[str, int], loggers : Union[List
         warning  : 'WARNING'  or logging.WARNING
         info     : 'INFO'     or logging.INFO
         debug    : 'DEBUG'    or logging.DEBUG
+        None will disable logging
     loggers : list of LoggerAlias or 'all'
         Which loggers to save to the file, 'all' by default
     """
@@ -93,7 +92,7 @@ def set_log_stream(enabled : bool, level : Union[str, int], loggers : Union[List
             if isinstance(h, logging.StreamHandler):
                 logger.removeHandler(h)
         
-    if enabled:
+    if level is not None:
         # 2) Create the new stream handler
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(default_formatter)
