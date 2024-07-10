@@ -3,9 +3,11 @@
 # 30.04.2024
 from enum import Enum
 from cmd import Cmd
-from syndesi.adapters import *
-from syndesi.protocols import Delimited
+from ..adapters import *
+from ..protocols import Delimited
+from ..tools.log import set_log_file, set_log_level, LoggerAlias
 import argparse
+import logging
 import shlex
 import sys
 import os
@@ -14,12 +16,31 @@ import os
 VERSION = 0.1
 
 class ShellPrompt(Cmd):
+    _logger = logging.getLogger(LoggerAlias.CLI.value)
     __hiden_methods = ('do_EOF','do_clear','do_cls')
     #PROMPT_COLOR = ColorRGB(28, 90, 145)
 
     #prompt = f'{PROMPT_COLOR}❯ {PROMPT_COLOR.OFF}'
     prompt = f'❯ '
     intro = "Welcome to the Syndesi Shell! Type ? to list commands"
+
+    common_parser = argparse.ArgumentParser(add_help=False)
+    common_parser.add_argument('-v', '--verbose', help='Print logging informations', action='store_true', default=False)
+    common_parser.add_argument('-d', '--debug', help='Print debug informations', action='store_true', default=False)
+    common_parser.add_argument('--log-file', type=str, default='')
+
+    def _parse_common_args(self, args):
+        common_args, other_args = self.common_parser.parse_known_args(args)
+        if common_args.debug:
+            set_log_level('DEBUG')
+        elif common_args.verbose:
+            set_log_level('INFO')
+        
+        if common_args.log_file != '': # TODO : test this
+            set_log_file(common_args.log_file)
+        
+        return other_args
+
 
     def get_names(self):
         return [n for n in dir(self.__class__) if n not in self.__hiden_methods]
@@ -34,24 +55,31 @@ class ShellPrompt(Cmd):
 
     def do_ip(self, inp):
         """Open IP adapter with delimited protocol (\\n at the end of each line by default)"""
-    # -p / --port : port number
-    # --ip : ip address
-    # -t / --transport : TCP or UDP
-        parser = argparse.ArgumentParser()
+        arguments = shlex.split(inp)
+        other_arguments = self._parse_common_args(arguments)
+
+        parser = argparse.ArgumentParser(
+            prog='ip'
+        )
         parser.add_argument('ip', type=str)
         parser.add_argument('-p', '--port', type=int, required=True)
         parser.add_argument('-t', '--transport', type=str, choices=['UDP', 'TCP'], default='TCP', required=False)
-        parser.add_argument('-e', '--end', help='Newline character, \\n by default', default='\n', required=False)
+        parser.add_argument('-e', '--end', help='Newline character, \\n by default, on unix systems, use -e \'\\\\n\' to circumvent backslash substitution', default='\n', required=False)
         try:
-            args = parser.parse_args(shlex.split(inp))
+            args = parser.parse_args(other_arguments)
         except SystemExit as e:
             pass
         else:
-            self._adapter = Delimited(IP(address=args.ip, port=args.port, transport=args.transport), termination=args.end)
+            end_string : str = args.end
+            termination = end_string.encode('utf-8').decode('unicode_escape')
+            self._logger.debug(f'Opening Delimited IP with termination : {repr(termination)}')
+            self._adapter = Delimited(IP(address=args.ip, port=args.port, transport=args.transport), termination=termination)
+            self._adapter._adapter.open()
+            print(f"Successfully opened IP adapter at {args.ip}:{args.port} ({repr(termination)} termination)")
 
     def default(self, inp):
         if hasattr(self, '_adapter'):
-            cmd = inp + '\n'
+            cmd = inp
             output = self._adapter.query(cmd)
             print(output)
         else:
