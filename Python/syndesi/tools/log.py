@@ -12,6 +12,7 @@ class LoggerAlias(Enum):
     ADAPTER = 'syndesi.adapter'
     PROTOCOL = 'syndesi.protocol'
     PROXY_SERVER = 'syndesi.proxy_server'
+    CLI = 'syndesi.cli'
 
 default_formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
 

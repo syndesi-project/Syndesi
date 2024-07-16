@@ -6,17 +6,18 @@ from ..tools.types import to_bytes
 from typing import Union
 
 class VISA(Adapter):
-    def __init__(self, descriptor : str):
+    def __init__(self, resource : str):
         """
         USB VISA stack adapter
 
         Parameters
         ----------
-        descriptor : str
-            IP description
+        resource : str
+            resource address string
         """
+        self._resource = resource
         self._rm = ResourceManager()
-        self._inst = self._rm.open_resource(descriptor)
+        self._inst = self._rm.open_resource(self._resource)
         self._inst.write_termination = ''
         self._inst.read_termination = ''
 

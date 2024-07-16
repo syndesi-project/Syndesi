@@ -46,16 +46,24 @@ class Proxy(Adapter):
 
         if isinstance(proxy_adapter, IP):
             proxy_adapter.set_default_port(DEFAULT_PORT)
-
         if isinstance(self._remote, IP):
             self._proxy.query(IPInstanciate(
-                    address=self._remote._address,
-                    port=self._remote._port,
-                    transport=self._remote._transport,
-                    buffer_size=self._remote._buffer_size
-                ).encode())
+                address=self._remote._address,
+                port=self._remote._port,
+                transport=self._remote._transport,
+                buffer_size=self._remote._buffer_size,
+            ).encode())
         elif isinstance(self._remote, SerialPort):
-            self._proxy.query()
+            self._proxy.query(SerialPortInstanciate(
+                port=self._remote._port_name,
+                baudrate=self._remote._baudrate,
+                timeout=timeout_to_api(self._remote._timeout),
+                stop_condition=stop_condition_to_api(self._remote._stop_condition)
+            ))
+        elif isinstance(self._remote, VISA):
+            self._proxy.query(VisaInstanciate(
+                resource=self._remote._resource,
+            ))
 
     def check(self, status : ReturnStatus):
         if not status.success:
@@ -81,7 +89,6 @@ class Proxy(Adapter):
             raise ProxyException(output.error_message)
         else:
             raise RuntimeError(f"Invalid return : {type(output)}")
-
 
     def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False):
         self.check(parse(self._proxy.query(AdapterFlushRead().encode())))

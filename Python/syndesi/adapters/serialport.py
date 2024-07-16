@@ -11,7 +11,7 @@ from ..tools.types import to_bytes
 from .stop_conditions import *
 from .timeout import Timeout
 from .timed_queue import TimedQueue
-from ..tools import shell
+#from ..cli import shell
 from ..tools.others import DEFAULT
 
 DEFAULT_TIMEOUT = Timeout(response=1, continuation=200e-3, total=None)
@@ -123,19 +123,19 @@ class SerialPort(Adapter):
         self.write(data)
         return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
 
-    def shell_parse(inp: str):
-        parser = argparse.ArgumentParser(
-        prog='',
-        description='Serial port shell parser',
-        epilog='')
-        # Parse subcommand    
-        parser.add_argument('--' + shell.Arguments.PORT.value, type=str)
-        parser.add_argument('--' + shell.Arguments.BAUDRATE.value, type=int)
-        parser.add_argument('--' + shell.Arguments.ENABLE_RTS_CTS.value, action='store_true')
-        args = parser.parse_args(inp.split())
+    # def shell_parse(inp: str):
+    #     parser = argparse.ArgumentParser(
+    #     prog='',
+    #     description='Serial port shell parser',
+    #     epilog='')
+    #     # Parse subcommand    
+    #     parser.add_argument('--' + shell.Arguments.PORT.value, type=str)
+    #     parser.add_argument('--' + shell.Arguments.BAUDRATE.value, type=int)
+    #     parser.add_argument('--' + shell.Arguments.ENABLE_RTS_CTS.value, action='store_true')
+    #     args = parser.parse_args(inp.split())
 
-        return {
-            'port' : getattr(args, shell.Arguments.PORT.value),
-            'baudrate' : getattr(args, shell.Arguments.BAUDRATE.value),
-            'rts_cts' : bool(getattr(args, shell.Arguments.ENABLE_RTS_CTS.value))
-        }
+    #     return {
+    #         'port' : getattr(args, shell.Arguments.PORT.value),
+    #         'baudrate' : getattr(args, shell.Arguments.BAUDRATE.value),
+    #         'rts_cts' : bool(getattr(args, shell.Arguments.ENABLE_RTS_CTS.value))
+    #     }

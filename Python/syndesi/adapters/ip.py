@@ -9,7 +9,7 @@ from .timed_queue import TimedQueue
 from typing import Union
 from time import time
 import argparse
-from ..tools import shell
+#from ..cli import shell
 from ..tools.others import DEFAULT
 
 class IP(Adapter):

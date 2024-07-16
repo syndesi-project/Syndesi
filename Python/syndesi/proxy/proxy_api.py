@@ -4,20 +4,13 @@
 
 import sys
 from dataclasses import dataclass
+from ..adapters.stop_conditions import Length, Termination, StopCondition
+from ..adapters.timeout import Timeout
 
 from ..api.api import APICall, ACTION_ATTRIBUTE, register_api, APIItem
 
 class ProxyException(Exception):
     pass
-
-# IP specific
-@dataclass
-class IPInstanciate(APICall):
-    action = 'ip_adapter_inst'
-    address : str
-    port : int
-    transport : str
-    buffer_size : int
 
 @dataclass
 class TimeoutAPI(APIItem):
@@ -29,10 +22,22 @@ class TimeoutAPI(APIItem):
     on_continuation : str
     on_total : str
 
+def timeout_to_api(timeout : Timeout) -> TimeoutAPI:
+    if timeout is None:
+        return None
+    else:
+        return TimeoutAPI(
+            response=timeout._response,
+            continuation=timeout._continuation,
+            total=timeout._total,
+            on_response=timeout._on_response,
+            on_continuation=timeout._on_continuation,
+            on_total=timeout._on_total
+        )
+
 @dataclass
 class StopConditionAPI(APIItem):
     pass
-
 @dataclass
 class TerminationAPI(StopConditionAPI):
     name = 'termination'
@@ -43,6 +48,23 @@ class LengthAPI(StopConditionAPI):
     name = 'length'
     length : int
 
+def stop_condition_to_api(stop_condition : StopCondition):
+    if stop_condition is None:
+        return None
+    elif isinstance(stop_condition, Length):
+        return LengthAPI(length=stop_condition._N)
+    elif isinstance(stop_condition, Termination):
+        return TerminationAPI(sequence=stop_condition._termination)
+# IP specific
+@dataclass
+class IPInstanciate(APICall):
+    action = 'ip_adapter_inst'
+    address : str
+    port : int
+    transport : str
+    buffer_size : int
+    timeout : TimeoutAPI
+
 # Serial specific
 @dataclass
 class SerialPortInstanciate(APICall):
@@ -52,6 +74,13 @@ class SerialPortInstanciate(APICall):
     timeout : TimeoutAPI
     stop_condition : StopConditionAPI
     rts_cts : bool
+
+# VISA specific
+@dataclass
+class VisaInstanciate(APICall):
+    action = 'visa_instanciate'
+    resource : str
+    
 
 # Adapters common
 @dataclass
