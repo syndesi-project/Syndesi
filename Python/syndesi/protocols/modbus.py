@@ -173,6 +173,43 @@ class Modbus(Protocol):
 
         self._slave_address = slave_address
 
+        self._transaction_id = 0
+
+    def _dm_to_pdu_address(self, dm_address):
+        """
+        Convert Modbus data model address to Modbus PDU address
+
+        - Modbus data model starts at address 1
+        - Modbus PDU addresses start at 0
+
+        Modbus data model is the one specified in the devices datasheets
+
+        Parameters
+        ----------
+        dm_address : int
+        """
+        if dm_address == 0:
+            raise ValueError('Address 0 is not valid in Modbus data model')
+
+        return dm_address - 1        
+
+    def _pdu_to_dm_address(self, pdu_address):
+        """
+        Convert Modbus PDU address to Modbus data model address
+
+        - Modbus data model starts at address 1
+        - Modbus PDU addresses start at 0
+
+        Modbus data model is the one specified in the devices datasheets
+
+        Parameters
+        ----------
+        pdu_address : int
+        """
+        return pdu_address + 1
+        
+
+
     def _crc(self, _bytes):
         # TODO : Implement
         return 0
@@ -181,9 +218,16 @@ class Modbus(Protocol):
         """
         Return PDU generated from bytes data
         """
+        PROTOCOL_ID = 0
+        UNIT_ID = 0
+
         if self._modbus_type == ModbusType.TCP:
             # Return raw data
-            output = _bytes
+            # output = _bytes
+            # Temporary :
+            length = len(_bytes) + 1 # unit_id is included
+            output = struct.pack(ENDIAN + 'HHHB', self._transaction_id, PROTOCOL_ID, length, UNIT_ID) + _bytes
+            self._transaction_id += 1
         else:
             # Add slave address and error check
             error_check = self._crc(_bytes)
@@ -215,7 +259,9 @@ class Modbus(Protocol):
         """
         if self._modbus_type == ModbusType.TCP:
             # Return raw data
-            data = _pdu
+            # data = _pdu
+            data = _pdu[7:]
+
         else:
             if self._modbus_type.ASCII:
                 # Remove header and trailer
@@ -249,12 +295,12 @@ class Modbus(Protocol):
             3 : 'Invalid quantity of outputs',
             4 : 'Couldn\'t read coils'
         }
-        query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_COILS.value, start_address, number_of_coils)
+        query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_COILS.value, self._dm_to_pdu_address(start_address), number_of_coils)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query))   )
         self._raise_if_error(response, exception_codes=EXCEPTIONS)
         n_coil_bytes = ceil(number_of_coils / 8)
         _, _, coil_bytes = struct.unpack(ENDIAN + f'BB{n_coil_bytes}s', response)
-        coils = bytes_to_list(coil_bytes)
+        coils = bytes_to_list(coil_bytes, number_of_coils)
         return coils
 
     def read_single_coil(self, address : int):
@@ -294,7 +340,7 @@ class Modbus(Protocol):
             3 : 'Invalid quantity of inputs',
             4 : 'Couldn\'t read inputs'
         }
-        query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_DISCRETE_INPUTS.value, start_address, number_of_inputs)
+        query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_DISCRETE_INPUTS.value, self._dm_to_pdu_address(start_address), number_of_inputs)
         byte_count = ceil(number_of_inputs / 8) # pre-calculate the number of returned coil value bytes
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
         self._raise_if_error(response, exception_codes=EXCEPTIONS)
@@ -325,7 +371,7 @@ class Modbus(Protocol):
         }
         MAX_NUMBER_OF_REGISTERS = 125
         assert 1 <= number_of_registers <= MAX_NUMBER_OF_REGISTERS, f"Invalid number of registers : {number_of_registers}"
-        query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_HOLDING_REGISTERS.value, start_address, number_of_registers)
+        query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_HOLDING_REGISTERS.value, self._dm_to_pdu_address(start_address), number_of_registers)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
         self._raise_if_error(response, exception_codes=EXCEPTIONS)
         _, _, registers_data = struct.unpack(ENDIAN + f'BB{number_of_registers*2}', response)
@@ -368,7 +414,7 @@ class Modbus(Protocol):
         """
         _type = TypeCast(_type)
         # Read N registers
-        registers = self.read_holding_registers(start_address=address, number_of_registers=_bytes//2)
+        registers = self.read_holding_registers(start_address=self._dm_to_pdu_address(address), number_of_registers=_bytes//2)
         # Create the buffer (2*N bytes)
         buffer = b''.join(registers[::(1 if byte_order == 'big' else -1)])
         # Parse
@@ -412,7 +458,7 @@ class Modbus(Protocol):
         }
         MAX_NUMBER_OF_REGISTERS = 125
         assert 1 <= number_of_registers <= MAX_NUMBER_OF_REGISTERS, f"Invalid number of registers : {number_of_registers}"
-        query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_INPUT_REGISTERS.value, start_address, number_of_registers)
+        query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_INPUT_REGISTERS.value, self._dm_to_pdu_address(start_address), number_of_registers)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(self._make_pdu(query))))
         self._raise_if_error(response, exception_codes=EXCEPTIONS)
         _, _, registers_data = struct.unpack(ENDIAN + f'BB{number_of_registers*2}', response)
@@ -437,7 +483,7 @@ class Modbus(Protocol):
             3 : 'Invalid value',
             4 : 'Couldn\'t set coil output'
         }
-        query = struct.pack(ENDIAN + 'BHH', FunctionCode.WRITE_SINGLE_COIL.value, address, ON_VALUE if enabled else OFF_VALUE)
+        query = struct.pack(ENDIAN + 'BHH', FunctionCode.WRITE_SINGLE_COIL.value, self._dm_to_pdu_address(address), ON_VALUE if enabled else OFF_VALUE)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
         self._raise_if_error(response, EXCEPTIONS)
         assert query == response, f"Write single coil response should match query {query} != {response}"
@@ -459,7 +505,7 @@ class Modbus(Protocol):
             3 : 'Invalid register value',
             4 : 'Couldn\'t write register'
         }
-        query = struct.pack(ENDIAN + 'BHH', FunctionCode.WRITE_SINGLE_REGISTER.value, address, value)
+        query = struct.pack(ENDIAN + 'BHH', FunctionCode.WRITE_SINGLE_REGISTER.value, self._dm_to_pdu_address(address), value)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
         self._raise_if_error(response, EXCEPTIONS)
         assert query == response, f"Response ({response}) should match query ({query})"
@@ -771,12 +817,12 @@ class Modbus(Protocol):
 
         query = struct.pack(ENDIAN + f'BHHB{byte_count}s',
             FunctionCode.WRITE_MULTIPLE_COILS.value,
-            start_address,
+            self._dm_to_pdu_address(start_address),
             number_of_coils,
             byte_count,
             list_to_bytes(values)
             )
-        response = self._adapter.query(query)
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
         self._raise_if_error(response, EXCEPTIONS)
 
         _, _, coils_written = struct.unpack(ENDIAN + 'BHH', response)
@@ -805,7 +851,7 @@ class Modbus(Protocol):
 
         query = struct.pack(ENDIAN + f'BHHB{byte_count // 2}H',
             FunctionCode.WRITE_MULTIPLE_REGISTERS.value,
-            start_address,
+            self._dm_to_pdu_address(start_address),
             byte_count // 2,
             byte_count,
             values
