@@ -38,7 +38,7 @@ class FunctionCode(Enum):
     REPORT_SERVER_ID = 0x11 # Serial only
     READ_FILE_RECORD = 0x14
     WRITE_FILE_RECORD = 0x15
-    MASK_WRITE_REGISTERS = 0x16
+    MASK_WRITE_REGISTER = 0x16
     READ_WRITE_MULTIPLE_REGISTERS = 0x17
     READ_FIFO_QUEUE = 0x18
     ENCAPSULATED_INTERFACE_TRANSPORT = 0x2B
@@ -891,40 +891,226 @@ class Modbus(Protocol):
         return server_id, run_indicator_status == 0xFF, additional_data
 
     # Read File Record - 0x14
-    def read_file_record(self):
+    def read_file_record(self, records : list):
         """
-        Perform a file record read
+        Perform a single or multiple file record read
+
+        Total response length cannot exceed 253 bytes, meaning the number of records and their length is limited.
         
+
+        Query equation : 2 + 7*N <= 253
+        Response equation : 2 + N*2 + sum(Li*2) <= 253
+
+        Parameters
+        ----------
+        records : list or tuple
+            List (or single) tuple : (file_number, record_number, record_length)
+
+        Returns
+        -------
+        records_data : list
+            List of bytes
         """
+        SIZE_LIMIT = 253
+        REFERENCE_TYPE = 6
+        EXCEPTIONS = {
+            1 : 'Function code not supported',
+            2 : 'Invalid parameters',
+            3 : 'Invalid byte count',
+            4 : 'Couldn\'t read records'
+        }
+
+        if isinstance(records, tuple):
+            records = [records]
+        elif not isinstance(records, list):            
+            raise TypeError(f'Invalid records type : {records}')
+
+        query_size = 2 + 7 * len(records)
+        response_size = 2 + len(records) + sum(2*r[3] for r in records)
+        if query_size > SIZE_LIMIT:
+            raise ValueError(f'Number of records is too high : {len(records)}')
+        if response_size > SIZE_LIMIT:
+            raise ValueError(f'Sum of records lenghts is too high : {sum([r[3] for r in records])}')
+
+        sub_req_buffer = b''
+        for file_number, record_number, record_length in records:
+            sub_req_buffer += struct.pack(ENDIAN + 'BHHH', REFERENCE_TYPE, file_number, record_number, record_length)
+
+        byte_count = len(sub_req_buffer)
+
+        query = struct.pack(ENDIAN + f'BB{byte_count}s', FunctionCode.READ_FILE_RECORD, byte_count, sub_req_buffer)
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+        self._raise_if_error(response, EXCEPTIONS)
+        # Parse the response
+        # start at position 2
+        records_data = []
+        i = 2
+        while True:
+            length = response[i]
+            i += 1
+            # Ignore teh reference type
+            # Read the record data
+            records_data.append(response[i:i+length])
+            i += length
+        
+        return records_data
 
     # Write File Record - 0x15
-    def write_file_record(self):
-        pass
+    def write_file_record(self, records : list):
+        """
+        Perform a single or multiple file record write
+
+        Total query and response length cannot exceed 253 bytes, meaning the number of records and their length is limited.
+        
+        Query equation : 2 + 7*N + sum(Li*2) <= 253
+        Response equation : identical
+
+        File number can be between 0x0001 and 0xFFFF but lots of legacy equipment will not support file number above 0x000A (10)
+
+        Parameters
+        ----------
+        records : list or tuple
+            List (or single) tuple : (file_number, record_number, data)
+
+        Returns
+        -------
+        records_data : list
+            List of bytes
+        """
+        REFERENCE_TYPE = 6
+        EXCEPTIONS = {
+            1 : 'Function code not supported',
+            2 : 'Invalid parameters',
+            3 : 'Invalid byte count',
+            4 : 'Couldn\'t write records'
+        }
+
+        if isinstance(records, tuple):
+            records = [records]
+        elif not isinstance(records, list):            
+            raise TypeError(f'Invalid records type : {records}')
+
+        sub_req_buffer = b''
+
+        for file_number, record_number, data in records:
+            sub_req_buffer += struct.pack(ENDIAN + f'BHHH{len(data)}s', REFERENCE_TYPE, file_number, record_number, len(data // 2), data)
+
+        query = struct.pack(ENDIAN + f'BB{len(sub_req_buffer)}s', FunctionCode.WRITE_FILE_RECORD, len(sub_req_buffer), sub_req_buffer)
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+        assert response == query
+
 
     # Mask Write Register - 0x16
-    def mask_write_register(self):
-        pass
+    def mask_write_register(self, address : int, and_mask : int, or_mask : int):
+        """
+        This function is used to modify the contents of a holding register using a combination of AND and OR masks applied to the current contents of the register.
+
+        The algorithm is :
+
+        New value = (old value & and_mask) OR (or_mask & (~and_mask))
+
+        Parameters
+        ----------
+        address : int
+            0x0000 to 0xFFFF
+        and_mask : int
+            0x0000 to 0xFFFF
+        or_mask : int
+            0x0000 to 0xFFFF
+        """
+        EXCEPTIONS = {
+            1 : 'Function code not supported',
+            2 : 'Invalid register address',
+            3 : 'Invalid AND/OR mask',
+            4 : 'Couldn\'t write register',
+        }
+        query = struct.pack(ENDIAN + 'BHHH', FunctionCode.MASK_WRITE_REGISTER, address, and_mask, or_mask)
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+        self._raise_if_error(response, EXCEPTIONS)
+        assert response == query, f'Response ({response}) should match query ({query})'
+
 
     # Read/Write Multiple Registers - 0x17
-    def read_write_multiple_registers(self):
-        pass
+    def read_write_multiple_registers(self, read_starting_address : int, number_of_read_registers : int, write_starting_address : int, write_values : list):
+        """
+        Do a write, then a read operation, each on a specific set of registers.
+
+        Parameters
+        ----------
+        read_starting_address : int
+        number_of_read_registers : int
+        write_starting_address : int
+        write_values : list
+            List of registers values
+
+        Returns
+        -------
+        read_values : list
+        """
+        EXCEPTIONS = {
+            1 : 'Function code not supported',
+            2 : 'Invalid read/write start/end address',
+            3 : 'Invalid quantity of read/write and/or byte count',
+            4 : 'Couldn\'t read and/or write registers'
+        }
+        query = struct.pack(ENDIAN + f'BHHHHB{len(write_values)}H', 
+            FunctionCode.READ_WRITE_MULTIPLE_REGISTERS,
+            read_starting_address,
+            number_of_read_registers,
+            write_starting_address,
+            write_values)
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+        self._raise_if_error(response, EXCEPTIONS)
+        # Parse response
+        read_values = struct.unpack(ENDIAN + f'{number_of_read_registers}H')
+        return read_values
 
     # Read FIFO Queue - 0x18
-    def read_fifo_queue(self):
-        pass
+    def read_fifo_queue(self, fifo_address : int):
+        """
+        Read the contents of a First-In-First-Out (FIFO) queue of registers
+
+        Parameters
+        ----------
+        fifo_address : int
+
+        Returns
+        -------
+        registers : list
+        """
+        EXCEPTIONS = {
+            1 : 'Function code not supported',
+            2 : 'Invalid FIFO address',
+            3 : 'Invalid FIFO count (>31)',
+            4 : 'Couldn\'t read FIFO queue'
+        }
+        query = struct.pack(ENDIAN + 'BH', FunctionCode.READ_FIFO_QUEUE, fifo_address)
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+        byte_count = struct.unpack(ENDIAN + 'xH', response)
+        register_count = byte_count // 2 - 1
+        return struct.unpack(ENDIAN + f'{register_count}H', response[5:]) # Ignore the FIFO count
 
     # Encapsulate Interface Transport - 0x2B
-    def encapsulated_interface_transport(self):
-        pass
+    def encapsulated_interface_transport(self, mei_type, mei_data, extra_exceptions : dict = None):
+        """
+        The MODBUS Encapsulated Interface (MEI) Transport is a mechanism for tunneling service requests and method invocations
 
+        Parameters
+        ----------
+        mei_type : int
+        mei_data : bytes
 
+        Returns
+        -------
+        returned_mei_data : bytes
+        """
+        EXCEPTIONS = {
+            1 : 'Function code not supported',
+        }
+        if extra_exceptions is not None:
+            EXCEPTIONS.update(extra_exceptions)
 
-    
-
-    
-
-    
-
-    
-
-    
+        query = struct.pack(ENDIAN + f'BB{len(mei_data)}s', FunctionCode.ENCAPSULATED_INTERFACE_TRANSPORT, mei_type, mei_data)
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+        self._raise_if_error(response, EXCEPTIONS)
+        return response[2:]
