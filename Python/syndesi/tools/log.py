@@ -16,23 +16,26 @@ class LoggerAlias(Enum):
 
 default_formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
 
-def set_log_file(file : str, level : Union[str, int], loggers : Union[List[LoggerAlias], str] = 'all'):
-    """
-    Set log file
 
+def log_settings(level : Union[str, int], console : bool = True, file : str = None, loggers : Union[List[LoggerAlias], str] = 'all'):
+    """
+    Configure syndesi logging
+    
     Parameters
     ----------
-    file : str
-        File path, if None, file logging is disabled
-    level : str or logging level
-        info     : 'INFO'     or logging.INFO
-        critical : 'CRITICAL' or logging.CRITICAL
-        error    : 'ERROR'    or logging.ERROR
-        warning  : 'WARNING'  or logging.WARNING
-        info     : 'INFO'     or logging.INFO
-        debug    : 'DEBUG'    or logging.DEBUG
-    loggers : list of LoggerAlias or 'all'
-        Which loggers to save to the file, 'all' by default
+        level : str or logging level
+            . 'INFO'    
+            . 'CRITICAL'
+            . 'ERROR'   
+            . 'WARNING' 
+            . 'INFO'    
+            . 'DEBUG'
+        console : bool
+            Print logging information to the console (True by default). Optional
+        file : str
+            File path, if None, file logging is disabled. Optionnal
+        loggers : list
+            Select which logger modules are updated (see LoggerAlias class). Optional
     """
     global file_handler
 
@@ -49,59 +52,24 @@ def set_log_file(file : str, level : Union[str, int], loggers : Union[List[Logge
                 logger.removeHandler(h)
         
     if file is not None:
-        # 2) Create the new file handler
+        # 2) Create the new file and stream handlers
         file_handler = logging.FileHandler(file)
         file_handler.setFormatter(default_formatter)
-        # 3) Add to the designated loggers
-        for l in LoggerAlias:
-            if loggers == 'all' or l.value in loggers:
-                logger = logging.getLogger(l.value)
-                logger.addHandler(file_handler)
-                logger.setLevel(level)
     else:
         file_handler = None
     
-def set_log_level(level : Union[str, int], loggers : Union[List[LoggerAlias], str] = 'all'):
-    """
-    Set log level, everything below or equal to the given level will be outputed to stdout/stderr.
-
-    Parameters
-    ----------
-    level : str or logging level
-        info     : 'INFO'     or logging.INFO
-        critical : 'CRITICAL' or logging.CRITICAL
-        error    : 'ERROR'    or logging.ERROR
-        warning  : 'WARNING'  or logging.WARNING
-        info     : 'INFO'     or logging.INFO
-        debug    : 'DEBUG'    or logging.DEBUG
-        None will disable logging
-    loggers : list of LoggerAlias or 'all'
-        Which loggers to save to the file, 'all' by default
-    """
-    global stream_handler
-
-    if isinstance(loggers, str) and loggers == 'all':
-        _all = True
-    elif not isinstance(loggers, list):
-        raise ValueError("Invalid argument loggers")
-
-
-    # 1) Remove all stream handlers from all loggers
-    for alias in LoggerAlias:
-        logger = logging.getLogger(alias.value)
-        for h in logger.handlers:
-            if isinstance(h, logging.StreamHandler):
-                logger.removeHandler(h)
-        
-    if level is not None:
-        # 2) Create the new stream handler
+    if console:
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(default_formatter)
-        # 3) Add to the designated loggers
-        for l in LoggerAlias:
-            if _all or l in loggers:
-                logger = logging.getLogger(l.value)
-                logger.addHandler(stream_handler)
-                logger.setLevel(level)
     else:
         stream_handler = None
+    # 3) Add to the designated loggers
+    for l in LoggerAlias:
+        if loggers == 'all' or l.value in loggers:
+            logger = logging.getLogger(l.value)
+            if file_handler is not None:
+                logger.addHandler(file_handler)
+            if stream_handler is not None:
+                logger.addHandler(stream_handler)
+            logger.setLevel(level)
+        
