@@ -144,7 +144,7 @@ class Modbus(Protocol):
     ASCII_HEADER = b':'
     ASCII_TRAILER = b'\r\n'
 
-    def __init__(self, adapter: Adapter, timeout: Timeout, _type : str = ModbusType.RTU.value, slave_address : int = None) -> None:
+    def __init__(self, adapter: Adapter, timeout: Timeout = None, _type : str = ModbusType.RTU.value, slave_address : int = None) -> None:
         """
         Modbus protocol
 
