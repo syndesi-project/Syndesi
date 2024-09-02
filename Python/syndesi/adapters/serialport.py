@@ -14,7 +14,16 @@ from .timed_queue import TimedQueue
 #from ..cli import shell
 from ..tools.others import DEFAULT
 
-DEFAULT_TIMEOUT = Timeout(response=1, continuation=200e-3, total=None)
+DEFAULT_TIMEOUT = Timeout(
+                    response=1,
+                    on_response='error',
+                    continuation=200e-3,
+                    on_continuation='return',
+                    total=None,
+                    on_total='error')
+
+
+
 
 class SerialPort(Adapter):
     def __init__(self,  
@@ -87,8 +96,13 @@ class SerialPort(Adapter):
         # NOTE : There should be some way to kill the thread, maybe check for an error on in_waiting but couldn't find it so far
         while True:
             # Check how many bytes are available
-            in_waiting = self._port.in_waiting # This is a temporary fix to get windows compatiblity back, an error might pop up
-            if in_waiting > 0:
+            # This work on Linux, check on windows what's appropriate
+            ready, _, _ = select.select([self._port.fd], [], [])
+            in_waiting = self._port.in_waiting
+
+            # This probably doesn't work as it uses a lot of ressources
+            # in_waiting = self._port.in_waiting # This is a temporary fix to get windows compatiblity back, an error might pop up
+            if self._port.fd in ready:
                 # Read those bytes
                 fragment = port.read(in_waiting)
                 if fragment:
