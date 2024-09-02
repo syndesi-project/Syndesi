@@ -13,15 +13,21 @@ import argparse
 from ..tools.others import DEFAULT
 
 class IP(Adapter):
-    DEFAULT_RESPONSE_TIMEOUT = 1
-    DEFAULT_CONTINUATION_TIMEOUT = 1e-3
+    DEFAULT_RESPONSE_TIMEOUT = 2
+    DEFAULT_ON_RESPONSE = 'error'
+    DEFAULT_CONTINUATION_TIMEOUT = 50e-3
+    DEFAULT_ON_CONTINUATION = 'return'
     DEFAULT_TOTAL_TIMEOUT = 5
+    DEFAULT_ON_TOTAL = 'error'
 
 
     DEFAULT_TIMEOUT = Timeout(
                         response=DEFAULT_RESPONSE_TIMEOUT,
+                        on_response=DEFAULT_ON_RESPONSE,
                         continuation=DEFAULT_CONTINUATION_TIMEOUT,
-                        total=DEFAULT_TOTAL_TIMEOUT)
+                        on_continuation=DEFAULT_ON_CONTINUATION,
+                        total=DEFAULT_TOTAL_TIMEOUT,
+                        on_total=DEFAULT_ON_TOTAL)
     DEFAULT_BUFFER_SIZE = 1024
     class Protocol(Enum):
         TCP = 'TCP'
