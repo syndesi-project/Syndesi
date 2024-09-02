@@ -96,7 +96,7 @@ class SerialPort(Adapter):
         # NOTE : There should be some way to kill the thread, maybe check for an error on in_waiting but couldn't find it so far
         while True:
             # Check how many bytes are available
-            +            # This work on Linux, check on windows what's appropriate
+            # This work on Linux, check on windows what's appropriate
             ready, _, _ = select.select([self._port.fd], [], [])
             in_waiting = self._port.in_waiting
 
