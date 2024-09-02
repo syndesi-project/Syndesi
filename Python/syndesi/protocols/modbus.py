@@ -5,12 +5,13 @@
 #
 # Modbus TCP and Modbus RTU implementation
 from .protocol import Protocol
-from ..adapters import Adapter, IP, SerialPort
+from ..adapters import Adapter, IP, SerialPort, Length
 from ..adapters.timeout import Timeout
 from enum import Enum
 import struct
 from math import ceil
 from typing import List
+from ..tools.others import DEFAULT
 
 MODBUS_TCP_DEFAULT_PORT = 502
 
@@ -139,12 +140,11 @@ def struct_format(type : TypeCast, length : int):
 class ModbusException(Exception):
     pass
 
-
 class Modbus(Protocol):
-    ASCII_HEADER = b':'
-    ASCII_TRAILER = b'\r\n'
+    _ASCII_HEADER = b':'
+    _ASCII_TRAILER = b'\r\n'
 
-    def __init__(self, adapter: Adapter, timeout: Timeout = None, _type : str = ModbusType.RTU.value, slave_address : int = None) -> None:
+    def __init__(self, adapter: Adapter, timeout: Timeout = DEFAULT, _type : str = ModbusType.RTU.value, slave_address : int = None) -> None:
         """
         Modbus protocol
 
@@ -159,6 +159,7 @@ class Modbus(Protocol):
             'ASCII' : Modbus ASCII
         """
         super().__init__(adapter, timeout)
+        self._logger.debug('Initializing Modbus protocol...')
 
 
         if isinstance(adapter, IP):
@@ -234,11 +235,13 @@ class Modbus(Protocol):
             output = struct.pack(ENDIAN + 'B', self._slave_address) + _bytes + struct.pack(ENDIAN + 'H', error_check)
             if self._modbus_type.ASCII:
                 # Add header and trailer
-                output = self.ASCII_HEADER + output + self.ASCII_TRAILER
+                output = self._ASCII_HEADER + output + self._ASCII_TRAILER
 
         return output
 
     def _raise_if_error(self, response, exception_codes : dict):
+        if response == b'':
+            raise RuntimeError('Empty response')
         if response[0] & 0x80:
             # There is an error
             code = response[1]
@@ -265,7 +268,7 @@ class Modbus(Protocol):
         else:
             if self._modbus_type.ASCII:
                 # Remove header and trailer
-                _pdu = _pdu[len(self.ASCII_HEADER):-len(self.ASCII_TRAILER)]
+                _pdu = _pdu[len(self._ASCII_HEADER):-len(self._ASCII_TRAILER)]
             # Remove slave address and CRC and check CRC
 
             data = _pdu[1:-2]
@@ -274,6 +277,10 @@ class Modbus(Protocol):
             # TODO : Check here and raise exception
 
         return data
+
+    def _length(self, pdu_length : int):
+        dummy_pdu = self._make_pdu(b'')
+        return len(dummy_pdu) + pdu_length
 
     # Read Coils - 0x01
     def read_coils(self, start_address : int, number_of_coils : int):
@@ -296,9 +303,10 @@ class Modbus(Protocol):
             4 : 'Couldn\'t read coils'
         }
         query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_COILS.value, self._dm_to_pdu_address(start_address), number_of_coils)
-        response = self._parse_pdu(self._adapter.query(self._make_pdu(query))   )
-        self._raise_if_error(response, exception_codes=EXCEPTIONS)
+
         n_coil_bytes = ceil(number_of_coils / 8)
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query), timeout=Timeout(continuation=1), stop_condition=Length(self._length(n_coil_bytes + 2))))
+        self._raise_if_error(response, exception_codes=EXCEPTIONS)
         _, _, coil_bytes = struct.unpack(ENDIAN + f'BB{n_coil_bytes}s', response)
         coils = bytes_to_list(coil_bytes, number_of_coils)
         return coils
@@ -822,7 +830,7 @@ class Modbus(Protocol):
             byte_count,
             list_to_bytes(values)
             )
-        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query), stop_condition=Length(self._length(5))))
         self._raise_if_error(response, EXCEPTIONS)
 
         _, _, coils_written = struct.unpack(ENDIAN + 'BHH', response)
