@@ -5,7 +5,10 @@ from syndesi.adapters.stop_conditions import *
 from syndesi.adapters.timeout import Timeout, TimeoutException
 import subprocess
 import pathlib
+import logging
 server_file = pathlib.Path(__file__).parent / 'response_server.py'
+
+from response_server import ResponseServer
 
 #from response_server import ResponseServer
 
@@ -25,8 +28,7 @@ TIME_DELTA = 5e-3
 # Test response timeout
 # long enough to catch the first sequence
 def test_response_A():
-    subprocess.Popen(['python', server_file, '-t', 'TCP'])
-    #server = ResponseServer(HOST, PORT, 'TCP')
+    server = ResponseServer(HOST, PORT, 'TCP')
     sleep(0.5)
     # This should catch the first sequence
     delay = 0.25
@@ -39,37 +41,38 @@ def test_response_A():
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     assert data == sequence
-    sleep(2)
+    sleep(0.2)
     client.close()
-    #sleep(3)
-    #server.stop()
+    sleep(0.3)
+    server.stop()
 
 
 # Test response timeout
 # not long enough to catch the first sequence
-
 def test_response_B():
-    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    server = ResponseServer(HOST, PORT, 'TCP')
     sleep(0.5)
     delay = 0.25
     sequence = b'ABCD'
     client = IP(
         HOST,
         port=PORT,
-        timeout=delay - TIME_DELTA,
-        stop_condition=None)
+        stop_condition=None,
+        timeout=Timeout(response=delay - TIME_DELTA, on_response='return'))
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     sleep(2*TIME_DELTA)
     assert data == b''
+    logging.info('test')
     data = client.read()
     assert data == sequence
+    server.stop()
 
 # Test continuation timeout
 # Long enough to catch the first two sequences
 
 def test_continuation():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     delay_response = 0.25
     sequence_response = b'ABCDE'
@@ -88,11 +91,12 @@ def test_continuation():
     data = client.read()
     client.close()
     assert data == sequence_response + sequence_continuation
+    server.stop()
 
 # Test transmission with big data over UDP
 # The UDP buffer size is 
 def test_too_big():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     delay = 0.25
     sequence = 2000*b'A'
@@ -109,9 +113,10 @@ def test_too_big():
     data = client.read()
     client.close()
     assert data != sequence
+    server.stop()
 
 def test_length_valid():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     delay = 0.25
     sequence = 2000*b'A'
@@ -129,11 +134,12 @@ def test_length_valid():
     data = client.read()
     client.close()
     assert data == sequence
+    server.stop()
 
 
 # Test termination
 def test_termination():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     delay = 0.25
     A = b'AAAA'
@@ -153,10 +159,11 @@ def test_termination():
     assert data == A
     data = client.read()
     assert data == B
+    server.stop()
 
 # Test termination with partial transmission of the termination
 def test_termination_partial():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     delay = 0.25
 
@@ -178,10 +185,11 @@ def test_termination_partial():
     sleep(delay+TIME_DELTA)
     data = client.read()
     assert data == B
+    server.stop()
 
 # Test length
 def test_length():
-    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    server = ResponseServer(HOST, PORT, 'TCP')
     sleep(0.5)
     sequence = b'ABCDEFGHIJKLMNOPQKRSTUVWXYZ'
     N = 10
@@ -196,10 +204,11 @@ def test_length():
     data = client.read()
     assert data == sequence[10:20]
     client.close()
+    server.stop()
 
 # Test length with short timeout
 def test_length_short_timeout():
-    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    server = ResponseServer(HOST, PORT, 'TCP')
     sleep(0.5)
     sequence = b'ABCDEFGHIJKLMNOPQKRSTUVWXYZ'
     N = 10
@@ -207,17 +216,18 @@ def test_length_short_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA),
+        timeout=Timeout(response=delay - TIME_DELTA, on_response='return'),
         stop_condition=Length(10),
         )
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     assert data == b''
     client.close()
+    server.stop()
 
 # Test length with long timeout
 def test_length_long_timeout():
-    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    server = ResponseServer(HOST, PORT, 'TCP')
     sleep(0.5)
     sequence = b'ABCDEFGHIJKLMNOPQKRSTUVWXYZ'
     N = 10
@@ -232,10 +242,11 @@ def test_length_long_timeout():
     data = client.read()
     assert data == sequence[:N]
     client.close()
+    server.stop()
 
 # Test termination with long timeout
 def test_termination_long_timeout():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -252,10 +263,11 @@ def test_termination_long_timeout():
     data = client.read()
     assert data == A
     client.close()
+    server.stop()
 
 # Test discard timeout (too short)
 def test_discard_timeout_short():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -272,10 +284,11 @@ def test_discard_timeout_short():
     data = client.read()
     assert data == b''
     client.close()
+    server.stop()
 
 # Test discard timeout (long enough)
 def test_discard_timeout_long():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -292,11 +305,12 @@ def test_discard_timeout_long():
     data = client.read()
     assert data == A
     client.close()
+    server.stop()
 
 
 # Test return timeout (too short)
 def test_return_timeout_short():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -313,10 +327,11 @@ def test_return_timeout_short():
     data = client.read()
     assert data == A
     client.close()
+    server.stop()
 
 # Test return timeout (long enough)
 def test_return_timeout_long():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -335,12 +350,14 @@ def test_return_timeout_long():
     data = client.read()
     assert data == B
     client.close()
+    server.stop()
 
 # Test on_response=whatever except 'error'
-def test_response_no_error():
+def test_on_response_no_error():
+    server = ResponseServer(HOST, PORT, 'UDP')
     for r in ['discard', 'return', 'store']:
-        subprocess.Popen(['python', server_file, '-t', 'UDP'])
-        sleep(0.5)
+        logging.debug(f'Testing {r}')
+        sleep(0.2)
         A = b'ABCDEFGH'
         B = b'IJKLMNOPQKRSTUVWXYZ'
         termination = b'\n'
@@ -356,10 +373,13 @@ def test_response_no_error():
         data = client.read()
         assert data == b''
         client.close()
+        del client
+        sleep(1)
+    server.stop()
 
 # Test on_response='error'
-def test_response_error():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+def test_on_response_error():
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -380,10 +400,11 @@ def test_response_error():
     else:
         raise RuntimeError("No exception raised")
     client.close()
+    server.stop()
 
 # Test on_continuation='discard'
 def test_continuation_discard():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -400,10 +421,11 @@ def test_continuation_discard():
     data = client.read()
     assert data == b''
     client.close()
+    server.stop()
 
 # Test on_continuation='return'
 def test_continuation_return():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -420,10 +442,11 @@ def test_continuation_return():
     data = client.read()
     assert data == A
     client.close()
+    server.stop()
 
 # Test on_continuation='store'
 def test_continuation_store():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -442,10 +465,11 @@ def test_continuation_store():
     data = client.read()
     assert data == A
     client.close()
+    server.stop()
 
 # Test on_continuation='error'
 def test_continuation_error():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -466,10 +490,11 @@ def test_continuation_error():
     else:
         raise RuntimeError("No exception raised")
     client.close()
+    server.stop()
 
 # Test if a new configuration is correctly applied
 def test_read_timeout_reconfiguration():
-    subprocess.Popen(['python', server_file, '-t', 'UDP'])
+    server = ResponseServer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -490,10 +515,11 @@ def test_read_timeout_reconfiguration():
     else:
         raise RuntimeError("No exception raised")
     client.close()
+    server.stop()
 
 # Test if a new configuration is correctly applied
 def test_disconnect():
-    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    server = ResponseServer(HOST, PORT, 'TCP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -507,11 +533,10 @@ def test_disconnect():
     client.write(encode_sequences([(b'disconnect', delay)]))
     try:
         data = client.read(timeout=Timeout(response=delay + TIME_DELTA + 1, continuation=delay-TIME_DELTA, on_continuation='error'))
-        print(f'Data : {data}')
     except AdapterDisconnected as te:
         # Good !
         pass
     else:
-        #raise RuntimeError("No exception raised")
-        pass
+        raise RuntimeError("No exception raised")
     client.close()
+    server.stop()

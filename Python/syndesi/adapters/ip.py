@@ -11,6 +11,7 @@ from time import time
 import argparse
 #from ..cli import shell
 from ..tools.others import DEFAULT
+import select
 
 class IP(Adapter):
     DEFAULT_TIMEOUT = Timeout(
@@ -106,9 +107,14 @@ class IP(Adapter):
         self._logger.info(f"Adapter {self._alias} opened !")
 
     def close(self):
+        super().close()
+        if self._thread is not None and self._thread.is_alive():
+            try:
+                self._thread.join()
+            except RuntimeError:
+                # If the thread cannot be joined, then so be it
+                pass
         if hasattr(self, '_socket'):
-            #self._socket.close()
-            print('Shutdown socket')
             self._socket.close()
         self._logger.info("Adapter closed !")
         self._status = self.Status.DISCONNECTED
@@ -125,31 +131,43 @@ class IP(Adapter):
 
     def _start_thread(self):
         self._logger.debug("Starting read thread...")
-        self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue))
-        self._thread.start()
+        if self._thread is None or not self._thread.is_alive():
+            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue, self._thread_stop_read))
+            self._thread.start()
 
-    # EXPERIMENTAL
-    def read_thread_alive(self):
-        return self._thread.is_alive()
+    # # EXPERIMENTAL
+    # def read_thread_alive(self):
+    #     return self._thread.is_alive()
 
-
-    def _read_thread(self, socket : socket.socket, read_queue : TimedQueue):
+    def _read_thread(self, socket : socket.socket, read_queue : TimedQueue, stop : socket.socket):
+        # Using select.select works on both Windows and Linux as long as the inputs are all sockets
         while True: # TODO : Add stop_pipe ? Maybe it was removed ?
+            
             try:
-                payload = socket.recv(self._buffer_size)
-                if len(payload) == self._buffer_size and self._transport == self.Protocol.UDP:
-                    self._logger.warning("Warning, inbound UDP data may have been lost (max buffer size attained)")
-            #except OSError:
-            except Exception as e:
-                print(f'Exception : {e}')
-                break
-            print(f'Payload : {payload}')
-            # If payload is empty, it means the socket has been disconnected
-            if payload == b'':
+                ready, _, _ = select.select([socket, stop], [], [])
+            except ValueError:
+                # File desctiptor is s negative integer
                 read_queue.put(AdapterDisconnected())
-                break
             else:
-                read_queue.put(payload)
+                if stop in ready:
+                    # Stop the thread
+                    stop.recv(1)
+                    break
+                elif socket in ready:
+                    # Read from the socket
+                    try:
+                        payload = socket.recv(self._buffer_size)
+                    except ConnectionRefusedError:
+                        # TODO : Check if this is the right way of doing it
+                        read_queue.put(AdapterDisconnected())
+                    else:
+                        if len(payload) == self._buffer_size and self._transport == self.Protocol.UDP:
+                            self._logger.warning("Warning, inbound UDP data may have been lost (max buffer size attained)")
+                        if payload == b'':
+                            read_queue.put(AdapterDisconnected())
+                            break
+                        else:
+                            read_queue.put(payload)
 
     def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False):
         if self._is_server:

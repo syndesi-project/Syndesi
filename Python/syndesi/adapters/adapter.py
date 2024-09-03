@@ -25,6 +25,7 @@ from .timeout import Timeout, TimeoutException, timeout_fuse
 from typing import Union
 from ..tools.types import is_number
 from ..tools.log import LoggerAlias
+import socket
 import logging
 from time import time
 from dataclasses import dataclass
@@ -96,6 +97,7 @@ class Adapter(ABC):
         self._thread : Union[Thread, None] = None
         self._status = self.Status.DISCONNECTED
         self._logger = logging.getLogger(LoggerAlias.ADAPTER.value)
+        self._thread_stop_read, self._thread_stop_write = socket.socketpair()
 
         # Buffer for data that has been pulled from the queue but
         # not used because of termination or length stop condition
@@ -173,12 +175,12 @@ class Adapter(ABC):
         """
         pass
 
-    @abstractmethod
     def close(self):
         """
         Stop communication with the device
         """
-        pass
+        self._logger.debug('Closing adapter and stopping read thread')
+        self._thread_stop_write.send(b'1')
 
     @abstractmethod
     def write(self, data : Union[bytes, str]):
@@ -190,9 +192,6 @@ class Adapter(ABC):
         data : bytes or str
         """
         pass
-    
-    # TODO : Return None or b'' when read thread is killed while reading
-    # This is to detect if a server socket has been closed
 
 
     def read(self, timeout=None, stop_condition=None, return_metrics : bool = False) -> bytes:

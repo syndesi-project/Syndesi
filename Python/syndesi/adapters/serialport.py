@@ -69,6 +69,13 @@ class SerialPort(Adapter):
         self._logger.info("Adapter opened !")
 
     def close(self):
+        super().close()
+        if self._thread is not None and self._thread.is_alive():
+            try:
+                self._thread.join()
+            except RuntimeError:
+                # If the thread cannot be joined, then so be it
+                pass
         if hasattr(self, '_port'):
             # Close and the read thread will die by itself
             self._port.close()
@@ -91,10 +98,10 @@ class SerialPort(Adapter):
         """
         self._logger.debug("Starting read thread...")
         if self._thread is None or not self._thread.is_alive():
-            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue))
+            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue, self._thread_stop_read))
             self._thread.start()
 
-    def _read_thread(self, port : serial.Serial ,read_queue : TimedQueue, stop : socket.socket):
+    def _read_thread(self, port : serial.Serial,read_queue : TimedQueue, stop : socket.socket):
         # On linux, it is possivle to use the select.select for both serial port and stop socketpair.
         # On Windows, this is not possible. so the port timeout is used instead.
         if sys.platform == 'win32':
