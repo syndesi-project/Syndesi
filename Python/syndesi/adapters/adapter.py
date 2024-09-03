@@ -168,6 +168,16 @@ class Adapter(ABC):
         self._read_queue.clear()
         self._previous_read_buffer = b''
 
+    def previous_read_buffer_empty(self):
+        """
+        Check whether the previous read buffer is empty
+
+        Returns
+        -------
+        empty : bool
+        """
+        return self._previous_read_buffer == b''
+
     @abstractmethod
     def open(self):
         """
