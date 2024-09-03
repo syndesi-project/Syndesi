@@ -4,9 +4,11 @@ from threading import Thread
 from typing import Union
 import select
 import argparse
+import socket
+import sys
 #from collections.abc import Sequence
 
-from .adapter import Adapter
+from .adapter import Adapter, AdapterDisconnected
 from ..tools.types import to_bytes
 from .stop_conditions import *
 from .timeout import Timeout
@@ -92,21 +94,34 @@ class SerialPort(Adapter):
             self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue))
             self._thread.start()
 
-    def _read_thread(self, port : serial.Serial , read_queue : TimedQueue):
-        # NOTE : There should be some way to kill the thread, maybe check for an error on in_waiting but couldn't find it so far
+    def _read_thread(self, port : serial.Serial ,read_queue : TimedQueue, stop : socket.socket):
+        # On linux, it is possivle to use the select.select for both serial port and stop socketpair.
+        # On Windows, this is not possible. so the port timeout is used instead.
+        if sys.platform == 'win32':
+            port.timeout = 0.1
         while True:
             # Check how many bytes are available
-            # This work on Linux, check on windows what's appropriate
-            ready, _, _ = select.select([self._port.fd], [], [])
-            in_waiting = self._port.in_waiting
-
-            # This probably doesn't work as it uses a lot of ressources
-            # in_waiting = self._port.in_waiting # This is a temporary fix to get windows compatiblity back, an error might pop up
-            if self._port.fd in ready:
-                # Read those bytes
-                fragment = port.read(in_waiting)
-                if fragment:
-                    read_queue.put(fragment)        
+            if sys.platform == 'win32':
+                ready, _, _ = select.select([stop], [], [], 0)
+                if stop in ready:
+                    # Stop the read thread
+                    break
+                else:
+                    # Read data from the serialport with a timeout, if the timeout occurs, read again.
+                    # This is to avoid having a crazy fast loop
+                    data = port.read()
+                    if len(data) > 0:
+                        read_queue.put(fragment)
+            else:
+                ready, _, _ = select.select([self._port.fd, stop], [], [])
+                if stop in ready:
+                    # Stop the read thread
+                    break
+                elif self._port.fd in ready:
+                    in_waiting = self._port.in_waiting
+                    fragment = port.read(in_waiting)
+                    if fragment:
+                        read_queue.put(fragment) 
 
     def read(self, timeout=None, stop_condition=None, return_metrics: bool = False) -> bytes:
         """

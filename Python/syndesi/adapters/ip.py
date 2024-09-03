@@ -2,7 +2,7 @@ import socket
 from enum import Enum
 from .adapter import Adapter
 from ..tools.types import to_bytes
-from .timeout import Timeout
+from .timeout import Timeout, timeout_fuse
 from .stop_conditions import StopCondition
 from threading import Thread
 from .timed_queue import TimedQueue
@@ -13,15 +13,13 @@ import argparse
 from ..tools.others import DEFAULT
 
 class IP(Adapter):
-    DEFAULT_RESPONSE_TIMEOUT = 1
-    DEFAULT_CONTINUATION_TIMEOUT = 1e-3
-    DEFAULT_TOTAL_TIMEOUT = 5
-
-
     DEFAULT_TIMEOUT = Timeout(
-                        response=DEFAULT_RESPONSE_TIMEOUT,
-                        continuation=DEFAULT_CONTINUATION_TIMEOUT,
-                        total=DEFAULT_TOTAL_TIMEOUT)
+                        response=2,
+                        on_response='error',
+                        continuation=100e-3,
+                        on_continuation='return',
+                        total=5,
+                        on_total='error')
     DEFAULT_BUFFER_SIZE = 1024
     class Protocol(Enum):
         TCP = 'TCP'
@@ -31,7 +29,7 @@ class IP(Adapter):
                 address : str,
                 port : int = None,
                 transport : str = 'TCP',
-                timeout : Union[Timeout, float] = DEFAULT_TIMEOUT,
+                timeout : Union[Timeout, float] = DEFAULT,
                 stop_condition : StopCondition = DEFAULT,
                 alias : str = '',
                 buffer_size : int = DEFAULT_BUFFER_SIZE,
@@ -58,6 +56,11 @@ class IP(Adapter):
         socket : socket.socket
             Specify a custom socket, this is reserved for server application
         """
+        if timeout == DEFAULT:
+            timeout = self.DEFAULT_TIMEOUT
+        else:
+            timeout = timeout_fuse(timeout, self.DEFAULT_TIMEOUT)
+        
         super().__init__(alias=alias, timeout=timeout, stop_condition=stop_condition)
         self._transport = self.Protocol(transport)
         self._is_server = _socket is not None
@@ -104,6 +107,8 @@ class IP(Adapter):
 
     def close(self):
         if hasattr(self, '_socket'):
+            #self._socket.close()
+            print('Shutdown socket')
             self._socket.close()
         self._logger.info("Adapter closed !")
         self._status = self.Status.DISCONNECTED
