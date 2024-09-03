@@ -1,10 +1,13 @@
 from time import sleep
 from syndesi.adapters import IP
+from syndesi.adapters.adapter import AdapterDisconnected
 from syndesi.adapters.stop_conditions import *
 from syndesi.adapters.timeout import Timeout, TimeoutException
 import subprocess
 import pathlib
 server_file = pathlib.Path(__file__).parent / 'response_server.py'
+
+#from response_server import ResponseServer
 
 HOST = 'localhost'
 PORT = 8888
@@ -23,6 +26,7 @@ TIME_DELTA = 5e-3
 # long enough to catch the first sequence
 def test_response_A():
     subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    #server = ResponseServer(HOST, PORT, 'TCP')
     sleep(0.5)
     # This should catch the first sequence
     delay = 0.25
@@ -35,7 +39,11 @@ def test_response_A():
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     assert data == sequence
+    sleep(2)
     client.close()
+    #sleep(3)
+    #server.stop()
+
 
 # Test response timeout
 # not long enough to catch the first sequence
@@ -481,4 +489,29 @@ def test_read_timeout_reconfiguration():
         assert te._type == Timeout.TimeoutType.CONTINUATION
     else:
         raise RuntimeError("No exception raised")
+    client.close()
+
+# Test if a new configuration is correctly applied
+def test_disconnect():
+    subprocess.Popen(['python', server_file, '-t', 'TCP'])
+    sleep(0.5)
+    A = b'ABCDEFGH'
+    B = b'IJKLMNOPQKRSTUVWXYZ'
+    delay = 0.5
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=delay + TIME_DELTA, continuation=delay-TIME_DELTA, on_continuation='discard'),
+        transport=IP.Protocol.TCP
+        )
+    client.write(encode_sequences([(b'disconnect', delay)]))
+    try:
+        data = client.read(timeout=Timeout(response=delay + TIME_DELTA + 1, continuation=delay-TIME_DELTA, on_continuation='error'))
+        print(f'Data : {data}')
+    except AdapterDisconnected as te:
+        # Good !
+        pass
+    else:
+        #raise RuntimeError("No exception raised")
+        pass
     client.close()

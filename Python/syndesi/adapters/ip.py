@@ -1,6 +1,6 @@
 import socket
 from enum import Enum
-from .adapter import Adapter
+from .adapter import Adapter, AdapterDisconnected
 from ..tools.types import to_bytes
 from .timeout import Timeout, timeout_fuse
 from .stop_conditions import StopCondition
@@ -139,13 +139,17 @@ class IP(Adapter):
                 payload = socket.recv(self._buffer_size)
                 if len(payload) == self._buffer_size and self._transport == self.Protocol.UDP:
                     self._logger.warning("Warning, inbound UDP data may have been lost (max buffer size attained)")
-            except OSError:
+            #except OSError:
+            except Exception as e:
+                print(f'Exception : {e}')
                 break
+            print(f'Payload : {payload}')
             # If payload is empty, it means the socket has been disconnected
             if payload == b'':
-                read_queue.put(payload)
+                read_queue.put(AdapterDisconnected())
                 break
-            read_queue.put(payload)
+            else:
+                read_queue.put(payload)
 
     def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False):
         if self._is_server:
