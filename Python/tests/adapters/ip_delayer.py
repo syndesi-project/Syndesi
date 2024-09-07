@@ -25,29 +25,6 @@ DELAY_DELIMITER = b','
 
 DISCONNECT = b'disconnect'
 
-
-# def udp_server():
-#     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-#         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-#         sock.bind((HOST, PORT))
-#         try:
-#             payload, addr = sock.recvfrom(BUFFER_SIZE) # buffer size is 1024 bytes
-#         except socket.timeout:
-#             raise TimeoutError("Client didn't close or didn't send data")
-#         # Send the sequence after the specified delay
-#         # Decrypt the payload
-#         sequences = payload_to_sequences(payload)
-
-#         for s, t in sequences:
-#             sleep(t)
-#             if s == DISCONNECT:
-#                 sock.close()
-#                 sock.detach()
-#             else:
-#                 sock.sendto(s, addr)
-
-
-
 class Type(Enum):
     TCP = 'TCP'
     UDP = 'UDP'
@@ -63,7 +40,7 @@ def payload_to_sequences(payload):
 class StopLoop(Exception):
     pass
 
-class ResponseServer():
+class IpDelayer():
     def __init__(self, address : str, port : int, _type : Type) -> None:
         self._address = address
         self._port = port
