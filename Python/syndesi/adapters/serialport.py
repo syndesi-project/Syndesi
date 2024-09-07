@@ -125,12 +125,17 @@ class SerialPort(Adapter):
                     # Stop the read thread
                     break
                 elif self._port.fd in ready:
-                    in_waiting = self._port.in_waiting
-                    fragment = port.read(in_waiting)
-                    if fragment:
-                        read_queue.put(fragment) 
+                    try:
+                        in_waiting = self._port.in_waiting
+                    except OSError:
+                        # Input/output error, the port was disconnected
+                        read_queue.put(AdapterDisconnected)
+                    else:
+                        fragment = port.read(in_waiting)
+                        if fragment:
+                            read_queue.put(fragment) 
 
-    def read(self, timeout=None, stop_condition=None, return_metrics: bool = False) -> bytes:
+    def read(self, timeout=DEFAULT, stop_condition=DEFAULT, return_metrics: bool = False) -> bytes:
         """
         Read data from the device
 
