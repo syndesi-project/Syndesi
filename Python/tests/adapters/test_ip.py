@@ -8,7 +8,7 @@ import pathlib
 import logging
 server_file = pathlib.Path(__file__).parent / 'response_server.py'
 
-from response_server import ResponseServer
+from ip_delayer import IpDelayer
 
 #from response_server import ResponseServer
 
@@ -28,7 +28,7 @@ TIME_DELTA = 5e-3
 # Test response timeout
 # long enough to catch the first sequence
 def test_response_A():
-    server = ResponseServer(HOST, PORT, 'TCP')
+    server = IpDelayer(HOST, PORT, 'TCP')
     sleep(0.5)
     # This should catch the first sequence
     delay = 0.25
@@ -50,7 +50,7 @@ def test_response_A():
 # Test response timeout
 # not long enough to catch the first sequence
 def test_response_B():
-    server = ResponseServer(HOST, PORT, 'TCP')
+    server = IpDelayer(HOST, PORT, 'TCP')
     sleep(0.5)
     delay = 0.25
     sequence = b'ABCD'
@@ -72,7 +72,7 @@ def test_response_B():
 # Long enough to catch the first two sequences
 
 def test_continuation():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     delay_response = 0.25
     sequence_response = b'ABCDE'
@@ -96,7 +96,7 @@ def test_continuation():
 # Test transmission with big data over UDP
 # The UDP buffer size is 
 def test_too_big():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     delay = 0.25
     sequence = 2000*b'A'
@@ -116,7 +116,7 @@ def test_too_big():
     server.stop()
 
 def test_length_valid():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     delay = 0.25
     sequence = 2000*b'A'
@@ -139,7 +139,7 @@ def test_length_valid():
 
 # Test termination
 def test_termination():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     delay = 0.25
     A = b'AAAA'
@@ -163,7 +163,7 @@ def test_termination():
 
 # Test termination with partial transmission of the termination
 def test_termination_partial():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     delay = 0.25
 
@@ -189,7 +189,7 @@ def test_termination_partial():
 
 # Test length
 def test_length():
-    server = ResponseServer(HOST, PORT, 'TCP')
+    server = IpDelayer(HOST, PORT, 'TCP')
     sleep(0.5)
     sequence = b'ABCDEFGHIJKLMNOPQKRSTUVWXYZ'
     N = 10
@@ -208,7 +208,7 @@ def test_length():
 
 # Test length with short timeout
 def test_length_short_timeout():
-    server = ResponseServer(HOST, PORT, 'TCP')
+    server = IpDelayer(HOST, PORT, 'TCP')
     sleep(0.5)
     sequence = b'ABCDEFGHIJKLMNOPQKRSTUVWXYZ'
     N = 10
@@ -227,7 +227,7 @@ def test_length_short_timeout():
 
 # Test length with long timeout
 def test_length_long_timeout():
-    server = ResponseServer(HOST, PORT, 'TCP')
+    server = IpDelayer(HOST, PORT, 'TCP')
     sleep(0.5)
     sequence = b'ABCDEFGHIJKLMNOPQKRSTUVWXYZ'
     N = 10
@@ -246,7 +246,7 @@ def test_length_long_timeout():
 
 # Test termination with long timeout
 def test_termination_long_timeout():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -267,7 +267,7 @@ def test_termination_long_timeout():
 
 # Test discard timeout (too short)
 def test_discard_timeout_short():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -288,7 +288,7 @@ def test_discard_timeout_short():
 
 # Test discard timeout (long enough)
 def test_discard_timeout_long():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -310,7 +310,7 @@ def test_discard_timeout_long():
 
 # Test return timeout (too short)
 def test_return_timeout_short():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -331,7 +331,7 @@ def test_return_timeout_short():
 
 # Test return timeout (long enough)
 def test_return_timeout_long():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -354,7 +354,7 @@ def test_return_timeout_long():
 
 # Test on_response=whatever except 'error'
 def test_on_response_no_error():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     for r in ['discard', 'return', 'store']:
         logging.debug(f'Testing {r}')
         sleep(0.2)
@@ -379,7 +379,7 @@ def test_on_response_no_error():
 
 # Test on_response='error'
 def test_on_response_error():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -404,7 +404,7 @@ def test_on_response_error():
 
 # Test on_continuation='discard'
 def test_continuation_discard():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -425,7 +425,7 @@ def test_continuation_discard():
 
 # Test on_continuation='return'
 def test_continuation_return():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -446,7 +446,7 @@ def test_continuation_return():
 
 # Test on_continuation='store'
 def test_continuation_store():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -469,7 +469,7 @@ def test_continuation_store():
 
 # Test on_continuation='error'
 def test_continuation_error():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -494,7 +494,7 @@ def test_continuation_error():
 
 # Test if a new configuration is correctly applied
 def test_read_timeout_reconfiguration():
-    server = ResponseServer(HOST, PORT, 'UDP')
+    server = IpDelayer(HOST, PORT, 'UDP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
@@ -519,7 +519,7 @@ def test_read_timeout_reconfiguration():
 
 # Test if a new configuration is correctly applied
 def test_disconnect():
-    server = ResponseServer(HOST, PORT, 'TCP')
+    server = IpDelayer(HOST, PORT, 'TCP')
     sleep(0.5)
     A = b'ABCDEFGH'
     B = b'IJKLMNOPQKRSTUVWXYZ'
