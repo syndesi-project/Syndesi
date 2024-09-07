@@ -204,7 +204,7 @@ class Adapter(ABC):
         pass
 
 
-    def read(self, timeout=None, stop_condition=None, return_metrics : bool = False) -> bytes:
+    def read(self, timeout=DEFAULT, stop_condition=DEFAULT, return_metrics : bool = False) -> bytes:
         """
         Read data from the device
 
@@ -221,13 +221,12 @@ class Adapter(ABC):
             self.open()
 
         # Use adapter values if no custom value is specified
-        if timeout is None:
+        if timeout == DEFAULT:
             timeout = self._timeout
         elif isinstance(timeout, float):
             timeout = Timeout(timeout)
         
-        
-        if stop_condition is None:
+        if stop_condition == DEFAULT:
             stop_condition = self._stop_condition
 
         # If the adapter is closed, open it
@@ -248,8 +247,14 @@ class Adapter(ABC):
         # Start with the deferred buffer
         # TODO : Check if data could be lost here, like the data is put in the previous_read_buffer and is never
         # read back again because there's no stop condition
-        if len(self._previous_read_buffer) > 0 and stop_condition is not None:
-            stop, output, self._previous_read_buffer = stop_condition.evaluate(self._previous_read_buffer)
+        if len(self._previous_buffer) > 0:# and stop_condition is not None:
+            self._logger.debug(f'Using previous buffer ({self._previous_buffer})')
+            if stop_condition is not None:
+                stop, output, self._previous_buffer = stop_condition.evaluate(self._previous_buffer)
+            else:
+                stop = True
+                output = self._previous_buffer
+                self._previous_buffer = b''
             previous_read_buffer_used = True
         else:
             stop = False
@@ -264,7 +269,7 @@ class Adapter(ABC):
                 n_fragments += 1
 
                 if isinstance(fragment, AdapterDisconnected):
-                    raise AdapterDisconnected()
+                    raise fragment
 
                 # 1) Evaluate the timeout
                 stop, timeout_ms = timeout.evaluate(timestamp)
