@@ -79,7 +79,10 @@ class Delimited(Protocol):
         # Send up to the termination
         data = self._adapter.read(timeout=timeout)
         if decode:
-            data = data.decode(self._encoding)
+            try:
+                data = data.decode(self._encoding)
+            except UnicodeDecodeError as e:
+                raise ValueError(f'Failed to decode {data} to {self._encoding} ({e})')
         if self._response_formatting:
             # Only send the fragment (no termination)
             return data
