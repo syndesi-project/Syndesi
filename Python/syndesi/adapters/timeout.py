@@ -25,12 +25,12 @@ class Timeout():
 
     DEFAULT_CONTINUATION = 5e-3
     DEFAULT_TOTAL = None
-    DEFAULT_ON_RESPONSE = OnTimeoutStrategy.DISCARD
+    DEFAULT_ON_RESPONSE = OnTimeoutStrategy.ERROR
     DEFAULT_ON_CONTINUATION = OnTimeoutStrategy.RETURN
     DEFAULT_ON_TOTAL = OnTimeoutStrategy.RETURN
 
     def __init__(self, 
-        response,
+        response=None,
         continuation=None,
         total=None,
         on_response=None,
@@ -263,20 +263,18 @@ class TimeoutException(Exception):
         try:
             value_string = f'{self._value*1e3:.3f}ms'
         except (ValueError, TypeError):
-            value_string = '---'
+            value_string = 'not received'
 
         try:
             limit_string = f'{self._limit*1e3:.3f}ms'
         except (ValueError, TypeError):
-            limit_string = '---'
+            limit_string = 'not received'
 
 
         return f'{self._type.value} : {value_string} / {limit_string}'
 
     def __repr__(self) -> str:
         return self.__str__()
-
-
 
 def timeout_fuse(high_priority, low_priority):
     """
@@ -319,6 +317,6 @@ def timeout_fuse(high_priority, low_priority):
         L = getattr(low, attr)
         # Use low priority if the default value is used in high priority
         new_attr[attr.removeprefix('_')] = L if high._defaults[attr] else H
-        
+
     return Timeout(**new_attr)
 
