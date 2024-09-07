@@ -48,7 +48,7 @@ STOP_DESIGNATORS = {
         Termination : 'ST',
         Length : 'SL'
     },
-    'previous-read-buffer' : 'RB'
+    'previous-buffer' : 'PB'
 }
 
 class Origin(Enum):
@@ -101,7 +101,7 @@ class Adapter(ABC):
 
         # Buffer for data that has been pulled from the queue but
         # not used because of termination or length stop condition
-        self._previous_read_buffer = b''
+        self._previous_buffer = b''
 
         self._default_timeout = timeout == DEFAULT
         if self._default_timeout:
@@ -166,7 +166,7 @@ class Adapter(ABC):
         Flush the input buffer
         """
         self._read_queue.clear()
-        self._previous_read_buffer = b''
+        self._previous_buffer = b''
 
     def previous_read_buffer_empty(self):
         """
@@ -176,7 +176,7 @@ class Adapter(ABC):
         -------
         empty : bool
         """
-        return self._previous_read_buffer == b''
+        return self._previous_buffer == b''
 
     @abstractmethod
     def open(self):
@@ -237,10 +237,11 @@ class Adapter(ABC):
         if self._thread is None or not self._thread.is_alive():
             self._start_thread()
 
-        timeout_ms = timeout.initiate_read(len(self._previous_read_buffer) > 0)
+        timeout_ms = timeout.initiate_read(len(self._previous_buffer) > 0)
 
         if stop_condition is not None:
             stop_condition.initiate_read()
+
 
         deferred_buffer = b''
 
@@ -279,7 +280,7 @@ class Adapter(ABC):
                             output += fragment
                     elif data_strategy == Timeout.OnTimeoutStrategy.STORE:
                         # Store the data
-                        self._previous_read_buffer = output
+                        self._previous_buffer = output
                         output = b''
                     elif data_strategy == Timeout.OnTimeoutStrategy.ERROR:
                         raise TimeoutException(origin, timeout._stop_source_overtime, timeout._stop_source_limit)
@@ -298,7 +299,7 @@ class Adapter(ABC):
                     stop, kept_fragment, deferred_buffer = stop_condition.evaluate(fragment)
                     output += kept_fragment
                     if stop:
-                        self._previous_read_buffer = deferred_buffer
+                        self._previous_buffer = deferred_buffer
                 else:
                     output += fragment
                 if stop:
@@ -310,11 +311,11 @@ class Adapter(ABC):
             else:
                 designator = STOP_DESIGNATORS['stop_condition'][type(stop_condition)]
         else:
-            designator = STOP_DESIGNATORS['previous-read-buffer']
+            designator = STOP_DESIGNATORS['previous-buffer']
         
         read_duration = time() - read_start
-        if self._previous_read_buffer:
-            self._logger.debug(f'Read [{designator}, {read_duration*1e3:.3f}ms] : {output} , previous read buffer : {self._previous_read_buffer}')
+        if self._previous_buffer:
+            self._logger.debug(f'Read [{designator}, {read_duration*1e3:.3f}ms] : {output} , previous read buffer : {self._previous_buffer}')
         else:
             self._logger.debug(f'Read [{designator}, {read_duration*1e3:.3f}ms] : {output}')
 
