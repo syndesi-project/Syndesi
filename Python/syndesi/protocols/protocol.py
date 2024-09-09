@@ -7,6 +7,9 @@ class Protocol:
         self._adapter = auto_adapter(adapter)
         self._adapter.set_default_timeout(timeout)
 
+    def flushRead(self):
+        self._adapter.flushRead()
+
     def write(self, data):
         pass
 
