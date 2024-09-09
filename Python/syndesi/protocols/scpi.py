@@ -1,7 +1,6 @@
 from ..adapters import Adapter, IP, Timeout, Termination, StopCondition
 from .protocol import Protocol
 from ..tools.types import is_byte_instance
-#from ..tools.others import is_default_argument
 from ..tools.others import DEFAULT
 
 DEFAULT_TIMEOUT = Timeout(response=10, continuation=0.5, total=None, on_response='error', on_continuation='error')
@@ -70,12 +69,12 @@ class SCPI(Protocol):
         payload = self._to_bytes(self._formatCommand(command))
         self._adapter.write(payload)
 
-    def query(self, command : str, timeout : Timeout = None, stop_condition : StopCondition = None, return_metrics : bool = False) -> str:
+    def query(self, command : str, timeout : Timeout = DEFAULT, stop_condition : StopCondition = DEFAULT, return_metrics : bool = False) -> str:
         self._adapter.flushRead()
         self.write(command)
         return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
 
-    def read(self, timeout : Timeout = None, stop_condition : StopCondition = None, return_metrics : bool = False) -> str:
+    def read(self, timeout : Timeout = DEFAULT, stop_condition : StopCondition = None, return_metrics : bool = False) -> str:
         output = self._from_bytes(self._adapter.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics))
         return self._unformatCommand(output)
 

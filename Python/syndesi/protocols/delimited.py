@@ -1,12 +1,13 @@
 from .protocol import Protocol
 from ..adapters import Adapter, Timeout, Termination
 from ..tools.types import assert_byte_instance, assert_byte_instance
+from ..tools.others import DEFAULT
 from time import time
 import warnings
 
 
 class Delimited(Protocol):
-    def __init__(self, adapter : Adapter, termination='\n', format_response=True, encoding : str = 'utf-8', timeout : Timeout = None) -> None:
+    def __init__(self, adapter : Adapter, termination='\n', format_response=True, encoding : str = 'utf-8', timeout : Timeout = DEFAULT) -> None:
         """
         Protocol with delimiter, like LF, CR, etc... '\\n' is used by default
 
@@ -65,7 +66,7 @@ class Delimited(Protocol):
         self.write(command)
         return self.read()
 
-    def read(self, timeout : Timeout = None, decode : str = True) -> str:
+    def read(self, timeout : Timeout = DEFAULT, decode : str = True) -> str:
         """
         Reads command and formats it as a str
 
