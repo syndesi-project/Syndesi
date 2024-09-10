@@ -68,6 +68,9 @@ class SerialPort(Adapter):
             buf = os.read(self._port.fd)
         self._logger.info("Adapter opened !")
 
+        if self._thread is None or not self._thread.is_alive():
+            self._start_thread()
+
     def close(self):
         super().close()
         if self._thread is not None and self._thread.is_alive():

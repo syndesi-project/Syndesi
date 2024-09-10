@@ -104,6 +104,9 @@ class IP(Adapter):
         self._logger.debug(f"Adapter {self._alias} connect to ({self._address}, {self._port})")
         self._socket.connect((self._address, self._port))
         self._status = self.Status.CONNECTED
+        if self._thread is None or not self._thread.is_alive():
+            self._start_thread()
+
         self._logger.info(f"Adapter {self._alias} opened !")
 
     def close(self):

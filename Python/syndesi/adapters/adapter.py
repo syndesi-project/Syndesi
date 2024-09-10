@@ -233,9 +233,6 @@ class Adapter(ABC):
         if self._status == self.Status.DISCONNECTED:
             self.open()
 
-        if self._thread is None or not self._thread.is_alive():
-            self._start_thread()
-
         timeout_ms = timeout.initiate_read(len(self._previous_buffer) > 0)
 
         if stop_condition is not None:
