@@ -540,3 +540,25 @@ def test_disconnect():
         raise RuntimeError("No exception raised")
     client.close()
     server.stop()
+
+def test_flush():
+    server = IpDelayer(HOST, PORT, 'TCP')
+    sleep(0.1)
+    
+    A = b'AAAAAAAA'
+    B = b'XXXXXXXX'
+
+    client = IP(
+        HOST,
+        port=PORT,
+        timeout=Timeout(response=1, continuation=10e-3)
+    )
+
+    client.write(encode_sequences([(A, 0)]*3))
+    sleep(1)
+    client.flushRead()
+    sleep(0.2)
+    client.write(encode_sequences([(B, 0)]))
+    data = client.read()
+    assert data == B
+    server.stop()

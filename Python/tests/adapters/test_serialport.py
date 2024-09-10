@@ -15,6 +15,7 @@ PORT = None
 def setup_module(module):
     global delayer, PORT
     delayer = SerialDelayer()
+    print(f'Init serial delayer')
     PORT = delayer.port()
 
 def teardown_module(module):
@@ -453,3 +454,23 @@ def test_continuation_error():
     else:
         raise RuntimeError(f"No exception raised")
     client.close()
+
+def test_flush():
+    sleep(0.1)
+    
+    A = b'AAAAAAAA'
+    B = b'XXXXXXXX'
+
+    client = SerialPort(
+        port=PORT,
+        baudrate=BAUDRATE,
+        timeout=Timeout(response=1, continuation=10e-3)
+    )
+
+    client.write(encode_sequences([(A, 0)]*3))
+    sleep(1)
+    client.flushRead()
+    sleep(0.2)
+    client.write(encode_sequences([(B, 0)]))
+    data = client.read()
+    assert data == B
