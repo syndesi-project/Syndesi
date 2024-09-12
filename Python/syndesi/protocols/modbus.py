@@ -17,6 +17,13 @@ MODBUS_TCP_DEFAULT_PORT = 502
 
 ENDIAN = '>'
 
+MAX_ADDRESS = 0xFFFF
+MIN_ADDRESS = 0x0001
+
+MAX_DISCRETE_INPUTS = 0x07B0 # 1968. This is to ensure the total PDU length is 255 at most.
+# This value has been checked and going up to 1976 seems to work but sticking to the
+# spec is safer
+
 class ModbusType(Enum):
     RTU = 'RTU'
     ASCII = 'ASCII'
@@ -296,12 +303,17 @@ class Modbus(Protocol):
         -------
         coils : list
         """
+
         EXCEPTIONS = {
             1 : 'Function code not supported',
             2 : 'Invalid Start or end addresses',
             3 : 'Invalid quantity of outputs',
             4 : 'Couldn\'t read coils'
         }
+
+        assert 1 <= number_of_coils <= MAX_DISCRETE_INPUTS, f"Invalid number of coils : {number_of_coils}"
+        assert MIN_ADDRESS <= start_address <= MAX_ADDRESS - number_of_coils + 1, f"Invalid start address : {start_address}"
+
         query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_COILS.value, self._dm_to_pdu_address(start_address), number_of_coils)
 
         n_coil_bytes = ceil(number_of_coils / 8)
@@ -342,15 +354,20 @@ class Modbus(Protocol):
         inputs : list
         List of booleans
         """
+
         EXCEPTIONS = {
             1 : 'Function code not supported',
             2 : 'Invalid Start or end addresses',
             3 : 'Invalid quantity of inputs',
             4 : 'Couldn\'t read inputs'
         }
+
+        assert 1 <= number_of_inputs <= MAX_DISCRETE_INPUTS, f"Invalid number of inputs : {number_of_inputs}"
+        assert MIN_ADDRESS <= start_address <= MAX_ADDRESS - number_of_inputs + 1, f'Invalid start address : {start_address}'
+
         query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_DISCRETE_INPUTS.value, self._dm_to_pdu_address(start_address), number_of_inputs)
         byte_count = ceil(number_of_inputs / 8) # pre-calculate the number of returned coil value bytes
-        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query), stop_condition=Length(self._length(byte_count + 2))))
         self._raise_if_error(response, exception_codes=EXCEPTIONS)
         _, _, data = struct.unpack(ENDIAN + f'BB{byte_count}s', response)
         inputs = bytes_to_list(data, number_of_inputs)
@@ -821,6 +838,8 @@ class Modbus(Protocol):
         }
 
         number_of_coils = len(values)
+        assert 1 <= number_of_coils <= MAX_DISCRETE_INPUTS, f"Invalid number of coils : {number_of_coils}"
+        assert 1 <= start_address <= MAX_ADDRESS - number_of_coils + 1, f"Invalid start address : {start_address}"
         byte_count = ceil(number_of_coils / 8)
 
         query = struct.pack(ENDIAN + f'BHHB{byte_count}s',
