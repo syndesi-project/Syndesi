@@ -508,8 +508,10 @@ class Modbus(Protocol):
             3 : 'Invalid value',
             4 : 'Couldn\'t set coil output'
         }
+        assert MIN_ADDRESS <= address <= MAX_ADDRESS, f'Invalid address : {address}'
+
         query = struct.pack(ENDIAN + 'BHH', FunctionCode.WRITE_SINGLE_COIL.value, self._dm_to_pdu_address(address), ON_VALUE if enabled else OFF_VALUE)
-        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query), stop_condition=Length(self._length(len(query)))))
         self._raise_if_error(response, EXCEPTIONS)
         assert query == response, f"Write single coil response should match query {query} != {response}"
 
