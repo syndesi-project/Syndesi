@@ -119,8 +119,8 @@ class SerialPort(Adapter):
                 else:
                     # Read data from the serialport with a timeout, if the timeout occurs, read again.
                     # This is to avoid having a crazy fast loop
-                    data = port.read()
-                    if len(data) > 0:
+                    fragment = port.read()
+                    if len(fragment) > 0:
                         read_queue.put(fragment)
             else:
                 ready, _, _ = select.select([self._port.fd, stop], [], [])
