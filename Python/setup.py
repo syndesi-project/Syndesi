@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.1.6'
+VERSION = '0.2.3'
 DESCRIPTION = 'Syndesi'
 
 with open("README.md", "r", encoding="utf-8") as fh:
@@ -15,7 +15,11 @@ setup(
     description=DESCRIPTION,
     long_description_content_type="text/markdown",
     long_description=long_description,
-    scripts=['bin/syndesi'],
+    entry_points = {
+        'console_scripts': [
+            'syndesi=syndesi.cli.syndesi:main',
+            'syndesi-proxy=syndesi.proxy.proxy:main'],
+    },
     packages=find_packages(),
     install_requires=[''],
     keywords=['python', 'syndesi', 'interface', 'ethernet'],

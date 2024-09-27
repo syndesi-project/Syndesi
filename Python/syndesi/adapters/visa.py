@@ -1,21 +1,23 @@
 
 from pyvisa import ResourceManager
 
-from .iadapter import IAdapter
-from ..tools.types import assert_byte_instance
+from .adapter import Adapter
+from ..tools.types import to_bytes
+from typing import Union
 
-class VISA(IAdapter):
-    def __init__(self, descriptor : str):
+class VISA(Adapter):
+    def __init__(self, resource : str):
         """
         USB VISA stack adapter
 
         Parameters
         ----------
-        descriptor : str
-            IP description
+        resource : str
+            resource address string
         """
+        self._resource = resource
         self._rm = ResourceManager()
-        self._inst = self._rm.open_resource(descriptor)
+        self._inst = self._rm.open_resource(self._resource)
         self._inst.write_termination = ''
         self._inst.read_termination = ''
 
@@ -36,14 +38,14 @@ class VISA(IAdapter):
     def close(self):
         self._inst.close()
             
-    def write(self, data : bytes):
-        assert_byte_instance(data)
+    def write(self, data : Union[bytes, str]):
+        data = to_bytes(data)
         self._inst.write_raw(data)
-    
+
     def read(self) -> bytes:
         return self._inst.read_raw()
 
-    def query(self, data : bytes, timeout=None, continuation_timeout=None) -> bytes:
+    def query(self, data : Union[bytes, str], timeout=None, continuation_timeout=None) -> bytes:
         """
         Shortcut function that combines
         - flush_read
@@ -51,4 +53,5 @@ class VISA(IAdapter):
         - read
         """
         # TODO : implement timeouts
-        return self._inst.query(data.encode('ASCII'))
+        self.write(data)
+        return self.read()

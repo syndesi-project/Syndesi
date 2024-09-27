@@ -1,5 +1,5 @@
-from syndesi.protocols.iprotocol import IProtocol
+from syndesi.protocols.protocol import Protocol
 from .delimited import Delimited
-from .raw import Raw, RawStream
+from .raw import Raw
 from .scpi import SCPI
 from .sdp import SDP

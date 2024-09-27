@@ -1,19 +1,8 @@
-def is_instance_of_any(X, *types):
-    """
-    Checks if the given X is an instance of any of the provided types.
-    
-    Parameters
-    ----------
-    X : any
-    types : Variable number of types to check against
-
-    Returns
-    -------
-    result : bool
-        True if value is an instance of any of the types, False otherwise
-    """
-    result = any(isinstance(X, t) for t in types)
-    return result
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
 
 def is_byte_instance(X):
     """
@@ -27,7 +16,7 @@ def is_byte_instance(X):
     -------
     result : bool
     """
-    result = is_instance_of_any(X, bytearray, bytes)
+    result = isinstance(X, (bytearray, bytes))
     return result
 
 def assert_byte_instance(*args):
@@ -55,7 +44,7 @@ def is_number(X):
     -------
     result : bool 
     """
-    result = is_instance_of_any(X, int, float)
+    result = isinstance(X, (int, float, np.number) if HAS_NUMPY else (int, float))
     return result
 
 def assert_number(*args):
@@ -70,5 +59,22 @@ def assert_number(*args):
     for arg in args:
         if not is_number(arg):
             raise TypeError(f"Variable {arg} should be a number")
+
+def to_bytes(data):
+    """
+    Convert data to bytes array
+    bytearray -> bytearray
+    bytes -> bytes
+    str -> bytes (UTF-8 encoding by default)
+    """
+    if isinstance(data, bytes):
+        return data
+    elif isinstance(data, str):
+        return data.encode('utf-8')
+    else:
+        raise ValueError(f"Invalid data type : {type(data)}")
+
+
+
 
 

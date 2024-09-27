@@ -1,9 +1,9 @@
-from ..adapters import IAdapter
-from .iprotocol import IProtocol
+from ..adapters import Adapter
+from .protocol import Protocol
 
 
-class SDP(IProtocol):
-    def __init__(self, adapter: IAdapter) -> None:
+class SDP(Protocol):
+    def __init__(self, adapter: Adapter) -> None:
         """
         SDP (Syndesi Device Protocol) compatible device
 
