@@ -51,7 +51,27 @@ class ShellPrompt(Cmd):
     
     def do_serial(self, inp):
         """Open serial adapter"""
-        self._adapter = SerialPort(**SerialPort.shell_parse(inp))
+        arguments = shlex.split(inp)
+        other_arguments = self._parse_common_args(arguments)
+
+        parser = argparse.ArgumentParser(
+            prog='serial'
+        )
+        parser.add_argument('-p', '--port', type=str, required=True)
+        parser.add_argument('-b', '--baudrate', type=int, required=True)
+        parser.add_argument('-e', '--end', help='Newline character, \\n by default, on unix systems, use -e \'\\\\n\' to circumvent backslash substitution', default='\n', required=False)
+        try:
+            args = parser.parse_args(other_arguments)
+        except SystemExit as e:
+            pass
+        else:
+            end_string : str = args.end
+            termination = end_string.encode('utf-8').decode('unicode_escape')
+            self._logger.debug(f'Opening Delimited SerialPort with termination : {repr(termination)}')
+            self._adapter = Delimited(SerialPort(port=args.port, baudrate=args.baudrate), termination=termination)
+            self._adapter._adapter.open()
+            print(f"Successfully opened SerialPort adapter at {args.ip}:{args.port} ({repr(termination)} termination)")
+
 
     def do_ip(self, inp):
         """Open IP adapter with delimited protocol (\\n at the end of each line by default)"""
@@ -70,6 +90,7 @@ class ShellPrompt(Cmd):
         except SystemExit as e:
             pass
         else:
+            print(args)
             end_string : str = args.end
             termination = end_string.encode('utf-8').decode('unicode_escape')
             self._logger.debug(f'Opening Delimited IP with termination : {repr(termination)}')
