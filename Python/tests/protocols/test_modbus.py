@@ -5,6 +5,7 @@ import pytest
 import subprocess
 import signal
 import os
+from random import random
 
 
 ## test_discrete 
@@ -20,10 +21,11 @@ import os
 # write_single_register
 # read_single_register
 
-## 
+## test_multi_register_values
+# read_multi_register_value
+# write_multi_register_value
 
 ## Untested
-# read_multi_register_value
 # read_input_registers
 # read_exception_status
 # diagnostics_return_query_data
@@ -144,3 +146,44 @@ def test_registers():
         else:
             modbus_client.write_single_register(address, single_value)
             modbus_client.read_single_register(address)
+
+
+def test_multi_register_values():
+    modbus_client = Modbus(IP(HOST, port=PORT))
+
+    
+    # Test byte_order and word_order combinations (+ int values for a 4 byte test)
+    for word_order, byte_order, reg_0, reg_1 in [
+        ('big', 'big', 0x0A0B, 0x0C0D),
+        ('big', 'little', 0x0B0A, 0x0D0C),
+        ('little', 'big', 0x0C0D, 0x0A0B),
+        ('little', 'little', 0x0D0C, 0x0B0A)
+    ]:
+        modbus_client.write_multi_register_value(1, n_registers=2, value_type='uint', value=0x0A0B0C0D, byte_order=byte_order, word_order=word_order)
+        registers = modbus_client.read_holding_registers(1, 2)
+        assert registers == [reg_0, reg_1]
+        read_value = modbus_client.read_multi_register_value(1, n_registers=2, value_type='uint', byte_order=byte_order, word_order=word_order)
+        assert read_value == 0x0A0B0C0D
+
+        # Store a float
+        value = random()
+        modbus_client.write_multi_register_value(10, 2, value_type='float', value=value, byte_order=byte_order, word_order=word_order)
+        read_value = modbus_client.read_multi_register_value(10, 2, value_type='float', byte_order=byte_order, word_order=word_order)
+        assert abs(value - read_value) < 1e-7
+
+        # Store a string
+        my_string = 'this is a test'
+        # This should fail
+        with pytest.raises(ValueError):
+            modbus_client.write_multi_register_value(20, n_registers=2, value_type='str', value=my_string)
+
+        modbus_client.write_multi_register_value(20, n_registers=10, value_type='str', value=my_string, byte_order=byte_order, word_order=word_order)
+        read_string = modbus_client.read_multi_register_value(20, n_registers=10, value_type='str', byte_order=byte_order, word_order=word_order)
+        assert read_string == my_string
+
+        my_array = b'0123456789ABCDEFGHIJ'
+        modbus_client.write_multi_register_value(20, n_registers=10, value_type='array', value=my_array, byte_order=byte_order, word_order=word_order)
+        read_array = modbus_client.read_multi_register_value(20, n_registers=10, value_type='array', byte_order=byte_order, word_order=word_order)
+        assert read_array == my_array
+        
+    

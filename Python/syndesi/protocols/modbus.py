@@ -15,14 +15,26 @@ from ..tools.others import DEFAULT
 
 MODBUS_TCP_DEFAULT_PORT = 502
 
-ENDIAN = '>'
-
 MAX_ADDRESS = 0xFFFF
 MIN_ADDRESS = 0x0001
 
 MAX_DISCRETE_INPUTS = 0x07B0 # 1968. This is to ensure the total PDU length is 255 at most.
 # This value has been checked and going up to 1976 seems to work but sticking to the
 # spec is safer
+
+
+
+class Endian(Enum):
+    BIG = 'big'
+    LITTLE = 'little'
+
+endian_symbol = {
+    Endian.BIG : '>',
+    Endian.LITTLE : '<'
+}
+
+
+ENDIAN = endian_symbol[Endian.BIG]
 
 class ModbusType(Enum):
     RTU = 'RTU'
@@ -109,9 +121,11 @@ class TypeCast(Enum):
     INT = 'int'
     UINT = 'uint'
     FLOAT = 'float'
-    STRING_ASCII = 'string_ascii'
-    STRING_UTF8 = 'string_utf8'
+    STRING = 'str'
     ARRAY = 'array'
+
+    def is_number(self) -> bool:
+        return self in [TypeCast.INT, TypeCast.UINT, TypeCast.FLOAT]
 
 def struct_format(type : TypeCast, length : int):
     if type == TypeCast.INT:
@@ -137,7 +151,7 @@ def struct_format(type : TypeCast, length : int):
             return 'f'
         elif length == 8:
             return 'd'
-    elif type == TypeCast.STRING_ASCII or type == TypeCast.STRING_UTF8 or type == TypeCast.ARRAY:
+    elif type == TypeCast.STRING or type == TypeCast.ARRAY:
         return f'{length}s'
     else:
         raise ValueError(f'Unknown cast type : {type}')
@@ -409,10 +423,12 @@ class Modbus(Protocol):
 
     def read_multi_register_value(self, 
             address : int,
-            _bytes : int,
-            _type : str,
-            byte_order : str = 'big',
-            null_terminated_string : bool = False):
+            n_registers : int,
+            value_type : str,
+            byte_order : str = Endian.BIG,
+            word_order : str = Endian.BIG,
+            encoding : str = 'utf-8',
+            padding : int = 0):
         """
         Read an integer, a float, or a string over multiple registers
 
@@ -420,47 +436,132 @@ class Modbus(Protocol):
         ----------
         address : int
             Address of the first register
-        _bytes : int
-            Number of bytes (twice the number of registers)
-        _type : str
+        n_registers : int
+            Number of registers (half the number of bytes)
+        value_type : str
             Type to which the value will be cast
                 'int' : signed integer
                 'uint' : unsigned integer
                 'float' : float or double
-                'string_ascii' : ASCII string
-                'tring_utf8' : UTF-8 string
+                'string' : string
                 'array' : Bytes array
             Each type will be adapted based on the number of bytes (_bytes parameter) 
         byte_order : str
             Byte order, 'big' means the high bytes will come first, 'little' means the low bytes will come first
             Byte order inside a register (2 bytes) is always big as per Modbus specification (4.2 Data Encoding)
-        null_terminated_string : bool
-            If True, remove null termination if any (strings only)
-
+        encoding : str
+            String encoding (if used). UTF-8 by default
+        padding : int
+            String padding, None to return the raw string
         Returns
         -------
         data : any
         """
-        _type = TypeCast(_type)
+        _type = TypeCast(value_type)
+        byte_order = Endian(byte_order)
+        if _type.is_number():
+            word_order = Endian(word_order)
+        else:
+            word_order = Endian.BIG
         # Read N registers
-        registers = self.read_holding_registers(start_address=self._dm_to_pdu_address(address), number_of_registers=_bytes//2)
-        # Create the buffer (2*N bytes)
-        buffer = b''.join(registers[::(1 if byte_order == 'big' else -1)])
-        # Parse
+        registers = self.read_holding_registers(start_address=address, number_of_registers=n_registers)
+        # Create a buffer
+        to_bytes_endian = Endian.BIG if byte_order == word_order else Endian.LITTLE
+        buffer = b''.join([x.to_bytes(2, byteorder=to_bytes_endian.value) for x in registers])
+        # Swap the buffer accordingly
         data : bytes
-        data = struct.unpack(struct_format(_type, _bytes), buffer)
+        data = struct.unpack(endian_symbol[word_order] + struct_format(_type, n_registers * 2), buffer)[0]
         # If data is a string, do additionnal processing
-        if _type == TypeCast.STRING_ASCII or _type == TypeCast.STRING_UTF8:
-            # If null termination is enabled, remove any
-            if null_terminated_string and b'\0' in data:
-                data = data[:data.index(b'\0')]
+        if _type == TypeCast.STRING :
+            # If null termination is enabled, remove any \0
+            if padding is not None and padding in data:
+                data = data[:data.index(padding)]
             # Cast
-            if _type == TypeCast.STRING_ASCII:
-                data = data.decode('ASCII')
-            elif _type == TypeCast.STRING_UTF8:
-                data = data.decode('utf-8')
+            data = data.decode(encoding)
 
         return data
+
+    def write_multi_register_value(self,
+            address : int,
+            n_registers : int,
+            value_type : str,
+            value,
+            byte_order : str = Endian.BIG,
+            word_order : str = Endian.BIG,
+            encoding : str = 'utf-8',
+            padding : int = 0):
+        """
+        Write an integer, a float, or a string over multiple registers
+
+        Parameters
+        ----------
+        address : int
+            Address of the first register
+        n_registers : int
+            Number of registers (half the number of bytes)
+        value_type : str
+            Type to which the value will be cast
+                'int' : signed integer
+                'uint' : unsigned integer
+                'float' : float or double
+                'string' : string
+                'array' : Bytes array
+        value : any
+            The value to write, can be any of the following : str, int, float, str, bytearray
+        byte_order : str
+            Byte order, 'big' means the high bytes will come first, 'little' means the low bytes will come first
+            Byte order inside a register (2 bytes) is always big as per Modbus specification (4.2 Data Encoding)
+        encoding : str
+            String encoding (if used)
+        padding : int
+            Padding in case the value (str / bytes) is not long enough
+        Returns
+        -------
+        data : any
+        """
+        if not isinstance(value_type, str):
+            raise ValueError('value_type must be a string')
+        _type = TypeCast(value_type)
+        n_bytes = n_registers * 2
+        if _type.is_number():
+            word_order = Endian(word_order)
+        else:
+            word_order = Endian.BIG
+        byte_order = Endian(byte_order)
+
+        
+        if _type == TypeCast.INT or _type == TypeCast.UINT or _type == TypeCast.FLOAT:
+            # Make one big array using word_order endian
+            array = struct.pack(endian_symbol[word_order] + struct_format(_type, n_bytes), value)
+            
+
+        elif _type == TypeCast.ARRAY:
+            if isinstance(value, bytes):
+                if len(value) > n_registers * 2:
+                    raise ValueError(f'Cannot store {len(value)} bytes array in {n_registers} registers')
+            else:
+                raise ValueError(f"Invalid value type : {type(value)}")
+            
+            array = value
+        elif _type == TypeCast.STRING:
+            if isinstance(value, str):
+                array = value.encode(encoding)
+
+            else:
+                raise ValueError(f"Invalid value type : {type(value)}")
+
+            if len(array) < n_bytes:
+                # Padding
+                array = array + padding.to_bytes(1, byteorder='big') * (n_bytes - len(value))
+
+        if len(array) != n_registers * 2:
+            raise ValueError(f'Cannot store a {len(value)} bytes array in {n_registers} registers')
+
+        unpack_endian = Endian.BIG if byte_order == word_order else Endian.LITTLE
+        registers = [struct.unpack(endian_symbol[unpack_endian] + 'H', array[2*i:2*i+2])[0] for i in range(len(array)//2)]
+        self.write_multiple_registers(start_address=address, values=registers)  
+
+
 
     # Read Input Registers - 0x04
     def read_input_registers(self, start_address : int, number_of_registers : int):
