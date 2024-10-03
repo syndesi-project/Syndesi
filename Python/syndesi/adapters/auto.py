@@ -17,7 +17,7 @@ from typing import Union
 import re
 from . import Adapter, IP, SerialPort
 
-IP_PATTERN = '([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)(:[0-9]+)*'
+IP_PATTERN = '([0-9]+.[0-9]+.[0-9]+.[0-9]+)(:[0-9]+)*'
 
 WINDOWS_SERIAL_PATTERN = '(COM[0-9]+)(:[0-9]+)*'
 LINUX_SERIAL_PATTERN = '(/dev/tty[a-zA-Z0-9]+)(:[0-9]+)*'

@@ -221,10 +221,13 @@ class Adapter(ABC):
             self.open()
 
         # Use adapter values if no custom value is specified
-        if timeout == DEFAULT:
-            timeout = self._timeout
-        elif isinstance(timeout, float):
-            timeout = Timeout(timeout)
+        # if timeout is None:
+        #     timeout = self._timeout
+        # elif isinstance(timeout, float):
+        #     timeout = Timeout(timeout)
+
+        # 29.08.24 Change timeout behavior
+        timeout = timeout_fuse(timeout, self._timeout)
         
         if stop_condition == DEFAULT:
             stop_condition = self._stop_condition

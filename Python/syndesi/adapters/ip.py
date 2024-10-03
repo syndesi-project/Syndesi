@@ -101,7 +101,7 @@ class IP(Adapter):
         if self._port is None:
             raise ValueError(f"Cannot open adapter without specifying a port")
 
-        self._logger.debug(f"Adapter {self._alias} connect to ({self._address}, {self._port})")
+        self._logger.debug(f"Adapter {self._alias + ' ' if self._alias != '' else ''}connect to ({self._address}, {self._port})")
         self._socket.connect((self._address, self._port))
         self._status = self.Status.CONNECTED
         if self._thread is None or not self._thread.is_alive():
@@ -125,7 +125,7 @@ class IP(Adapter):
     def write(self, data : Union[bytes, str]):
         data = to_bytes(data)
         if self._status == self.Status.DISCONNECTED:
-            self._logger.info(f"Adapter {self._alias} is closed, opening...")
+            self._logger.info(f"Adapter {self._alias + ' ' if self._alias != '' else ''}is closed, opening...")
             self.open()
         write_start = time()
         self._socket.send(data)

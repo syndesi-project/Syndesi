@@ -5,6 +5,7 @@
 from enum import Enum
 from typing import Union, Tuple
 from time import time
+from ..tools.others import DEFAULT
 
 
 class Timeout():
@@ -23,19 +24,13 @@ class Timeout():
         WAIT_FOR_RESPONSE = 0
         CONTINUATION = 1
 
-    DEFAULT_CONTINUATION = 5e-3
-    DEFAULT_TOTAL = None
-    DEFAULT_ON_RESPONSE = OnTimeoutStrategy.ERROR
-    DEFAULT_ON_CONTINUATION = OnTimeoutStrategy.RETURN
-    DEFAULT_ON_TOTAL = OnTimeoutStrategy.RETURN
-
     def __init__(self, 
-        response=None,
-        continuation=None,
-        total=None,
-        on_response=None,
-        on_continuation=None,
-        on_total=None) -> None:
+        response=DEFAULT,
+        continuation=DEFAULT,
+        total=DEFAULT,
+        on_response=DEFAULT,
+        on_continuation=DEFAULT,
+        on_total=DEFAULT) -> None:
         """
         A class to manage timeouts
 
@@ -86,25 +81,32 @@ class Timeout():
             '_on_total' : on_total is None
         }
 
+        self._response_strong = response != DEFAULT
+        self._on_response_string = on_response != DEFAULT
+        self._continuation_strong = continuation != DEFAULT
+        self._on_continuation_strong = on_continuation != DEFAULT
+        self._total_strong = total != DEFAULT
+        self._on_total_strong = on_total != DEFAULT
+
         # Set default values
-        if continuation is None:
-            continuation = self.DEFAULT_CONTINUATION
-        if total is None:
-            total = self.DEFAULT_TOTAL
-        if on_response is None:
-            on_response = self.DEFAULT_ON_RESPONSE
-        if on_continuation is None:
-            on_continuation = self.DEFAULT_ON_CONTINUATION
-        if on_total is None:
-            on_total = self.DEFAULT_ON_TOTAL
+        # if continuation is None:
+        #     continuation = self.DEFAULT_CONTINUATION
+        # if total is None:
+        #     total = self.DEFAULT_TOTAL
+        # if on_response is None:
+        #     on_response = self.DEFAULT_ON_RESPONSE
+        # if on_continuation is None:
+        #     on_continuation = self.DEFAULT_ON_CONTINUATION
+        # if on_total is None:
+        #     on_total = self.DEFAULT_ON_TOTAL
 
         # Timeout values (response, continuation and total)
         self._response = response
         self._continuation = continuation
         self._total = total
-        self._on_response = self.OnTimeoutStrategy(on_response)
-        self._on_continuation = self.OnTimeoutStrategy(on_continuation)
-        self._on_total = self.OnTimeoutStrategy(on_total)
+        self._on_response = self.OnTimeoutStrategy(on_response) if on_response != DEFAULT else on_response
+        self._on_continuation = self.OnTimeoutStrategy(on_continuation) if on_continuation != DEFAULT else on_continuation
+        self._on_total = self.OnTimeoutStrategy(on_total) if on_total != DEFAULT else on_total
 
         # State machine flags
         self._state = self._State.WAIT_FOR_RESPONSE
@@ -149,6 +151,17 @@ class Timeout():
 
     def evaluate(self, timestamp : float) -> Tuple[bool, Union[float, None]]:
         stop = False
+
+        for setting in [
+                'response',
+                'continuation',
+                'total',
+                'on_response',
+                'on_continuation',
+                'on_total']:
+            if getattr(self, '_' + setting) == DEFAULT:
+                raise RuntimeError(f'{setting} was not initialized')
+
         self._data_strategy = None
         self._stop_source_overtime = '###' # When a timeout occurs, store the value that exceeded its value here
         self._stop_source_limit = '###' # And store the limit value here
@@ -243,10 +256,20 @@ class Timeout():
         return self._data_strategy, self._last_data_strategy_origin
 
     def __str__(self) -> str:
-        response = f'r:{self._response*1e3:.3f}ms/{self._on_response.value},' if self._response is not None else ''
-        continuation = f'c:{self._continuation*1e3:.3f}ms/{self._on_continuation.value},' if self._continuation is not None else ''
-        total = f't:{self._total*1e3:.3f}ms/{self._on_total.value}' if self._total is not None else ''
-        return f'Timeout({response}{continuation}{total})'
+        def _format(value, action):
+            if value is None:
+                return 'None'
+            elif isinstance(value, str) and value == DEFAULT:
+                return 'not set'
+            else:
+
+                return f'{value*1e3:.3f}ms/{action.value if isinstance(action, Enum) else "not set"}'
+
+
+        response =  'r:' + _format(self._response, self._on_response)
+        continuation = 'c:' + _format(self._continuation, self._on_continuation)
+        total = 't:' + _format(self._total, self._on_total)
+        return f'Timeout({response},{continuation},{total})'
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -276,7 +299,9 @@ class TimeoutException(Exception):
     def __repr__(self) -> str:
         return self.__str__()
 
-def timeout_fuse(high_priority, low_priority):
+
+
+def timeout_fuse(high_priority, low_priority, force : bool = False):
     """
     Fuse two timeout descriptions (Timeout class or float or tuple)
     
@@ -286,6 +311,9 @@ def timeout_fuse(high_priority, low_priority):
         High priority timeout description
     low_priority : any
         Low priority timeout description
+    force : bool
+        False : Only fuse uninitialized parameters
+        True : Keep high priority if both parameters were initialized
     """
     # 1) Check if any is none, in that case return the other one
     if high_priority is None:
@@ -294,6 +322,8 @@ def timeout_fuse(high_priority, low_priority):
         return high_priority
 
     # 2) Convert each to Timeout class
+    high : Timeout
+    low : Timeout
     high = high_priority if isinstance(high_priority, Timeout) else Timeout(high_priority)
     low = low_priority if isinstance(low_priority, Timeout) else Timeout(low_priority)
 
@@ -303,8 +333,7 @@ def timeout_fuse(high_priority, low_priority):
     # if is_default_argument(low):
     #     return high
     # 05.06.2024 : Removed because is_default_argument is obsolete, use DEFAULT is necessary
-    
-    new_attr = {}
+    new_timeout = Timeout()
     # 4) Select with parameter to keep based on where it has been set
     for attr in [
         '_response',
@@ -315,8 +344,12 @@ def timeout_fuse(high_priority, low_priority):
         '_on_total']:
         H = getattr(high, attr)
         L = getattr(low, attr)
-        # Use low priority if the default value is used in high priority
-        new_attr[attr.removeprefix('_')] = L if high._defaults[attr] else H
 
-    return Timeout(**new_attr)
+        if H != DEFAULT and L != DEFAULT and force:
+            raise RuntimeError(f'Parameter {attr.removeprefix("_")} was set twice, set force=True if it should be merged anyway')
+
+        # Use low priority if the default value is used in high priority
+        new_timeout.__setattr__(attr, H if H != DEFAULT else L)
+        
+    return new_timeout
 
