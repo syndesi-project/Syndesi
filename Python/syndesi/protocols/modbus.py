@@ -22,7 +22,8 @@ MAX_DISCRETE_INPUTS = 0x07B0 # 1968. This is to ensure the total PDU length is 2
 # This value has been checked and going up to 1976 seems to work but sticking to the
 # spec is safer
 
-
+# Specification says 125, but write_multiple_registers would exceed the allow number of bytes in that case
+# MAX_NUMBER_OF_REGISTERS = 123
 
 class Endian(Enum):
     BIG = 'big'
@@ -35,6 +36,15 @@ endian_symbol = {
 
 
 ENDIAN = endian_symbol[Endian.BIG]
+
+# TCP 
+# 7 bytes + PDU
+# RTU
+# 1 byte + PDU + 2 bytes
+# Worst case is 255 - 7 bytes = 248 bytes
+
+#AVAILABLE_PDU_SIZE = 248
+AVAILABLE_PDU_SIZE = 255 - 3
 
 class ModbusType(Enum):
     RTU = 'RTU'
@@ -164,8 +174,6 @@ class ModbusException(Exception):
 class Modbus(Protocol):
     _ASCII_HEADER = b':'
     _ASCII_TRAILER = b'\r\n'
-
-    _MAX_NUMBER_OF_REGISTERS = 123 # Specification says 125, but write_multiple_registers would exceed the allow number of bytes in that case
 
     def __init__(self, adapter: Adapter, timeout: Timeout = DEFAULT, _type : str = ModbusType.RTU.value, slave_address : int = None) -> None:
         """
@@ -410,10 +418,12 @@ class Modbus(Protocol):
             3 : 'Invalid quantity of registers',
             4 : 'Couldn\'t read registers'
         }
+        # Specification says 125, but the size would be exceeded over TCP. So 123 is safer
+        MAX_NUMBER_OF_REGISTERS = (AVAILABLE_PDU_SIZE - 2) // 2
 
         assert MIN_ADDRESS <= start_address <= MAX_ADDRESS - number_of_registers + 1, f"Invalid start address : {start_address}"
         
-        assert 1 <= number_of_registers <= self._MAX_NUMBER_OF_REGISTERS, f"Invalid number of registers : {number_of_registers}"
+        assert 1 <= number_of_registers <= MAX_NUMBER_OF_REGISTERS, f"Invalid number of registers : {number_of_registers}"
         query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_HOLDING_REGISTERS.value, self._dm_to_pdu_address(start_address), number_of_registers)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query), stop_condition=Length(self._length(2+number_of_registers*2))))
         self._raise_if_error(response, exception_codes=EXCEPTIONS)
@@ -586,7 +596,10 @@ class Modbus(Protocol):
             3 : 'Invalid quantity of registers',
             4 : 'Couldn\'t read registers'
         }
-        assert 1 <= number_of_registers <= self._MAX_NUMBER_OF_REGISTERS, f"Invalid number of registers : {number_of_registers}"
+
+        MAX_NUMBER_OF_REGISTERS = (AVAILABLE_PDU_SIZE - 2) // 2
+
+        assert 1 <= number_of_registers <= MAX_NUMBER_OF_REGISTERS, f"Invalid number of registers : {number_of_registers}"
         query = struct.pack(ENDIAN + 'BHH', FunctionCode.READ_INPUT_REGISTERS.value, self._dm_to_pdu_address(start_address), number_of_registers)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(self._make_pdu(query))))
         self._raise_if_error(response, exception_codes=EXCEPTIONS)
@@ -656,7 +669,7 @@ class Modbus(Protocol):
         -------
         value : int
         """
-        return self.read_holding_registers(address, 1)
+        return self.read_holding_registers(address, 1)[0]
 
     # Read Exception Status - 0x07
     def read_exception_status(self):
@@ -999,8 +1012,11 @@ class Modbus(Protocol):
         }
         byte_count = 2 * len(values)
 
+        # Specs says 123, but it would exceed 255 bytes over TCP. So 121 is safer
+        MAX_NUMBER_OF_REGISTERS = (AVAILABLE_PDU_SIZE - 6) // 2
+
         assert len(values) > 0, f'Empty register list'
-        assert len(values) <= self._MAX_NUMBER_OF_REGISTERS, f'Cannot set more than {self._MAX_NUMBER_OF_REGISTERS} registers at a time'
+        assert len(values) <= MAX_NUMBER_OF_REGISTERS, f'Cannot set more than {MAX_NUMBER_OF_REGISTERS} registers at a time'
         assert MIN_ADDRESS <= start_address <= MAX_ADDRESS - len(values) + 1, f"Invalid address : {start_address}"
 
 
@@ -1162,7 +1178,7 @@ class Modbus(Protocol):
 
         The algorithm is :
 
-        New value = (old value & and_mask) OR (or_mask & (~and_mask))
+        New value = (old value & and_mask) | (or_mask & (~and_mask))
 
         Parameters
         ----------
@@ -1179,8 +1195,10 @@ class Modbus(Protocol):
             3 : 'Invalid AND/OR mask',
             4 : 'Couldn\'t write register',
         }
-        query = struct.pack(ENDIAN + 'BHHH', FunctionCode.MASK_WRITE_REGISTER, address, and_mask, or_mask)
-        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+        assert MIN_ADDRESS <= address <= MAX_ADDRESS, f'Invalid address : {address}'
+
+        query = struct.pack(ENDIAN + 'BHHH', FunctionCode.MASK_WRITE_REGISTER.value, self._dm_to_pdu_address(address), and_mask, or_mask)
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query), stop_condition=Length(self._length(len(query)))))
         self._raise_if_error(response, EXCEPTIONS)
         assert response == query, f'Response ({response}) should match query ({query})'
 
@@ -1208,16 +1226,31 @@ class Modbus(Protocol):
             3 : 'Invalid quantity of read/write and/or byte count',
             4 : 'Couldn\'t read and/or write registers'
         }
+
+        MAX_NUMBER_READ_REGISTERS = (AVAILABLE_PDU_SIZE - 2) // 2
+        MAX_NUMBER_WRITE_REGISTERS = (AVAILABLE_PDU_SIZE - 10) // 2
+
+
+        assert 1 <= number_of_read_registers <= MAX_NUMBER_READ_REGISTERS, f"Invalid number of read registers : {number_of_read_registers}"
+        assert MIN_ADDRESS <= read_starting_address <= MAX_ADDRESS - number_of_read_registers + 1, f"Invalid read start address : {read_starting_address}"
+
+        assert 1 <= len(write_values) <= MAX_NUMBER_WRITE_REGISTERS, f"Invalid number of write registers  : {len(write_values)}"
+        assert MIN_ADDRESS <= write_starting_address <= MAX_ADDRESS - len(write_values) + 1, f"Invalid write start address (writing {len(write_values)} registers) : {write_starting_address}"
+
         query = struct.pack(ENDIAN + f'BHHHHB{len(write_values)}H', 
-            FunctionCode.READ_WRITE_MULTIPLE_REGISTERS,
+            FunctionCode.READ_WRITE_MULTIPLE_REGISTERS.value,
             read_starting_address,
             number_of_read_registers,
             write_starting_address,
-            write_values)
-        response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
+            len(write_values),
+            len(write_values)*2,
+            *write_values)
+        response = self._parse_pdu(self._adapter.query(self._make_pdu(query), stop_condition=Length(self._length(2 + number_of_read_registers * 2))))
         self._raise_if_error(response, EXCEPTIONS)
         # Parse response
-        read_values = struct.unpack(ENDIAN + f'{number_of_read_registers}H')
+        output = struct.unpack(ENDIAN + f'BB{number_of_read_registers}H', response)
+        #_, _, read_values 
+        read_values = list(output[2:])
         return read_values
 
     # Read FIFO Queue - 0x18
