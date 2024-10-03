@@ -20,13 +20,15 @@ from random import random
 # read_holding_registers
 # write_single_register
 # read_single_register
+# read_input_registers
+# mask_write_register
+# read_write_multiple_registers
 
 ## test_multi_register_values
 # read_multi_register_value
 # write_multi_register_value
 
 ## Untested
-# read_input_registers
 # read_exception_status
 # diagnostics_return_query_data
 # diagnostics_restart_communications_option
@@ -47,8 +49,6 @@ from random import random
 # report_server_id
 # read_file_record
 # write_file_record
-# mask_write_register
-# read_write_multiple_registers
 # read_fifo_queue
 # encapsulated_interface_transport
 
@@ -118,26 +118,52 @@ def test_registers():
 
     N_tests = 1000
 
+    # max number of registers for each command
+    # write_multiple_registers : 123
+    # read_write_multiple_registers (write) : 121 
+    # read_write_multiple_registers (read) : 125
+    # read_holding_registers : 125
+
     for i in range(N_tests):
         N = randint(MIN_N - 5, MAX_N + 5)
         address = randint(MIN_ADDRESS - 5, MAX_ADDRESS + 100)
 
-        single_value = bool(randint(0,0xFFFF))
+        single_value = randint(0,0xFFFF)
         new_values = [int(randint(0, 0xFFFF)) for _ in range(N)]
-        number_of_registers = not (MIN_N <= N <= MAX_N)
         start_address_error = not (MIN_ADDRESS <= address <= MAX_ADDRESS)
         end_address_error = address > MAX_ADDRESS - N + 1
 
-        if number_of_registers or start_address_error or end_address_error:
+        # Test :
+        # - write_multiple_registers
+        
+        if N < 1 or N > 123 or start_address_error or end_address_error:
             with pytest.raises(AssertionError):
                 modbus_client.write_multiple_registers(address, new_values)
-            with pytest.raises(AssertionError):
-                modbus_client.read_holding_registers(address, N)
-            
         else:
             modbus_client.write_multiple_registers(address, new_values)
-            assert new_values == modbus_client.read_holding_registers(address, N)
 
+        # Test:
+        # - read_holding_registers
+        if N < 1 or N > 125 or start_address_error or end_address_error:
+            with pytest.raises(AssertionError):
+                modbus_client.read_holding_registers(address, N)
+        else:
+            # If N is bigger than 123, do not do the test because the write did not succeed
+            if N <= 123:
+                assert new_values == modbus_client.read_holding_registers(address, N)
+
+        # Test : 
+        # - read_write_multiple_registers
+        if N < 1 or N > 121 or start_address_error or end_address_error: # Write limit because read and write are the same here
+            with pytest.raises(AssertionError):
+                read_values = modbus_client.read_write_multiple_registers(address, N, address, new_values)
+        else:
+            read_values = modbus_client.read_write_multiple_registers(address, N, address, new_values)
+            assert read_values == new_values
+        
+        # Test :
+        # - write_single_register
+        # - read_single_register
         if start_address_error:
             with pytest.raises(AssertionError):
                 modbus_client.write_single_register(address, single_value)
@@ -145,7 +171,22 @@ def test_registers():
                 modbus_client.read_single_register(address)
         else:
             modbus_client.write_single_register(address, single_value)
-            modbus_client.read_single_register(address)
+            first_value = modbus_client.read_single_register(address)
+
+        # Test :
+        # - mask_write_register
+        # Test mask_write by applying a random AND and a random OR mask to the first value
+        AND = randint(0, 0xFFFF)
+        OR = randint(0, 0xFFFF)
+        if start_address_error:
+            with pytest.raises(AssertionError):
+                modbus_client.mask_write_register(address, and_mask=AND, or_mask=OR)
+        else:
+            modbus_client.mask_write_register(address, and_mask=AND, or_mask=OR)
+            masked_value = modbus_client.read_single_register(address)
+            assert masked_value == (first_value & AND) | (OR & ~AND)
+        
+        
 
 
 def test_multi_register_values():
