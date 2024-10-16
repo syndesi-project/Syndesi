@@ -11,15 +11,15 @@ import sys
 from .adapter import Adapter, AdapterDisconnected
 from ..tools.types import to_bytes
 from .stop_conditions import *
-from .timeout import Timeout
+from .timeout import Timeout, timeout_fuse
 from .timed_queue import TimedQueue
 #from ..cli import shell
 from ..tools.others import DEFAULT
 
 DEFAULT_TIMEOUT = Timeout(
-                    response=1,
+                    response=2,
                     on_response='error',
-                    continuation=200e-3,
+                    continuation=100e-3,
                     on_continuation='return',
                     total=None,
                     on_total='error')
@@ -45,11 +45,12 @@ class SerialPort(Adapter):
         if timeout == DEFAULT:
             timeout = DEFAULT_TIMEOUT
             
-        super().__init__(timeout=timeout, stop_condition=stop_condition)
-        self._logger.info(f"Setting up SerialPort adapter timeout:{timeout}, stop_condition:{stop_condition}")
+        super().__init__(timeout=timeout_fuse(timeout, DEFAULT_TIMEOUT), stop_condition=stop_condition)
         self._port_name = port
         self._baudrate = baudrate
-        self._port = serial.Serial(port=self._port_name, baudrate=self._baudrate)
+        self._logger.info(f"Setting up SerialPort adapter on {self._port_name} with baudrate={baudrate}, timeout={timeout} and stop_condition={stop_condition}")
+        self._port = None
+        self.open()
         if self._port.isOpen():
             self._status = self.Status.CONNECTED
         else:
@@ -61,13 +62,14 @@ class SerialPort(Adapter):
         self._port.flush()
 
     def open(self):
-        self._port.open()
-        # Flush the input buffer
-        buf = b'0'
-        while buf:
-            buf = os.read(self._port.fd)
-        self._logger.info("Adapter opened !")
+        if self._port is None:
+            self._port = serial.Serial(port=self._port_name, baudrate=self._baudrate)
+        elif not self._port.isOpen():
+            self._port.open()
+        # # Flush the input buffer
+        self.flushRead()
 
+        self._logger.info("Adapter opened !")
         if self._thread is None or not self._thread.is_alive():
             self._start_thread()
 
@@ -136,7 +138,7 @@ class SerialPort(Adapter):
                     else:
                         fragment = port.read(in_waiting)
                         if fragment:
-                            read_queue.put(fragment) 
+                            read_queue.put(fragment)
 
     def read(self, timeout=DEFAULT, stop_condition=DEFAULT, return_metrics: bool = False) -> bytes:
         """
