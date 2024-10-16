@@ -31,7 +31,6 @@ from time import time
 from dataclasses import dataclass
 from ..tools.others import DEFAULT
 
-DEFAULT_TIMEOUT = Timeout(response=5, continuation=200e-3, total=None)
 DEFAULT_STOP_CONDITION = None
 
 
@@ -103,16 +102,9 @@ class Adapter(ABC):
         # not used because of termination or length stop condition
         self._previous_buffer = b''
 
-        self._default_timeout = timeout == DEFAULT
-        if self._default_timeout:
-            self._timeout = DEFAULT_TIMEOUT
-        else:
-            if is_number(timeout):
-                self._timeout = Timeout(response=timeout, continuation=100e-3)
-            elif isinstance(timeout, Timeout):
-                self._timeout = timeout
-            else:
-                raise ValueError(f"Invalid timeout type : {type(timeout)}")
+        if not isinstance(timeout, Timeout):
+            raise ValueError('Timeout must be defined to initialize an Adapter base class')
+        self._timeout = timeout
 
     def set_timeout(self, timeout : Timeout):
         """
