@@ -60,6 +60,7 @@ class SerialPort(Adapter):
 
     def flushRead(self):
         self._port.flush()
+        super().flushRead()
 
     def open(self):
         if self._port is None:
