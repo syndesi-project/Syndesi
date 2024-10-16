@@ -15,7 +15,6 @@ PORT = None
 def setup_module(module):
     global delayer, PORT
     delayer = SerialDelayer()
-    print(f'Init serial delayer')
     PORT = delayer.port()
 
 def teardown_module(module):
