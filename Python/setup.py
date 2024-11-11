@@ -1,7 +1,11 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.2.3'
 DESCRIPTION = 'Syndesi'
+
+__version__ : str
+# Load __version__ from file
+with open('syndesi/version.py', 'r', encoding='utf-8') as f:
+    exec(f.read())
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
@@ -9,7 +13,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 # Setting up
 setup(
     name="syndesi",
-    version=VERSION,
+    version=__version__,
     author="Sebastien Deriaz",
     author_email="sebastien.deriaz1@gmail.com",
     description=DESCRIPTION,
