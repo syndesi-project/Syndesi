@@ -124,13 +124,13 @@ class Adapter(ABC):
         ----------
         default_timeout : Timeout or tuple or float
         """
-        if self._default_timeout:
-            self._logger.debug(f'Setting default timeout to {default_timeout}')
-            self._timeout = default_timeout
-        else:
-            log = f'Fusing timeouts {self._timeout}+{default_timeout} -> '
-            self._timeout = timeout_fuse(self._timeout, default_timeout)
-            self._logger.debug(f'{log}{self._timeout}')
+        # if self._default_timeout:
+        #     self._logger.debug(f'Setting default timeout to {default_timeout}')
+        #     self._timeout = default_timeout
+        # else:
+        log = f'Fusing timeouts {self._timeout}+{default_timeout} -> '
+        self._timeout = timeout_fuse(self._timeout, default_timeout)
+        self._logger.debug(f'{log}{self._timeout}')
 
     def set_stop_condition(self, stop_condition):
         """
