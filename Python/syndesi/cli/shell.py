@@ -5,15 +5,13 @@ from enum import Enum
 from cmd import Cmd
 from ..adapters import *
 from ..protocols import Delimited
-from ..tools.log import set_log_file, set_log_level, LoggerAlias
+from ..tools.log import log_settings, LoggerAlias
 import argparse
 import logging
 import shlex
 import sys
 import os
 #from colorist import ColorRGB
-
-VERSION = 0.1
 
 class ShellPrompt(Cmd):
     _logger = logging.getLogger(LoggerAlias.CLI.value)
@@ -27,17 +25,14 @@ class ShellPrompt(Cmd):
     common_parser = argparse.ArgumentParser(add_help=False)
     common_parser.add_argument('-v', '--verbose', help='Print logging informations', action='store_true', default=False)
     common_parser.add_argument('-d', '--debug', help='Print debug informations', action='store_true', default=False)
-    common_parser.add_argument('--log-file', type=str, default='')
+    common_parser.add_argument('--log-file', type=str, default=None)
 
     def _parse_common_args(self, args):
         common_args, other_args = self.common_parser.parse_known_args(args)
         if common_args.debug:
-            set_log_level('DEBUG')
+            log_settings('DEBUG', console=True, file = common_args.log_file)
         elif common_args.verbose:
-            set_log_level('INFO')
-        
-        if common_args.log_file != '': # TODO : test this
-            set_log_file(common_args.log_file)
+            log_settings('INFO', console=True, file = common_args.log_file)
         
         return other_args
 
