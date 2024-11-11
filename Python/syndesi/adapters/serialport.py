@@ -58,6 +58,12 @@ class SerialPort(Adapter):
 
         self._rts_cts = rts_cts
 
+    def __str__(self) -> str:
+        return f'Serial({self._port_name}:{self._baudrate})'
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
     def flushRead(self):
         self._port.flush()
         super().flushRead()

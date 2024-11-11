@@ -81,6 +81,12 @@ class IP(Adapter):
         self._port = port
         self._buffer_size = buffer_size
 
+    def __str__(self) -> str:
+        return f'IP({self._address}:{self._port})'
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
     def set_default_port(self, port):
         """
         Sets IP port if no port has been set yet.
