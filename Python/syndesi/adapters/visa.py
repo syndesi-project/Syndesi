@@ -1,5 +1,5 @@
 
-from pyvisa import ResourceManager
+from pyvisa import ResourceManager, VisaIOError
 
 from .adapter import Adapter
 from ..tools.types import to_bytes
@@ -23,11 +23,22 @@ class VISA(Adapter):
 
     def list_devices(self=None):
         """
-        Returns a list of VISA devices
+        Returns a list of available VISA devices
         """
+        # To list available devices only and not previously connected ones,
+        # each device will be opened and added to the list only if that succeeded
         rm = ResourceManager()
 
-        return rm.list_resources()
+        available_resources = []
+        for device in rm.list_resources():
+            try:
+                d = rm.open_resource(device)
+                d.close()
+                available_resources.append(device)
+            except VisaIOError:
+                pass
+
+        return available_resources
 
     def flushRead(self):
         pass
