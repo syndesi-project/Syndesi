@@ -69,6 +69,9 @@ class SCPI(Protocol):
         payload = self._to_bytes(self._formatCommand(command))
         self._adapter.write(payload)
 
+    def write_raw(self, data : bytes, termination : bool = False):
+        self._adapter.write(data + (self._send_termination if termination else b''))
+
     def query(self, command : str, timeout : Timeout = DEFAULT, stop_condition : StopCondition = DEFAULT, return_metrics : bool = False) -> str:
         self._adapter.flushRead()
         self.write(command)
@@ -81,7 +84,5 @@ class SCPI(Protocol):
     def read_raw(self, timeout=None, stop_condition=None, return_metrics : bool = False) -> str:
         """
         Return the raw bytes instead of str
-
-        TODO : Include custom termination option (if necessary), and specify if it should be included in the output
         """
         return self._adapter.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
