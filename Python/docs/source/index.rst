@@ -1,17 +1,25 @@
 .. Syndesi documentation master file
 
-Welcome to Syndesi's documentation
-----------------------------------
+Welcome to Syndesi's documentation!
+===================================
 
-Syndesi is a software library that empowers users to seamlessly interact with an extensive array of hardware devices, spanning from laboratory instruments, industrial modules and devices with open communication interfaces.
-
-Contents :
+Contents:
 
 .. toctree::
-    :maxdepth: 2
+   :maxdepth: 2
+   :caption: Table of Contents
 
-    Syndesi
-    Usage
-    Architecture
-    Examples
-    
+   introduction
+   getting_started
+   adapters
+   protocols
+   experimental_features
+   error_handling
+   testing
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
