@@ -34,6 +34,12 @@ class Delimited(Protocol):
         self._termination = termination
         self._response_formatting = format_response
 
+    def __str__(self) -> str:
+        return f'Delimited({self._adapter})'
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
     def _to_bytes(self, command) -> bytes:
         if isinstance(command, str):
             return command.encode('ASCII')
