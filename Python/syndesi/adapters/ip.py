@@ -14,14 +14,7 @@ from ..tools.others import DEFAULT
 import select
 
 class IP(Adapter):
-    DEFAULT_TIMEOUT = Timeout(
-                        response=2,
-                        on_response='error',
-                        continuation=100e-3,
-                        on_continuation='return',
-                        total=5,
-                        on_total='error')
-    DEFAULT_BUFFER_SIZE = 1024
+    _DEFAULT_BUFFER_SIZE = 1024
     class Protocol(Enum):
         TCP = 'TCP'
         UDP = 'UDP'
@@ -33,7 +26,7 @@ class IP(Adapter):
                 timeout : Union[Timeout, float] = DEFAULT,
                 stop_condition : StopCondition = DEFAULT,
                 alias : str = '',
-                buffer_size : int = DEFAULT_BUFFER_SIZE,
+                buffer_size : int = _DEFAULT_BUFFER_SIZE,
                 _socket : socket.socket = None):
         """
         IP stack adapter
@@ -56,13 +49,9 @@ class IP(Adapter):
             Socket buffer size, may be removed in the future
         socket : socket.socket
             Specify a custom socket, this is reserved for server application
-        """
-        if timeout == DEFAULT:
-            timeout = self.DEFAULT_TIMEOUT
-        else:
-            timeout = timeout_fuse(timeout, self.DEFAULT_TIMEOUT)
-        
+        """        
         super().__init__(alias=alias, timeout=timeout, stop_condition=stop_condition)
+
         self._transport = self.Protocol(transport)
         self._is_server = _socket is not None
 
@@ -80,6 +69,15 @@ class IP(Adapter):
         self._address = address
         self._port = port
         self._buffer_size = buffer_size
+
+    def _default_timeout(self):
+        return Timeout(
+                response=5,
+                on_response='error',
+                continuation=100e-3,
+                on_continuation='return',
+                total=5,
+                on_total='error')
 
     def set_default_port(self, port):
         """

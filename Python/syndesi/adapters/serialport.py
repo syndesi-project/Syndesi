@@ -16,23 +16,13 @@ from .timed_queue import TimedQueue
 #from ..cli import shell
 from ..tools.others import DEFAULT
 
-DEFAULT_TIMEOUT = Timeout(
-                    response=2,
-                    on_response='error',
-                    continuation=100e-3,
-                    on_continuation='return',
-                    total=None,
-                    on_total='error')
-
-
-
-
 class SerialPort(Adapter):
     def __init__(self,  
                 port : str,
                 baudrate : int,
                 timeout : Union[Timeout, float] = DEFAULT,
                 stop_condition : StopCondition = DEFAULT,
+                alias : str = '',
                 rts_cts : bool = False): # rts_cts experimental
         """
         Serial communication adapter
@@ -41,11 +31,9 @@ class SerialPort(Adapter):
         ----------
         port : str
             Serial port (COMx or ttyACMx)
-        """
-        if timeout == DEFAULT:
-            timeout = DEFAULT_TIMEOUT
-            
-        super().__init__(timeout=timeout_fuse(timeout, DEFAULT_TIMEOUT), stop_condition=stop_condition)
+        """            
+        super().__init__(timeout=timeout, stop_condition=stop_condition, alias=alias)
+
         self._port_name = port
         self._baudrate = baudrate
         self._logger.info(f"Setting up SerialPort adapter on {self._port_name} with baudrate={baudrate}, timeout={timeout} and stop_condition={stop_condition}")
@@ -57,6 +45,15 @@ class SerialPort(Adapter):
             self._status = self.Status.DISCONNECTED
 
         self._rts_cts = rts_cts
+
+    def _default_timeout(self):
+        return Timeout(
+                    response=2,
+                    on_response='error',
+                    continuation=100e-3,
+                    on_continuation='return',
+                    total=None,
+                    on_total='error')
 
     def flushRead(self):
         self._port.flush()

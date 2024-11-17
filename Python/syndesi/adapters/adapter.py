@@ -85,13 +85,21 @@ class Adapter(ABC):
             Default to None
         """
         super().__init__()
+
         self._alias = alias
+
+        self.is_default_timeout = timeout == DEFAULT
+        if self.is_default_timeout:
+            self._timeout = self._default_timeout()
+        else:
+            self._timeout = timeout_fuse(timeout, self._default_timeout())
 
         self._default_stop_condition = stop_condition == DEFAULT
         if self._default_stop_condition:
             self._stop_condition = DEFAULT_STOP_CONDITION
         else:
             self._stop_condition = stop_condition
+
         self._read_queue = TimedQueue()
         self._thread : Union[Thread, None] = None
         self._status = self.Status.DISCONNECTED
@@ -102,9 +110,12 @@ class Adapter(ABC):
         # not used because of termination or length stop condition
         self._previous_buffer = b''
 
-        if not isinstance(timeout, Timeout):
+        if not isinstance(self._timeout, Timeout):
             raise ValueError('Timeout must be defined to initialize an Adapter base class')
-        self._timeout = timeout
+
+    @abstractmethod
+    def _default_timeout(self):
+        pass
 
     def set_timeout(self, timeout : Timeout):
         """
@@ -124,7 +135,7 @@ class Adapter(ABC):
         ----------
         default_timeout : Timeout or tuple or float
         """
-        if self._default_timeout:
+        if self.is_default_timeout:
             self._logger.debug(f'Setting default timeout to {default_timeout}')
             self._timeout = default_timeout
         else:
@@ -219,7 +230,12 @@ class Adapter(ABC):
         #     timeout = Timeout(timeout)
 
         # 29.08.24 Change timeout behavior
-        timeout = timeout_fuse(timeout, self._timeout)
+        if timeout == DEFAULT:
+            # Use the class timeout
+            timeout = self._timeout
+        else:
+            # Fuse it
+            timeout = timeout_fuse(timeout, self._timeout)
         
         if stop_condition == DEFAULT:
             stop_condition = self._stop_condition
