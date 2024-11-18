@@ -137,7 +137,7 @@ class IP(Adapter):
         self._logger.debug(f"Write [{write_duration*1e3:.3f}ms]: {repr(data)}")
 
     def _start_thread(self):
-        self._logger.debug("Starting read thread...")
+        super()._start_thread()
         if self._thread is None or not self._thread.is_alive():
             self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue, self._thread_stop_read))
             self._thread.start()
@@ -148,7 +148,7 @@ class IP(Adapter):
 
     def _read_thread(self, socket : socket.socket, read_queue : TimedQueue, stop : socket.socket):
         # Using select.select works on both Windows and Linux as long as the inputs are all sockets
-        while True: # TODO : Add stop_pipe ? Maybe it was removed ?
+        while True:
             
             try:
                 ready, _, _ = select.select([socket, stop], [], [])

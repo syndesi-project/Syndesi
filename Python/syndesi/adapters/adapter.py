@@ -349,7 +349,7 @@ class Adapter(ABC):
 
     @abstractmethod
     def _start_thread(self):
-        pass
+        self._logger.debug("Starting read thread...")
 
     def __del__(self):
         self.close()

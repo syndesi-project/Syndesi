@@ -105,7 +105,7 @@ class SerialPort(Adapter):
         """
         Start the read thread
         """
-        self._logger.debug("Starting read thread...")
+        super()._start_thread()
         if self._thread is None or not self._thread.is_alive():
             self._thread = Thread(target=self._read_thread, daemon=True, args=(self._port, self._read_queue, self._thread_stop_read))
             self._thread.start()
