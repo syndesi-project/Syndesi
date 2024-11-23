@@ -51,6 +51,7 @@ class VISA(Adapter):
         self._inst.open()
 
     def close(self):
+        super().close()
         self._inst.close()
             
     def write(self, data : Union[bytes, str]):
@@ -60,19 +61,19 @@ class VISA(Adapter):
     def _start_thread(self):
         super()._start_thread()
         if self._thread is None or not self._thread.is_alive():
-            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue, self._thread_stop_read))
+            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._inst, self._read_queue, self._thread_stop_read))
             self._thread.start()
 
 
-    def _read_thread(self, socket : socket.socket, read_queue : TimedQueue, stop : socket.socket):
-        self._inst.timeout = 0.05
+    def _read_thread(self, inst : Resource, read_queue : TimedQueue, stop : socket.socket):
+        inst.timeout = 0.05
         stop.setblocking(False)
         while True:
             if(stop.recv(1)):
                 break
             else:
                 try:
-                    payload = self._inst.read_raw()
+                    payload = inst.read_raw()
                 except TimeoutError: # TODO : Check if this is the error raised when a timeout occurs
                     pass
                 else:
