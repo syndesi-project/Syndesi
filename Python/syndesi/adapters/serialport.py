@@ -13,15 +13,13 @@ from ..tools.types import to_bytes
 from .stop_conditions import *
 from .timeout import Timeout, timeout_fuse
 from .timed_queue import TimedQueue
-#from ..cli import shell
-from ..tools.others import DEFAULT
 
 class SerialPort(Adapter):
     def __init__(self,  
                 port : str,
                 baudrate : int,
-                timeout : Union[Timeout, float] = DEFAULT,
-                stop_condition : StopCondition = DEFAULT,
+                timeout : Union[Timeout, float] = ...,
+                stop_condition : StopCondition = ...,
                 alias : str = '',
                 rts_cts : bool = False): # rts_cts experimental
         """
@@ -144,7 +142,7 @@ class SerialPort(Adapter):
                         if fragment:
                             read_queue.put(fragment)
 
-    def read(self, timeout=DEFAULT, stop_condition=DEFAULT, return_metrics: bool = False) -> bytes:
+    def read(self, timeout=..., stop_condition=..., return_metrics: bool = False) -> bytes:
         """
         Read data from the device
 

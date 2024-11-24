@@ -10,7 +10,6 @@ from typing import Union
 from time import time
 import argparse
 #from ..cli import shell
-from ..tools.others import DEFAULT
 import select
 
 class IP(Adapter):
@@ -23,8 +22,8 @@ class IP(Adapter):
                 address : str,
                 port : int = None,
                 transport : str = 'TCP',
-                timeout : Union[Timeout, float] = DEFAULT,
-                stop_condition : StopCondition = DEFAULT,
+                timeout : Union[Timeout, float] = ...,
+                stop_condition : StopCondition = ...,
                 alias : str = '',
                 buffer_size : int = _DEFAULT_BUFFER_SIZE,
                 _socket : socket.socket = None):

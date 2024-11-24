@@ -11,7 +11,6 @@ from enum import Enum
 import struct
 from math import ceil
 from typing import List
-from ..tools.others import DEFAULT
 
 MODBUS_TCP_DEFAULT_PORT = 502
 
@@ -175,7 +174,7 @@ class Modbus(Protocol):
     _ASCII_HEADER = b':'
     _ASCII_TRAILER = b'\r\n'
 
-    def __init__(self, adapter: Adapter, timeout: Timeout = DEFAULT, _type : str = ModbusType.RTU.value, slave_address : int = None) -> None:
+    def __init__(self, adapter: Adapter, timeout: Timeout = ..., _type : str = ModbusType.RTU.value, slave_address : int = None) -> None:
         """
         Modbus protocol
 

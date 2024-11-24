@@ -29,7 +29,6 @@ import socket
 import logging
 from time import time
 from dataclasses import dataclass
-from ..tools.others import DEFAULT
 
 DEFAULT_STOP_CONDITION = None
 
@@ -71,7 +70,7 @@ class Adapter(ABC):
         DISCONNECTED = 0
         CONNECTED = 1
 
-    def __init__(self, alias : str = '', stop_condition : Union[StopCondition, None] = DEFAULT, timeout : Union[float, Timeout] = DEFAULT) -> None:
+    def __init__(self, alias : str = '', stop_condition : Union[StopCondition, None] = ..., timeout : Union[float, Timeout] = ...) -> None:
         """
         Adapter instance
 
@@ -88,13 +87,13 @@ class Adapter(ABC):
 
         self._alias = alias
 
-        self.is_default_timeout = timeout == DEFAULT
+        self.is_default_timeout = timeout is Ellipsis
         if self.is_default_timeout:
             self._timeout = self._default_timeout()
         else:
             self._timeout = timeout_fuse(timeout, self._default_timeout())
 
-        self._default_stop_condition = stop_condition == DEFAULT
+        self._default_stop_condition = stop_condition is Ellipsis
         if self._default_stop_condition:
             self._stop_condition = DEFAULT_STOP_CONDITION
         else:
@@ -230,14 +229,14 @@ class Adapter(ABC):
         #     timeout = Timeout(timeout)
 
         # 29.08.24 Change timeout behavior
-        if timeout == DEFAULT:
+        if timeout is ...:
             # Use the class timeout
             timeout = self._timeout
         else:
             # Fuse it
             timeout = timeout_fuse(timeout, self._timeout)
         
-        if stop_condition == DEFAULT:
+        if stop_condition is ...:
             stop_condition = self._stop_condition
 
         # If the adapter is closed, open it

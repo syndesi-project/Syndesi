@@ -5,7 +5,6 @@
 from enum import Enum
 from typing import Union, Tuple
 from time import time
-from ..tools.others import DEFAULT
 
 
 class Timeout():
@@ -25,12 +24,12 @@ class Timeout():
         CONTINUATION = 1
 
     def __init__(self, 
-        response=DEFAULT,
-        continuation=DEFAULT,
-        total=DEFAULT,
-        on_response=DEFAULT,
-        on_continuation=DEFAULT,
-        on_total=DEFAULT) -> None:
+        response=...,
+        continuation=...,
+        total=...,
+        on_response=...,
+        on_continuation=...,
+        on_total=...) -> None:
         """
         A class to manage timeouts
 
@@ -101,6 +100,13 @@ class Timeout():
         #     on_total = self.DEFAULT_ON_TOTAL
 
         # Timeout values (response, continuation and total)
+        self._response_set = response is not ...
+        self._on_response_set = on_response is not ...
+        self._continuation_set = continuation is not ...
+        self._on_continuation_set = on_continuation is not ...
+        self._total_set = total is not ...
+        self._on_total_set = on_total is not ...
+
         self._response = response
         self._continuation = continuation
         self._total = total
@@ -159,7 +165,7 @@ class Timeout():
                 'on_response',
                 'on_continuation',
                 'on_total']:
-            if getattr(self, '_' + setting) == DEFAULT:
+            if getattr(self, '_' + setting) is Ellipsis:
                 raise RuntimeError(f'{setting} was not initialized')
 
         self._data_strategy = None
@@ -259,10 +265,9 @@ class Timeout():
         def _format(value, action):
             if value is None:
                 return 'None'
-            elif isinstance(value, str) and value == DEFAULT:
+            elif value is Ellipsis:
                 return 'not set'
             else:
-
                 return f'{value*1e3:.3f}ms/{action.value if isinstance(action, Enum) else "not set"}'
 
 
@@ -345,11 +350,11 @@ def timeout_fuse(high_priority, low_priority, force : bool = False):
         H = getattr(high, attr)
         L = getattr(low, attr)
 
-        if H != DEFAULT and L != DEFAULT and force:
+        if H is not Ellipsis and L is not Ellipsis and force:
             raise RuntimeError(f'Parameter {attr.removeprefix("_")} was set twice, set force=True if it should be merged anyway')
 
         # Use low priority if the default value is used in high priority
-        new_timeout.__setattr__(attr, H if H != DEFAULT else L)
+        new_timeout.__setattr__(attr, H if H is not Ellipsis else L)
         
     return new_timeout
 

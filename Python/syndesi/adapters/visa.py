@@ -79,16 +79,23 @@ class VISA(Adapter):
                 else:
                     read_queue.put(payload)
 
-    # def read(self) -> bytes:
-    #     return self._inst.read_raw()
-
-    def query(self, data : Union[bytes, str], timeout=None, continuation_timeout=None) -> bytes:
+    def read(self, timeout: Timeout = ..., stop_condition: StopCondition = ..., return_metrics: bool = False) -> bytes:
+        return super().read(timeout, stop_condition, return_metrics)
+    
+    def query(self, data : Union[bytes, str], timeout : Timeout = ..., stop_condition : StopCondition = ..., return_metrics : bool = False) -> bytes:
         """
         Shortcut function that combines
         - flush_read
         - write
         - read
         """
-        # TODO : implement timeouts
+        if stop_condition is not Ellipsis:
+            raise NotImplementedError("Cannot use stop-conditions with VISA adapter")
+        if return_metrics:
+            raise NotImplementedError("Cannot use return_metrics with VISA adapter")
+        if timeout is not Ellipsis:
+            timeout = Timeout(timeout)
+            self._inst.timeout = timeout._response
+
         self.write(data)
         return self.read()
