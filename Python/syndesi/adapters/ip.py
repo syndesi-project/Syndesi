@@ -1,6 +1,6 @@
 import socket
 from enum import Enum
-from .adapter import Adapter, AdapterDisconnected
+from .adapter import StreamAdapter, AdapterDisconnected
 from ..tools.types import to_bytes
 from .timeout import Timeout, timeout_fuse
 from .stop_conditions import StopCondition
@@ -12,7 +12,7 @@ import argparse
 #from ..cli import shell
 import select
 
-class IP(Adapter):
+class IP(StreamAdapter):
     _DEFAULT_BUFFER_SIZE = 1024
     class Protocol(Enum):
         TCP = 'TCP'

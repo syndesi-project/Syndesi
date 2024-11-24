@@ -205,8 +205,32 @@ class Adapter(ABC):
         """
         pass
 
+    @abstractmethod
+    def read(self, timeout : Timeout = ..., stop_condition : StopCondition = ..., return_metrics : bool = False) -> bytes:
+        pass
+    
 
-    def read(self, timeout=DEFAULT, stop_condition=DEFAULT, return_metrics : bool = False) -> bytes:
+    @abstractmethod
+    def _start_thread(self):
+        self._logger.debug("Starting read thread...")
+
+    def __del__(self):
+        self.close()
+
+    def query(self, data : Union[bytes, str], timeout : Timeout = ..., stop_condition : StopCondition = ..., return_metrics : bool = False) -> bytes:
+        """
+        Shortcut function that combines
+        - flush_read
+        - write
+        - read
+        """
+        self.flushRead()
+        self.write(data)
+        return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
+    
+
+class StreamAdapter(Adapter):
+    def read(self, timeout=..., stop_condition=..., return_metrics : bool = False) -> bytes:
         """
         Read data from the device
 
@@ -221,12 +245,6 @@ class Adapter(ABC):
         read_start = time()
         if self._status == self.Status.DISCONNECTED:
             self.open()
-
-        # Use adapter values if no custom value is specified
-        # if timeout is None:
-        #     timeout = self._timeout
-        # elif isinstance(timeout, float):
-        #     timeout = Timeout(timeout)
 
         # 29.08.24 Change timeout behavior
         if timeout is ...:
@@ -345,21 +363,3 @@ class Adapter(ABC):
             )
         else:
             return output
-
-    @abstractmethod
-    def _start_thread(self):
-        self._logger.debug("Starting read thread...")
-
-    def __del__(self):
-        self.close()
-
-    @abstractmethod
-    def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False) -> bytes:
-        """
-        Shortcut function that combines
-        - flush_read
-        - write
-        - read
-        """
-        pass
-    

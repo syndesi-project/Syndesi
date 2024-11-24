@@ -8,13 +8,13 @@ import socket
 import sys
 #from collections.abc import Sequence
 
-from .adapter import Adapter, AdapterDisconnected
+from .adapter import Adapter, StreamAdapter, AdapterDisconnected
 from ..tools.types import to_bytes
 from .stop_conditions import *
 from .timeout import Timeout, timeout_fuse
 from .timed_queue import TimedQueue
 
-class SerialPort(Adapter):
+class SerialPort(StreamAdapter):
     def __init__(self,  
                 port : str,
                 baudrate : int,
