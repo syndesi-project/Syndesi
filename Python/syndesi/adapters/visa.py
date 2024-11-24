@@ -5,6 +5,8 @@ import socket
 from .timed_queue import TimedQueue
 from .adapter import Adapter
 from ..tools.types import to_bytes
+from .timeout import Timeout
+from .stop_conditions import StopCondition
 from typing import Union
 from threading import Thread
 

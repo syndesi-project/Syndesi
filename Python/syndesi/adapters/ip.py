@@ -141,10 +141,6 @@ class IP(StreamAdapter):
             self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue, self._thread_stop_read))
             self._thread.start()
 
-    # # EXPERIMENTAL
-    # def read_thread_alive(self):
-    #     return self._thread.is_alive()
-
     def _read_thread(self, socket : socket.socket, read_queue : TimedQueue, stop : socket.socket):
         # Using select.select works on both Windows and Linux as long as the inputs are all sockets
         while True:
@@ -178,8 +174,6 @@ class IP(StreamAdapter):
     def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False):
         if self._is_server:
             raise SystemError("Cannot query on server adapters")
-        self.flushRead()
-        self.write(data)
-        return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
+        return super().query(data=data, timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
     
     

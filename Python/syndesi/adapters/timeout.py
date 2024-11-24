@@ -71,34 +71,6 @@ class Timeout():
                 continuation = response[1]
             response = response[0]
 
-        self._defaults = {
-            '_response' : False,
-            '_continuation' : continuation is None,
-            '_total' : total is None,
-            '_on_response' : on_response is None,
-            '_on_continuation' : on_continuation is None,
-            '_on_total' : on_total is None
-        }
-
-        self._response_strong = response != DEFAULT
-        self._on_response_string = on_response != DEFAULT
-        self._continuation_strong = continuation != DEFAULT
-        self._on_continuation_strong = on_continuation != DEFAULT
-        self._total_strong = total != DEFAULT
-        self._on_total_strong = on_total != DEFAULT
-
-        # Set default values
-        # if continuation is None:
-        #     continuation = self.DEFAULT_CONTINUATION
-        # if total is None:
-        #     total = self.DEFAULT_TOTAL
-        # if on_response is None:
-        #     on_response = self.DEFAULT_ON_RESPONSE
-        # if on_continuation is None:
-        #     on_continuation = self.DEFAULT_ON_CONTINUATION
-        # if on_total is None:
-        #     on_total = self.DEFAULT_ON_TOTAL
-
         # Timeout values (response, continuation and total)
         self._response_set = response is not ...
         self._on_response_set = on_response is not ...
@@ -110,9 +82,10 @@ class Timeout():
         self._response = response
         self._continuation = continuation
         self._total = total
-        self._on_response = self.OnTimeoutStrategy(on_response) if on_response != DEFAULT else on_response
-        self._on_continuation = self.OnTimeoutStrategy(on_continuation) if on_continuation != DEFAULT else on_continuation
-        self._on_total = self.OnTimeoutStrategy(on_total) if on_total != DEFAULT else on_total
+        self._on_response = self.OnTimeoutStrategy(on_response) if self._on_response_set else on_response
+        self._on_continuation = self.OnTimeoutStrategy(on_continuation) if self._on_continuation_set else on_continuation
+        self._on_total = self.OnTimeoutStrategy(on_total) if self._on_total_set else on_total
+
 
         # State machine flags
         self._state = self._State.WAIT_FOR_RESPONSE
@@ -320,6 +293,8 @@ def timeout_fuse(high_priority, low_priority, force : bool = False):
         False : Only fuse uninitialized parameters
         True : Keep high priority if both parameters were initialized
     """
+    new_timeout = Timeout()
+    
     # 1) Check if any is none, in that case return the other one
     if high_priority is None:
         return low_priority
@@ -333,12 +308,6 @@ def timeout_fuse(high_priority, low_priority, force : bool = False):
     low = low_priority if isinstance(low_priority, Timeout) else Timeout(low_priority)
 
     # 3) If one is the default, take the other
-    # if is_default_argument(high):
-    #     return low
-    # if is_default_argument(low):
-    #     return high
-    # 05.06.2024 : Removed because is_default_argument is obsolete, use DEFAULT is necessary
-    new_timeout = Timeout()
     # 4) Select with parameter to keep based on where it has been set
     for attr in [
         '_response',

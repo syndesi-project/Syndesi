@@ -165,25 +165,3 @@ class SerialPort(StreamAdapter):
         if self._rts_cts: # Experimental
             self._port.setRTS(False)
         return output
-
-    def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False):
-        self.flushRead()
-        self.write(data)
-        return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
-
-    # def shell_parse(inp: str):
-    #     parser = argparse.ArgumentParser(
-    #     prog='',
-    #     description='Serial port shell parser',
-    #     epilog='')
-    #     # Parse subcommand    
-    #     parser.add_argument('--' + shell.Arguments.PORT.value, type=str)
-    #     parser.add_argument('--' + shell.Arguments.BAUDRATE.value, type=int)
-    #     parser.add_argument('--' + shell.Arguments.ENABLE_RTS_CTS.value, action='store_true')
-    #     args = parser.parse_args(inp.split())
-
-    #     return {
-    #         'port' : getattr(args, shell.Arguments.PORT.value),
-    #         'baudrate' : getattr(args, shell.Arguments.BAUDRATE.value),
-    #         'rts_cts' : bool(getattr(args, shell.Arguments.ENABLE_RTS_CTS.value))
-    #     }

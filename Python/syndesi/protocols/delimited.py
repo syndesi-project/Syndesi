@@ -94,4 +94,4 @@ class Delimited(Protocol):
             return data
         else:
             # Add the termination back in
-            return data + self._termination 
+            return data + self._termination

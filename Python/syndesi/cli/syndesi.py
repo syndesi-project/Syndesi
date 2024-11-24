@@ -3,7 +3,7 @@
 # Syndesi CLI
 import argparse
 from enum import Enum
-from syndesi.cli.shell import ShellPrompt
+#from syndesi.cli.shell import ShellPrompt
 from ..version import __version__
 from .command import Command
 from .adapter import AdapterCommand
