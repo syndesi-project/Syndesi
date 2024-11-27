@@ -17,7 +17,7 @@ from .timed_queue import TimedQueue
 class SerialPort(StreamAdapter):
     def __init__(self,  
                 port : str,
-                baudrate : int,
+                baudrate : int = ...,
                 timeout : Union[Timeout, float] = ...,
                 stop_condition : StopCondition = ...,
                 alias : str = '',
@@ -33,14 +33,13 @@ class SerialPort(StreamAdapter):
         super().__init__(timeout=timeout, stop_condition=stop_condition, alias=alias)
 
         self._port_name = port
+        self._baudrate_set = baudrate is not ...
         self._baudrate = baudrate
         self._logger.info(f"Setting up SerialPort adapter on {self._port_name} with baudrate={baudrate}, timeout={timeout} and stop_condition={stop_condition}")
         self._port = None
+
         self.open()
-        if self._port.isOpen():
-            self._status = self.Status.CONNECTED
-        else:
-            self._status = self.Status.DISCONNECTED
+        
 
         self._rts_cts = rts_cts
 
@@ -59,17 +58,54 @@ class SerialPort(StreamAdapter):
     def __repr__(self) -> str:
         return self.__str__()
 
+    def set_baudrate(self, baudrate):
+        """
+        Set baudrate
+
+        Parameters
+        ----------
+        baudrate : int
+        """
+        is_connected = self._status == self.Status.CONNECTED
+
+        if is_connected:
+            self.close()
+
+        self._baudrate = baudrate
+
+        if is_connected:
+            self.open()
+
+    def set_default_baudrate(self, baudrate):
+        """
+        Sets the default baudrate
+
+        Parameters
+        ----------
+        baudrate : int
+        """
+        if not self._baudrate_set:
+            self._baudrate = baudrate
+
     def flushRead(self):
         self._port.flush()
         super().flushRead()
 
     def open(self):
+        if self._baudrate is ...:
+            raise ValueError('Baudrate must be set, please use set_baudrate')
+
         if self._port is None:
             self._port = serial.Serial(port=self._port_name, baudrate=self._baudrate)
         elif not self._port.isOpen():
             self._port.open()
         # # Flush the input buffer
         self.flushRead()
+
+        if self._port.isOpen():
+            self._status = self.Status.CONNECTED
+        else:
+            self._status = self.Status.DISCONNECTED
 
         self._logger.info("Adapter opened !")
         if self._thread is None or not self._thread.is_alive():
