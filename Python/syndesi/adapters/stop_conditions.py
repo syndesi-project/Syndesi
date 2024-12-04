@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Callable
 from enum import Enum
 from time import time
 
@@ -140,6 +140,7 @@ class Termination(StopCondition):
     def __str__(self) -> str:
         return f'Termination({repr(self._termination)})'
 
+# TODO : Add a "allow_longer" parameter ? If more than N data is received, keep it instead of raising an error ?
 class Length(StopCondition):
     def __init__(self, N : int) -> None:
         """
@@ -164,6 +165,7 @@ class Length(StopCondition):
         deferred_fragment = data[remaining_bytes:]
         self._counter += len(kept_fragment)
         remaining_bytes = self._N - self._counter
+        # TODO : remaining_bytes <= 0 ? Alongside above TODO maybe
         return remaining_bytes == 0, kept_fragment, deferred_fragment
 
     def __repr__(self) -> str:
@@ -171,3 +173,38 @@ class Length(StopCondition):
         
     def __str__(self) -> str:
         return f'Length({self._N})'
+
+
+
+# class Lambda(StopCondition):
+#     class LambdaReturn:
+#         ERROR = 'error' # Discard everything and raise an error
+#         VALID = 'valid' # Return everything
+#         KEEP_N = 'keep_n' # Keep the first N bytes
+#         CONTINUE = 'continue' # Keep reading
+
+#     def __init__(self, _lambda : Callable) -> None:
+#         super().__init__()
+#         self._lambda = _lambda
+
+#     def initiate_read(self) -> Union[float, None]:
+#         return None
+    
+#     def evaluate(self, fragment: bytes) -> Tuple[bool, Union[float, None]]:
+#         lambda_return, N = self._lambda(fragment)
+#         match lambda_return:
+#             case self.LambdaReturn.ERROR:
+#                 raise RuntimeError(f"Couldn't apply Lambda condition on fragment : {fragment}")
+#             case self.LambdaReturn.VALID:
+#                 return True, fragment, b''
+#             case self.LambdaReturn.KEEP_N:
+#                 return True, fragment[:N], fragment[N:]
+#             case self.LambdaReturn.CONTINUE:
+#                 return False, fragment, b'' # TODO : Check this
+
+#     def __repr__(self) -> str:
+#         return self.__str__()
+    
+#     def __str__(self) -> str:
+#         return f'Lambda(...)'
+    

@@ -1,13 +1,12 @@
 from .protocol import Protocol
 from ..adapters import Adapter, Timeout, Termination
 from ..tools.types import assert_byte_instance, assert_byte_instance
-from ..tools.others import DEFAULT
 from time import time
 import warnings
 
 
 class Delimited(Protocol):
-    def __init__(self, adapter : Adapter, termination='\n', format_response=True, encoding : str = 'utf-8', timeout : Timeout = DEFAULT) -> None:
+    def __init__(self, adapter : Adapter, termination='\n', format_response=True, encoding : str = 'utf-8', timeout : Timeout = ...) -> None:
         """
         Protocol with delimiter, like LF, CR, etc... '\\n' is used by default
 
@@ -34,6 +33,12 @@ class Delimited(Protocol):
         self._termination = termination
         self._response_formatting = format_response
 
+    def __str__(self) -> str:
+        return f'Delimited({self._adapter})'
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
     def _to_bytes(self, command) -> bytes:
         if isinstance(command, str):
             return command.encode('ASCII')
@@ -58,15 +63,15 @@ class Delimited(Protocol):
         command = self._format_command(command)
         self._adapter.write(self._to_bytes(command))
 
-    def query(self, command : str) -> str:
+    def query(self, command : str, timeout : Timeout = ..., decode : bool = True) -> str:
         """
         Writes then reads from the device and return the result
         """
         self._adapter.flushRead()
         self.write(command)
-        return self.read()
+        return self.read(timeout=timeout, decode=decode)
 
-    def read(self, timeout : Timeout = DEFAULT, decode : str = True) -> str:
+    def read(self, timeout : Timeout = ..., decode : bool = True) -> str:
         """
         Reads command and formats it as a str
 
@@ -89,4 +94,4 @@ class Delimited(Protocol):
             return data
         else:
             # Add the termination back in
-            return data + self._termination 
+            return data + self._termination

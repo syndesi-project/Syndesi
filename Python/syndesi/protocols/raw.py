@@ -1,13 +1,12 @@
 from ..adapters import Adapter, Timeout
 from .protocol import Protocol
-from ..tools.others import DEFAULT
 
 
 # Raw protocols provide the user with the binary data directly,
 # without converting it to string first
 
 class Raw(Protocol):
-    def __init__(self, adapter: Adapter, timeout : Timeout = DEFAULT) -> None:
+    def __init__(self, adapter: Adapter, timeout : Timeout = ...) -> None:
         """
         Raw device, no presentation and application layers
 

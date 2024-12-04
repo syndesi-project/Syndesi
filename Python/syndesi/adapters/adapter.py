@@ -29,9 +29,7 @@ import socket
 import logging
 from time import time
 from dataclasses import dataclass
-from ..tools.others import DEFAULT
 
-DEFAULT_TIMEOUT = Timeout(response=5, continuation=200e-3, total=None)
 DEFAULT_STOP_CONDITION = None
 
 
@@ -72,7 +70,7 @@ class Adapter(ABC):
         DISCONNECTED = 0
         CONNECTED = 1
 
-    def __init__(self, alias : str = '', stop_condition : Union[StopCondition, None] = DEFAULT, timeout : Union[float, Timeout] = DEFAULT) -> None:
+    def __init__(self, alias : str = '', stop_condition : Union[StopCondition, None] = ..., timeout : Union[float, Timeout] = ...) -> None:
         """
         Adapter instance
 
@@ -86,13 +84,21 @@ class Adapter(ABC):
             Default to None
         """
         super().__init__()
+
         self._alias = alias
 
-        self._default_stop_condition = stop_condition == DEFAULT
+        self.is_default_timeout = timeout is Ellipsis
+        if self.is_default_timeout:
+            self._timeout = self._default_timeout()
+        else:
+            self._timeout = timeout_fuse(timeout, self._default_timeout())
+
+        self._default_stop_condition = stop_condition is Ellipsis
         if self._default_stop_condition:
             self._stop_condition = DEFAULT_STOP_CONDITION
         else:
             self._stop_condition = stop_condition
+
         self._read_queue = TimedQueue()
         self._thread : Union[Thread, None] = None
         self._status = self.Status.DISCONNECTED
@@ -103,16 +109,12 @@ class Adapter(ABC):
         # not used because of termination or length stop condition
         self._previous_buffer = b''
 
-        self._default_timeout = timeout == DEFAULT
-        if self._default_timeout:
-            self._timeout = DEFAULT_TIMEOUT
-        else:
-            if is_number(timeout):
-                self._timeout = Timeout(response=timeout, continuation=100e-3)
-            elif isinstance(timeout, Timeout):
-                self._timeout = timeout
-            else:
-                raise ValueError(f"Invalid timeout type : {type(timeout)}")
+        if not isinstance(self._timeout, Timeout):
+            raise ValueError('Timeout must be defined to initialize an Adapter base class')
+
+    @abstractmethod
+    def _default_timeout(self):
+        pass
 
     def set_timeout(self, timeout : Timeout):
         """
@@ -132,7 +134,7 @@ class Adapter(ABC):
         ----------
         default_timeout : Timeout or tuple or float
         """
-        if self._default_timeout:
+        if self.is_default_timeout:
             self._logger.debug(f'Setting default timeout to {default_timeout}')
             self._timeout = default_timeout
         else:
@@ -203,8 +205,32 @@ class Adapter(ABC):
         """
         pass
 
+    @abstractmethod
+    def read(self, timeout : Timeout = ..., stop_condition : StopCondition = ..., return_metrics : bool = False) -> bytes:
+        pass
+    
 
-    def read(self, timeout=DEFAULT, stop_condition=DEFAULT, return_metrics : bool = False) -> bytes:
+    @abstractmethod
+    def _start_thread(self):
+        self._logger.debug("Starting read thread...")
+
+    def __del__(self):
+        self.close()
+
+    def query(self, data : Union[bytes, str], timeout : Timeout = ..., stop_condition : StopCondition = ..., return_metrics : bool = False) -> bytes:
+        """
+        Shortcut function that combines
+        - flush_read
+        - write
+        - read
+        """
+        self.flushRead()
+        self.write(data)
+        return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
+    
+
+class StreamAdapter(Adapter):
+    def read(self, timeout=..., stop_condition=..., return_metrics : bool = False) -> bytes:
         """
         Read data from the device
 
@@ -220,13 +246,15 @@ class Adapter(ABC):
         if self._status == self.Status.DISCONNECTED:
             self.open()
 
-        # Use adapter values if no custom value is specified
-        if timeout == DEFAULT:
+        # 29.08.24 Change timeout behavior
+        if timeout is ...:
+            # Use the class timeout
             timeout = self._timeout
-        elif isinstance(timeout, float):
-            timeout = Timeout(timeout)
+        else:
+            # Fuse it
+            timeout = timeout_fuse(timeout, self._timeout)
         
-        if stop_condition == DEFAULT:
+        if stop_condition is ...:
             stop_condition = self._stop_condition
 
         # If the adapter is closed, open it
@@ -335,21 +363,3 @@ class Adapter(ABC):
             )
         else:
             return output
-
-    @abstractmethod
-    def _start_thread(self):
-        pass
-
-    def __del__(self):
-        self.close()
-
-    @abstractmethod
-    def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False) -> bytes:
-        """
-        Shortcut function that combines
-        - flush_read
-        - write
-        - read
-        """
-        pass
-    

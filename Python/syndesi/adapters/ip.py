@@ -1,6 +1,6 @@
 import socket
 from enum import Enum
-from .adapter import Adapter, AdapterDisconnected
+from .adapter import StreamAdapter, AdapterDisconnected
 from ..tools.types import to_bytes
 from .timeout import Timeout, timeout_fuse
 from .stop_conditions import StopCondition
@@ -10,18 +10,10 @@ from typing import Union
 from time import time
 import argparse
 #from ..cli import shell
-from ..tools.others import DEFAULT
 import select
 
-class IP(Adapter):
-    DEFAULT_TIMEOUT = Timeout(
-                        response=2,
-                        on_response='error',
-                        continuation=100e-3,
-                        on_continuation='return',
-                        total=5,
-                        on_total='error')
-    DEFAULT_BUFFER_SIZE = 1024
+class IP(StreamAdapter):
+    _DEFAULT_BUFFER_SIZE = 1024
     class Protocol(Enum):
         TCP = 'TCP'
         UDP = 'UDP'
@@ -30,10 +22,10 @@ class IP(Adapter):
                 address : str,
                 port : int = None,
                 transport : str = 'TCP',
-                timeout : Union[Timeout, float] = DEFAULT,
-                stop_condition : StopCondition = DEFAULT,
+                timeout : Union[Timeout, float] = ...,
+                stop_condition : StopCondition = ...,
                 alias : str = '',
-                buffer_size : int = DEFAULT_BUFFER_SIZE,
+                buffer_size : int = _DEFAULT_BUFFER_SIZE,
                 _socket : socket.socket = None):
         """
         IP stack adapter
@@ -56,13 +48,9 @@ class IP(Adapter):
             Socket buffer size, may be removed in the future
         socket : socket.socket
             Specify a custom socket, this is reserved for server application
-        """
-        if timeout == DEFAULT:
-            timeout = self.DEFAULT_TIMEOUT
-        else:
-            timeout = timeout_fuse(timeout, self.DEFAULT_TIMEOUT)
-        
+        """        
         super().__init__(alias=alias, timeout=timeout, stop_condition=stop_condition)
+
         self._transport = self.Protocol(transport)
         self._is_server = _socket is not None
 
@@ -80,6 +68,21 @@ class IP(Adapter):
         self._address = address
         self._port = port
         self._buffer_size = buffer_size
+
+    def __str__(self) -> str:
+        return f'IP({self._address}:{self._port})'
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def _default_timeout(self):
+        return Timeout(
+                response=5,
+                on_response='error',
+                continuation=100e-3,
+                on_continuation='return',
+                total=5,
+                on_total='error')
 
     def set_default_port(self, port):
         """
@@ -101,7 +104,7 @@ class IP(Adapter):
         if self._port is None:
             raise ValueError(f"Cannot open adapter without specifying a port")
 
-        self._logger.debug(f"Adapter {self._alias} connect to ({self._address}, {self._port})")
+        self._logger.debug(f"Adapter {self._alias + ' ' if self._alias != '' else ''}connect to ({self._address}, {self._port})")
         self._socket.connect((self._address, self._port))
         self._status = self.Status.CONNECTED
         if self._thread is None or not self._thread.is_alive():
@@ -125,7 +128,7 @@ class IP(Adapter):
     def write(self, data : Union[bytes, str]):
         data = to_bytes(data)
         if self._status == self.Status.DISCONNECTED:
-            self._logger.info(f"Adapter {self._alias} is closed, opening...")
+            self._logger.info(f"Adapter {self._alias + ' ' if self._alias != '' else ''}is closed, opening...")
             self.open()
         write_start = time()
         self._socket.send(data)
@@ -133,18 +136,14 @@ class IP(Adapter):
         self._logger.debug(f"Write [{write_duration*1e3:.3f}ms]: {repr(data)}")
 
     def _start_thread(self):
-        self._logger.debug("Starting read thread...")
+        super()._start_thread()
         if self._thread is None or not self._thread.is_alive():
             self._thread = Thread(target=self._read_thread, daemon=True, args=(self._socket, self._read_queue, self._thread_stop_read))
             self._thread.start()
 
-    # # EXPERIMENTAL
-    # def read_thread_alive(self):
-    #     return self._thread.is_alive()
-
     def _read_thread(self, socket : socket.socket, read_queue : TimedQueue, stop : socket.socket):
         # Using select.select works on both Windows and Linux as long as the inputs are all sockets
-        while True: # TODO : Add stop_pipe ? Maybe it was removed ?
+        while True:
             
             try:
                 ready, _, _ = select.select([socket, stop], [], [])
@@ -175,8 +174,6 @@ class IP(Adapter):
     def query(self, data : Union[bytes, str], timeout=None, stop_condition=None, return_metrics : bool = False):
         if self._is_server:
             raise SystemError("Cannot query on server adapters")
-        self.flushRead()
-        self.write(data)
-        return self.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
+        return super().query(data=data, timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
     
     
