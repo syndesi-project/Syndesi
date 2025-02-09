@@ -1,7 +1,6 @@
-from ..adapters import Adapter
-from ..adapters import Timeout
+from ..adapters import Adapter, Timeout
+from ..protocols import Protocol
 from ..adapters.auto import auto_adapter
-import logging
 from ..tools.log import LoggerAlias
 from enum import Enum
 
@@ -51,9 +50,7 @@ class DataItemType(Enum):
     UINT16  = 0b101010
     UINT32  = 0b101100
 
-
 # In case of list, dataitems are nested, format+length is repeated
-
 
 class DataItem:
     def __init__(self, type : DataItemType, contents) -> None:
@@ -84,23 +81,19 @@ class Secs2Message:
 # T4 : Inter-Block Timeout (-> continuation ?)
 
 # Interleaving : managing multiple transactions when they start/end inbetween each other
-class Secs2:
+class Secs2(Protocol):
     def __init__(self, adapter : Adapter, timeout : Timeout = ...) -> None:
-        self._adapter = auto_adapter(adapter)
-        if timeout != ...:
-            self._adapter.set_default_timeout(timeout)
-        self._logger = logging.getLogger(LoggerAlias.PROTOCOL.value)
+        super().__init__(adapter, timeout)
 
-    def flushRead(self):
-        self._adapter.flushRead()
-
-    def send(self, data):
+    def send_message(self, message : Secs2Message):
         pass
 
-    def query(self, data, timeout : Timeout = ...):
-        pass
+    def query(self, message : Secs2Message):
+        self.send_message(message)
+        output = self.read()
+        return output
 
-    def read(self):
+    def read(self) -> Secs2Message:
         pass
 
     def hello(self):
