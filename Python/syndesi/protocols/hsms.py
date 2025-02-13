@@ -21,6 +21,7 @@ class HSMS:
         #   Length : 4 bytes
         #   Header : 
         #
+        pass
 
     def query(self, data, timeout : Timeout = ...):
         pass
