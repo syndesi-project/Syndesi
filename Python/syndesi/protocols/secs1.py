@@ -27,6 +27,10 @@ class Secs1:
     def flushRead(self):
         self._adapter.flushRead()
 
+
+    def send_message(self, stream : int, function : int, data : bytes):
+        pass
+    
     def write(self, data):
         # Length (cheksum not included), 10 to 254
         # Data Bytes

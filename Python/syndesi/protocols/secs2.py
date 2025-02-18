@@ -1,5 +1,5 @@
 from ..adapters import Adapter, Timeout
-from ..protocols import Protocol
+from . import Protocol
 from ..adapters.auto import auto_adapter
 from ..tools.log import LoggerAlias
 from enum import Enum
@@ -7,6 +7,7 @@ from math import log2, floor
 from abc import abstractmethod, abstractproperty
 import struct
 from typing import Self
+from .secs1 import Secs1
 
 class AnnotationStandard(Enum):
     SEMI = 0
@@ -81,15 +82,29 @@ DATAITEM_TYPE_SYMBOL = {
     DataItemType.UINT32 : 'U3',
 }
 
+INT_FLOAT_BYTES = {
+    DataItemType.INT8 : 1,
+    DataItemType.INT16 : 2,
+    DataItemType.INT32 : 4,
+    DataItemType.INT64 : 8,
+    DataItemType.UINT8 : 1,
+    DataItemType.UINT16 : 2,
+    DataItemType.UINT32 : 4,
+    DataItemType.UINT64 : 8,
+    DataItemType.FLOAT32 : 4,
+    DataItemType.FLOAT64 : 8
+}
+
 # In case of list, dataitems are nested, format+length is repeated
 
 # Zero length items for each type is possible, check for that
 
-def decode(dataitem_array : bytes):
+def decode_dataitem(dataitem_array : bytes):
     # read the format code
     format_header = dataitem_array[0]
     _type = DataItemType(format_header >> 2)
     number_of_length_bytes = format_header & 0b11
+    print(f'{number_of_length_bytes=}')
     length = int.from_bytes((dataitem_array[1:1+number_of_length_bytes]), 'big', signed=False)
     expected_length = 1 + number_of_length_bytes + length
     assert len(dataitem_array) == expected_length, f"Invalid dataitem array size, expected {expected_length}, received {len(dataitem_array)}"
@@ -98,18 +113,36 @@ def decode(dataitem_array : bytes):
     match _type:
         case DataItemType.LIST:
             return DIList.from_bytes(data)
+        case DataItemType.BINARY:
+            return DIBinary.from_bytes(data)
+        case DataItemType.BOOLEAN:
+            return DIBinary.from_bytes(data)
+        case DataItemType.ASCII:
+            return DIAscii.from_bytes(data)
+        case DataItemType.JIS8:
+            return DIJIS8.from_bytes(data)
+        case DataItemType.INT8 | DataItemType.INT16 | DataItemType.INT32 | DataItemType.INT64:
+            return DIInt.from_bytes(data)
 
 class DataItem:
-    _SYMBOL : str = None
-    _FORMAT_CODE : int = None
+    _TYPE : DataItemType = None
     def __init__(self, data) -> None:
         self.data = data
 
     def _encode_wrapper(self, item_array):
         length = len(item_array)
-        number_of_length_bytes = floor(log2(length) / 8)
-        format_header = bytes([self._FORMAT_CODE << 2 + number_of_length_bytes])
-        length_bytes = number_of_length_bytes.to_bytes(number_of_length_bytes, byteorder='big', signed=False)
+        if length == 0:
+            # Empty item
+            number_of_length_bytes = 0
+        else:
+            number_of_length_bytes = floor(log2(length) / 8)
+
+        format_header = bytes([self._TYPE.value << 2 + number_of_length_bytes])
+        
+        if length == 0:
+            length_bytes = b''
+        else:
+            length_bytes = number_of_length_bytes.to_bytes(number_of_length_bytes, byteorder='big', signed=False)
 
         return format_header + length_bytes + item_array
 
@@ -125,16 +158,17 @@ def indent(string, indent : int):
     return '\n'.join([' '*indent + line for line in string.split('\n')])
 
 class DIList(DataItem):
-    _SYMBOL = 'L'
+    _TYPE = DataItemType.LIST
     
     def __init__(self, dataitems : list) -> None:
         super().__init__(dataitems)
 
     def encode(self):
         # Encode all of the items
-        items_array = sum([dataitem.encode() for dataitem in self.data])
+        encoded_items = [dataitem.encode() for dataitem in self.data]
+        items_array = b''.join(encoded_items)
 
-        self._encode_wrapper(items_array)
+        return self._encode_wrapper(items_array)
 
     def from_bytes(data) -> Self:
         return DIList(data)
@@ -143,20 +177,22 @@ class DIList(DataItem):
         INDENT = 4
         if len(self.data) == 0:
             # Empty list
-            string = f'<{self._SYMBOL}>'
+            string = f'<{DATAITEM_TYPE_SYMBOL[self._TYPE]}>'
         else:
-            string = f'<{self._SYMBOL} [{len(self.data)}]\n'
+            string = f'<{DATAITEM_TYPE_SYMBOL[self._TYPE]} [{len(self.data)}]\n'
             for dataitem in self.data:
                 string += indent(str(dataitem), INDENT) + '\n'
             string += '>'
         return string
 
 class DIAscii(DataItem):
-    _SYMBOL = 'A'
-    def __init__(self, data) -> None:
+    _TYPE = DataItemType.ASCII
+    def __init__(self, data : str = ...) -> None:
         # If data is bytes, store it as string (easier for the user)
         # and convert it when necessary
-        if isinstance(data, str):
+        if data is ...:
+            super().__init__(None)
+        elif isinstance(data, str):
             # Allow for unencoded str
             super().__init__(data)
         elif isinstance(data, bytes):
@@ -165,7 +201,11 @@ class DIAscii(DataItem):
             raise TypeError('Data must be bytes or string')
 
     def encode(self):
-        return self._encode_wrapper(self.data.encode('ASCII'))
+        if self.data is None:
+            data_array = b''
+        else:
+            data_array = self.data.encode('ASCII')
+        return self._encode_wrapper(data_array)
 
     def from_bytes(data) -> Self:
         return DIAscii(data)
@@ -174,114 +214,199 @@ class DIAscii(DataItem):
         # Special characters cannot be printed out in quotes
         # Multi-line is not supported for the moment
         string = ''
-        quoted = False
-        for c in self.data:
-            if c in ASCII_QUOTEABLE_CHARACTERS:
-                if not quoted:
-                    if len(string) > 0:
-                        string += ' '
-                    string += '"'
-                quoted = True
-
-                string += c
+        if self.data is not None:
+            if self.data == '':
+                # Special case, not specified, return an empty string
+                string = ' ""'
             else:
-                if quoted:
-                    string += '" '
-                string += f'0x{ord(c):02X}'
+                string += ' '
                 quoted = False
-        if quoted:
-            string += '"'
-        
-        return f'<{self._SYMBOL} {string}>'
+                for c in self.data:
+                    if c in ASCII_QUOTEABLE_CHARACTERS:
+                        if not quoted:
+                            if len(string) > 0:
+                                string += ' '
+                            string += '"'
+                        quoted = True
+
+                        string += c
+                    else:
+                        if quoted:
+                            string += '" '
+                        string += f'0x{ord(c):02X}'
+                        quoted = False
+                if quoted:
+                    string += '"'
+        return f'<{DATAITEM_TYPE_SYMBOL[self._TYPE]}{string}>'
 
 class DIBinary(DataItem):
-    _SYMBOL = 'B'
+    _TYPE = DataItemType.BINARY
 
-    def __init__(self, data) -> None:
-        assert isinstance(data, bytes), 'Data must be bytes'
+    def __init__(self, data : bool = ...) -> None:
+        if data is ...:
+            data = None
+        else:
+            assert isinstance(data, bytes), 'Data must be bytes'
         super().__init__(data)
     
     def encode(self):
-        return self._encode_wrapper(self.data)
+        if self.data is None:
+            data_array = b''
+        else:
+            data_array = self.data
+        return self._encode_wrapper(data_array)
+
+    def from_bytes(data) -> Self:
+        return DIBinary(data)
 
     def __str__(self) -> str:
+        if self.data is None:
+            return f'<{DATAITEM_TYPE_SYMBOL[self._TYPE]}>'
         binary_values = ''.join(f'{x:02X}' for x in self.data)
-        return f'<{self._SYMBOL} 0x{binary_values}>'
+        return f'<{DATAITEM_TYPE_SYMBOL[self._TYPE]} 0x{binary_values}>'
 
 class DIBoolean(DataItem):
-    _SYMBOL = 'BOOLEAN'
+    _TYPE = DataItemType.BOOLEAN
 
-    def __init__(self, value) -> None:
-        super().__init__(0x01 if value else 0x00)
+    def __init__(self, value : bool = ...) -> None:
+        if value is ...:
+            data = None
+        elif value:
+            data = 0x01
+        else:
+            data = 0x00
+        super().__init__(data)
     
     def encode(self):
-        return self._encode_wrapper(self.data)
+        if self.data is None:
+            encoded_data = b''
+        else:
+            encoded_data = struct.pack('>?', self.data)
+        return self._encode_wrapper(encoded_data)
+
+    def from_bytes(data) -> Self:
+        return DIBoolean(data)
     
     def __str__(self) -> str:
-        return f'<{self._SYMBOL} {self.data}>'
+        if self.data is None:
+            string = ''
+        else:
+            string = str(self.data)
+        return f'<{DATAITEM_TYPE_SYMBOL[self._TYPE]}{string}>'
 
 class DIJIS8(DataItem):
-    _SYMBOL = 'J'
+    _TYPE = DataItemType.JIS8
     def __init__(self, data) -> None:
         raise NotImplementedError()
 
 class DIInt(DataItem):
     signed = True
-    def __init__(self, value : int, size : int) -> None:
-        assert isinstance(value, int), "Value must be an integer"
-        if size not in [1, 2, 4, 8]:
-            raise ValueError(f'Invalid size : {size}')
-        self._size = size
-        if self.signed:
-            self._SYMBOL = f'I{size}'
+    def __init__(self, value : int = ..., size : int = ...) -> None:
+        if size is ...:
+            raise ValueError('Size must be specified even if the dataitem is empty')
+        if value is ...:
+            # Empty
+            value = None
         else:
-            self._SYMBOL = f'U{size}'
+            assert isinstance(value, int), "Value must be an integer"
+            if size not in [1, 2, 4, 8]:
+                raise ValueError(f'Invalid size : {size}')
+
+        self._size = size
+        
+        if self.signed:
+            self._TYPE = {
+                1 : DataItemType.INT8,
+                2 : DataItemType.INT16,
+                4 : DataItemType.INT32,
+                8 : DataItemType.INT64
+            }[self._size]
+        else:
+            self._TYPE = {
+                1 : DataItemType.UINT8,
+                2 : DataItemType.UINT16,
+                4 : DataItemType.UINT32, 
+                8 : DataItemType.UINT64
+            }[self._size]
         super().__init__(value)
     
     def encode(self):
-        self.data : int
-        array = self.data.to_bytes(self._size, byteorder='big', signed=self.signed)
-        return self._encode_wrapper(array)
+        if self.data is None:
+            encoded_data = b''
+        else:
+            encoded_data = self.data.to_bytes(self._size, byteorder='big', signed=self.signed)
+        return self._encode_wrapper(encoded_data)
+
+    def from_bytes(data) -> Self:
+        return DIInt(int.from_bytes(data, 'big', signed=True), len(data))
 
     def __str__(self) -> str:
-        return f'<{self._SYMBOL} {self.data}>'
+        string = ''
+        if self.data is not None:
+            string = f' {self.data}'
+        return f'<{DATAITEM_TYPE_SYMBOL[self._TYPE]}{string}>'
 
 class DIUInt(DIInt):
     signed = False
+
+    def from_bytes(data) -> Self:
+        return DIUInt(int.from_bytes(data, 'big', signed=False), len(data))
     
 class DIFloat(DataItem):
-    def __init__(self, value, size) -> None:
-        assert isinstance(value, float), "Value must be float"
-        if size not in [4, 8]:
-            raise ValueError(f'Invalid size : {size}')
+    def __init__(self, value : float = ..., size : float = ...) -> None:
+        if size is ...:
+            raise ValueError('size must be specified, even if the value is empty')
+        if value is ...:
+            value = None
+        else:
+            assert isinstance(value, float), "Value must be float"
+            if size not in [4, 8]:
+                raise ValueError(f'Invalid size : {size}')
         self._size = size
+        self._TYPE = {
+            4 : DataItemType.FLOAT32,
+            8 : DataItemType.FLOAT64
+        }[self._size]
         super().__init__(value)
 
     def encode(self):
-        pack_symbol = 'f' if self._size == 4 else 'd'
-        struct.pack(f'>{pack_symbol}', self.data)
+        if self.data is None:
+            encoded_data = b''
+        else:    
+            pack_symbol = 'f' if self._size == 4 else 'd'
+            encoded_data = struct.pack(f'>{pack_symbol}', self.data)
+        return self._encode_wrapper(encoded_data)
+
+    def from_bytes(data) -> Self:
+        _len = len(data)
+        unpack_symbol = 'f' if _len == 4 else 'd'
+        
+        value = struct.unpack(f'>{unpack_symbol}', data)
+        return DIFloat(value, _len)
+
+    def __str__(self):
+        string = ''
+        if self.data is not None:
+            string = f' {self.data}'
+        return f'<{DATAITEM_TYPE_SYMBOL[self._TYPE]}{string}>'
 
 class Secs2Message:
-    def __init__(self, stream : int, function : int, dataitems : list) -> None:
+    def __init__(self, stream : int, function : int, data_item : DataItem = ...) -> None:
         self.stream = stream
         self.function = function
-        assert all([isinstance(_type, DataItemType) for _type in dataitems]), "dataitems must be a list of tuple with the first element an instance of DataItemType"
-        self.dataitems = [DataItem(_type, data) for _type, data in dataitems]
+        
+        assert isinstance(data_item, DataItem) or data_item is ..., "data_item must be a data_item or shouldn't be set"
+        #assert all([isinstance(_type, DataItemType) for _type in dataitems]), "dataitems must be a list of tuple with the first element an instance of DataItemType"
+        self.dataitem = data_item
 
-    def encode(self):
-        array = b''
-        for dataitem in self.dataitems:
-            # Create the DataItem
-            array += dataitem.encode()
+    def _decode(stream : int, function : int, data : bytes):
+        return Secs2Message(stream, function, decode(data))
+
+    def _encode(self):
+        return self.dataitem.encode()
 
     def __str__(self) -> str:
-        output = ''
-        if ANNOTATION_STANDARD == AnnotationStandard.SML:
-            for dataitem in self.dataitems:
-                output += str(dataitem) + '\n'
-        else:
-            raise NotImplementedError()
-
+        return f'S{self.function}S{self.stream}\n' + str(self.dataitem)
 
 # T3 : Reply timeout (-> response)
 # T4 : Inter-Block Timeout (-> continuation ?)
@@ -290,14 +415,15 @@ class Secs2Message:
 class Secs2(Protocol):
     def __init__(self, adapter : Adapter, timeout : Timeout = ...) -> None:
         super().__init__(adapter, timeout)
+        self._secs1 = Secs1(adapter, timeout)
 
     def send_message(self, message : Secs2Message):
         assert message.stream % 2 == 1, "SECS-II primary message stream must be odd"
 
     def query(self, message : Secs2Message):
-        self.send_message(message)
-        output = self.read()
-        return output
+        self.send_message(message.stream, message.function, message._encode())
+        stream, function, data_out = self.read()
+        return Secs2Message._decode(stream, function, data_out)
 
     def read(self) -> Secs2Message:
         pass
@@ -306,6 +432,5 @@ class Secs2(Protocol):
         """
         Say hello to the equipment
         """
-        message = Secs2Message(1, 1) 
+        message = Secs2Message(1, 1)
         self.query(message)
-
