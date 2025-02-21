@@ -1,6 +1,6 @@
 from syndesi.protocols.secs2 import *
 
-def test_secs2_format():
+def test_generic():
     # Test SECS2 - SML message formatting
 
     # Make one huge DataItem with everything in it
@@ -32,6 +32,6 @@ def test_secs2_format():
 
     encoded_dataitem = dataitem.encode()
 
-    decoded_dataitem = decode_dataitem(encoded_dataitem)
+    decoded_dataitem, _ = decode_dataitem(encoded_dataitem)
 
     print(decoded_dataitem)

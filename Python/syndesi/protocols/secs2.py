@@ -6,7 +6,6 @@ from enum import Enum
 from math import log2, floor
 from abc import abstractmethod, abstractproperty
 import struct
-from typing import Self
 from .secs1 import Secs1
 
 class AnnotationStandard(Enum):
@@ -82,7 +81,7 @@ DATAITEM_TYPE_SYMBOL = {
     DataItemType.UINT32 : 'U3',
 }
 
-INT_FLOAT_BYTES = {
+N_BYTES = {
     DataItemType.INT8 : 1,
     DataItemType.INT16 : 2,
     DataItemType.INT32 : 4,
@@ -104,25 +103,33 @@ def decode_dataitem(dataitem_array : bytes):
     format_header = dataitem_array[0]
     _type = DataItemType(format_header >> 2)
     number_of_length_bytes = format_header & 0b11
-    print(f'{number_of_length_bytes=}')
     length = int.from_bytes((dataitem_array[1:1+number_of_length_bytes]), 'big', signed=False)
-    expected_length = 1 + number_of_length_bytes + length
-    assert len(dataitem_array) == expected_length, f"Invalid dataitem array size, expected {expected_length}, received {len(dataitem_array)}"
-    data = dataitem_array[1+number_of_length_bytes:]
+    expected_length_total = 1 + number_of_length_bytes + length
+    assert len(dataitem_array) >= expected_length_total, f"Invalid dataitem array size, expected {expected_length}, received {len(dataitem_array)}"
+    data = dataitem_array[1+number_of_length_bytes:1+number_of_length_bytes+length]
+    remaining = dataitem_array[1+number_of_length_bytes+length:]
 
     match _type:
         case DataItemType.LIST:
-            return DIList.from_bytes(data)
+            data_item = DIList.from_bytes(data)
         case DataItemType.BINARY:
-            return DIBinary.from_bytes(data)
+            data_item = DIBinary.from_bytes(data)
         case DataItemType.BOOLEAN:
-            return DIBinary.from_bytes(data)
+            data_item = DIBinary.from_bytes(data)
         case DataItemType.ASCII:
-            return DIAscii.from_bytes(data)
+            data_item = DIAscii.from_bytes(data)
         case DataItemType.JIS8:
-            return DIJIS8.from_bytes(data)
+            data_item = DIJIS8.from_bytes(data)
         case DataItemType.INT8 | DataItemType.INT16 | DataItemType.INT32 | DataItemType.INT64:
-            return DIInt.from_bytes(data)
+            data_item = DIInt.from_bytes(data, size=N_BYTES[_type])
+        case DataItemType.UINT8 | DataItemType.UINT16 | DataItemType.UINT32 | DataItemType.UINT64:
+            data_item = DIUInt.from_bytes(data, size=N_BYTES[_type])
+        case DataItemType.FLOAT32 | DataItemType.FLOAT64:
+            data_item = DIFloat.from_bytes(data, size=N_BYTES[_type])
+        case _:
+            raise ValueError(f'Cannot decode data item array : {dataitem_array}')
+
+    return data_item, remaining
 
 class DataItem:
     _TYPE : DataItemType = None
@@ -135,19 +142,19 @@ class DataItem:
             # Empty item
             number_of_length_bytes = 0
         else:
-            number_of_length_bytes = floor(log2(length) / 8)
+            number_of_length_bytes = floor(log2(length) / 8)+1
 
-        format_header = bytes([self._TYPE.value << 2 + number_of_length_bytes])
+        format_header = bytes([(self._TYPE.value << 2) + number_of_length_bytes])
         
         if length == 0:
             length_bytes = b''
         else:
-            length_bytes = number_of_length_bytes.to_bytes(number_of_length_bytes, byteorder='big', signed=False)
+            length_bytes = length.to_bytes(number_of_length_bytes, byteorder='big', signed=False)
 
         return format_header + length_bytes + item_array
 
     @abstractmethod
-    def from_bytes(data) -> Self:
+    def from_bytes(data):
         pass
 
     @abstractmethod
@@ -170,8 +177,14 @@ class DIList(DataItem):
 
         return self._encode_wrapper(items_array)
 
-    def from_bytes(data) -> Self:
-        return DIList(data)
+    def from_bytes(data):
+        # Parse individual elements
+        dataitems = []
+        remaining = data
+        while len(remaining) > 0:
+            data_item, remaining = decode_dataitem(remaining)
+            dataitems.append(data_item)
+        return DIList(dataitems)
 
     def __str__(self) -> str:
         INDENT = 4
@@ -207,7 +220,7 @@ class DIAscii(DataItem):
             data_array = self.data.encode('ASCII')
         return self._encode_wrapper(data_array)
 
-    def from_bytes(data) -> Self:
+    def from_bytes(data):
         return DIAscii(data)
 
     def __str__(self) -> str:
@@ -256,7 +269,7 @@ class DIBinary(DataItem):
             data_array = self.data
         return self._encode_wrapper(data_array)
 
-    def from_bytes(data) -> Self:
+    def from_bytes(data):
         return DIBinary(data)
 
     def __str__(self) -> str:
@@ -284,7 +297,7 @@ class DIBoolean(DataItem):
             encoded_data = struct.pack('>?', self.data)
         return self._encode_wrapper(encoded_data)
 
-    def from_bytes(data) -> Self:
+    def from_bytes(data):
         return DIBoolean(data)
     
     def __str__(self) -> str:
@@ -337,8 +350,8 @@ class DIInt(DataItem):
             encoded_data = self.data.to_bytes(self._size, byteorder='big', signed=self.signed)
         return self._encode_wrapper(encoded_data)
 
-    def from_bytes(data) -> Self:
-        return DIInt(int.from_bytes(data, 'big', signed=True), len(data))
+    def from_bytes(data, size):
+        return DIInt(int.from_bytes(data, 'big', signed=True), size)
 
     def __str__(self) -> str:
         string = ''
@@ -349,17 +362,15 @@ class DIInt(DataItem):
 class DIUInt(DIInt):
     signed = False
 
-    def from_bytes(data) -> Self:
-        return DIUInt(int.from_bytes(data, 'big', signed=False), len(data))
+    def from_bytes(data, size : int):
+        return DIUInt(int.from_bytes(data, 'big', signed=False), size)
     
 class DIFloat(DataItem):
-    def __init__(self, value : float = ..., size : float = ...) -> None:
-        if size is ...:
+    def __init__(self, value : float = None, size : float = None) -> None:
+        if size is None:
             raise ValueError('size must be specified, even if the value is empty')
-        if value is ...:
-            value = None
-        else:
-            assert isinstance(value, float), "Value must be float"
+        if value is not None:
+            assert isinstance(value, float), f"Value must be float, not {type(value)}"
             if size not in [4, 8]:
                 raise ValueError(f'Invalid size : {size}')
         self._size = size
@@ -377,12 +388,16 @@ class DIFloat(DataItem):
             encoded_data = struct.pack(f'>{pack_symbol}', self.data)
         return self._encode_wrapper(encoded_data)
 
-    def from_bytes(data) -> Self:
-        _len = len(data)
-        unpack_symbol = 'f' if _len == 4 else 'd'
+    def from_bytes(data, size):
+        if len(data) == 0:
+            value = None
+        elif size in [4, 8]:
+            unpack_symbol = 'f' if size == 4 else 'd'
+            value = struct.unpack(f'>{unpack_symbol}', data)[0]
+        else:
+            raise ValueError(f'Invalid float data length : {size}')
         
-        value = struct.unpack(f'>{unpack_symbol}', data)
-        return DIFloat(value, _len)
+        return DIFloat(value, size)
 
     def __str__(self):
         string = ''
@@ -400,7 +415,7 @@ class Secs2Message:
         self.dataitem = data_item
 
     def _decode(stream : int, function : int, data : bytes):
-        return Secs2Message(stream, function, decode(data))
+        return Secs2Message(stream, function, decode_dataitem(data))
 
     def _encode(self):
         return self.dataitem.encode()
