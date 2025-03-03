@@ -2,6 +2,9 @@ from setuptools import setup, find_packages
 
 DESCRIPTION = 'Syndesi'
 
+# pip install syndesi # Standard package
+# pip install syndesi[extra] # All additionnal packages (colors, etc...)
+
 __version__ : str
 # Load __version__ from file
 with open('syndesi/version.py', 'r', encoding='utf-8') as f:
@@ -23,6 +26,9 @@ setup(
         'console_scripts': [
             'syndesi=syndesi.cli.syndesi:main',
             'syndesi-proxy=syndesi.proxy.proxy:main'],
+    },
+    extras_require = {
+        'extra' : ["colorist"]
     },
     packages=find_packages(),
     install_requires=[''],

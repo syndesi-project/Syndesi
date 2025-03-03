@@ -10,21 +10,47 @@ from cmd import Cmd
 import sys
 import os
 from ..version import __version__
-from colorist import ColorRGB
+try:
+    from colorist import ColorRGB
+    COLORIST_AVAILABLE = True
+except ImportError:
+    COLORIST_AVAILABLE = False
+try:
+    from colorama import Fore
+    COLORAMA_AVAILABLE = True
+except ImportError:
+    COLORAMA_AVAILABLE = False
 
 class Kind(Enum):
     IP = 'ip'
     SERIAL = 'serial'
 
+class LineEnding(Enum):
+    CR = 'cr'
+    LF = 'lf'
+    CRLF = 'crlf'
+    NONE = 'none'
+
+LINE_ENDING_CHARS = {
+    LineEnding.CR : '\r',
+    LineEnding.LF : '\n',
+    LineEnding.CRLF : '\r\n',
+    LineEnding.NONE : ''
+}
+
 TIMEOUT_ARGUMENT = Argument('-t', '--timeout', nargs='+', type=float, required=False, default=5, help='Adapter timeout (response)')
-END = Argument('-e', '--end', required=False, default='\n', help='Termination')
+END = Argument('-e', '--end', required=False, default=LineEnding.LF.value, help='Termination, cr, lf, crlf or none', choices=[x.value for x in LineEnding])
 MODE_ARGUMENT = Argument('-m', '--mode', choices=[x.value for x in Mode], default=Mode.COMMAND)
 
 class AdapterShell(Cmd):
     __hiden_methods = ('do_EOF','do_clear','do_cls')
-    #prompt = f'❯ '
-    PROMPT_COLOR = ColorRGB(28, 90, 145)
-    prompt = f'{PROMPT_COLOR}❯ {PROMPT_COLOR.OFF}'
+    if COLORIST_AVAILABLE:
+        PROMPT_COLOR = ColorRGB(28, 90, 145)
+        prompt = f'{PROMPT_COLOR}❯ {PROMPT_COLOR.OFF}'
+    elif COLORAMA_AVAILABLE:
+        prompt = f'{Fore.CYAN}❯{Fore.RESET} '
+    else:
+        prompt = f'❯ '
 
     def __init__(self, adapter : Adapter) -> None:
         super().__init__()
@@ -94,13 +120,14 @@ class AdapterShell(Cmd):
             #self.print_topics(self.misc_header,  sorted(topics),15,80)
             #self.print_topics(self.undoc_header, cmds_undoc, 15,80)
 
-    do_EOF = do_exit # Allow CTRL+d to exit 
+    do_EOF = do_exit # Allow CTRL+d to exit
 
 class AdapterCommand(Command):
     def __init__(self, kind : str) -> None:
         super().__init__()
         MODE_ARGUMENT.add_to_parser(self._parser)
         TIMEOUT_ARGUMENT.add_to_parser(self._parser)
+        END.add_to_parser(self._parser)
 
         self._kind = Kind(kind)
         if self._kind == Kind.IP:
@@ -118,11 +145,12 @@ class AdapterCommand(Command):
 
         timeout = Timeout(args.timeout)
 
+        line_ending = LINE_ENDING_CHARS[LineEnding(args.end)]
         # Open the adapter
         if self._kind == Kind.IP:
-            self._adapter = Delimited(IP(address=args.address, port=args.port, transport=args.protocol, timeout=timeout))
+            self._adapter = Delimited(IP(address=args.address, port=args.port, transport=args.protocol, timeout=timeout), termination=line_ending)
         elif self._kind == Kind.SERIAL:
-            self._adapter = Delimited(SerialPort(port=args.port, baudrate=args.baudrate, timeout=timeout))
+            self._adapter = Delimited(SerialPort(port=args.port, baudrate=args.baudrate, timeout=timeout), termination=line_ending)
 
 
         shell = AdapterShell(self._adapter)
