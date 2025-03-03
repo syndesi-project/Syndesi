@@ -1,4 +1,4 @@
-from ..adapters import Adapter, Timeout
+from ..adapters import Adapter, Timeout, SerialPort, IP
 from . import Protocol
 from ..adapters.auto import auto_adapter
 from ..tools.log import LoggerAlias
@@ -7,6 +7,7 @@ from math import log2, floor
 from abc import abstractmethod, abstractproperty
 import struct
 from .secs1 import Secs1
+from .hsms import HSMS
 
 class AnnotationStandard(Enum):
     SEMI = 0
@@ -414,34 +415,39 @@ class Secs2Message:
         #assert all([isinstance(_type, DataItemType) for _type in dataitems]), "dataitems must be a list of tuple with the first element an instance of DataItemType"
         self.dataitem = data_item
 
-    def _decode(stream : int, function : int, data : bytes):
+    def decode(stream : int, function : int, data : bytes):
         return Secs2Message(stream, function, decode_dataitem(data))
 
-    def _encode(self):
+    def encode(self):
         return self.dataitem.encode()
 
     def __str__(self) -> str:
-        return f'S{self.function}S{self.stream}\n' + str(self.dataitem)
+        return f'S{self.function}S{self.stream}\n' + str(self.dataitem) + '    .' # TODO : Check the position of the dot
 
 # T3 : Reply timeout (-> response)
 # T4 : Inter-Block Timeout (-> continuation ?)
 
 # Interleaving : managing multiple transactions when they start/end inbetween each other
 class Secs2(Protocol):
-    def __init__(self, adapter : Adapter, timeout : Timeout = ...) -> None:
+    def __init__(self, adapter : Adapter, source_id : int, timeout : Timeout = ...) -> None:
         super().__init__(adapter, timeout)
-        self._secs1 = Secs1(adapter, timeout)
+        if isinstance(adapter, SerialPort):
+            self._prot = Secs1(adapter, timeout)
+        elif isinstance(adapter, IP):
+            self._prot = HSMS(adapter, source_id)
+        else:
+            raise ValueError(f'Invalid adapter : {type(adapter)}')
 
-    def send_message(self, message : Secs2Message):
+    def write(self, device_id : int, message : Secs2Message):
         assert message.stream % 2 == 1, "SECS-II primary message stream must be odd"
+        self._prot.write(device_id, message.stream, message.function, message)
 
-    def query(self, message : Secs2Message):
-        self.send_message(message.stream, message.function, message._encode())
-        stream, function, data_out = self.read()
-        return Secs2Message._decode(stream, function, data_out)
+    def query(self, device_id : int, message : Secs2Message):
+        stream, function, data_out = self._prot.query(device_id, message.stream, message.function, message.encode())
+        return Secs2Message.decode(stream, function, data_out)
 
-    def read(self) -> Secs2Message:
-        pass
+    def read(self, device_id) -> Secs2Message:
+        stream, function, data_out = self._prot.read(device_id)
 
     def hello(self):
         """
