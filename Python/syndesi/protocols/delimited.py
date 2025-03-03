@@ -34,7 +34,7 @@ class Delimited(Protocol):
         self._response_formatting = format_response
 
     def __str__(self) -> str:
-        return f'Delimited({self._adapter})'
+        return f'Delimited({self._adapter},{repr(self._termination)})'
 
     def __repr__(self) -> str:
         return self.__str__()
