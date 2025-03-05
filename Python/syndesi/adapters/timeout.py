@@ -64,7 +64,7 @@ class Timeout():
         """
         super().__init__()
         # It is possible to pass a tuple to set response/continuation/total, parse this first if it is the case
-        if isinstance(response, tuple):
+        if isinstance(response, (tuple, list)):
             if len(response) >= 3:
                 total = response[2]
             if len(response) >= 2:
