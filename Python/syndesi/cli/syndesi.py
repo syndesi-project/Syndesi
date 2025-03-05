@@ -3,11 +3,10 @@
 # Syndesi CLI
 import argparse
 from enum import Enum
-#from syndesi.cli.shell import ShellPrompt
 from ..version import __version__
-from .command import Command
-from .adapter import AdapterCommand
+from .shell import AdapterShell
 from typing import Dict
+from ..tools.log import log_settings
 
 class Commands(Enum):
     SERIAL = 'serial'
@@ -34,10 +33,14 @@ def main():
     args, remaining_args = parser.parse_known_args()
     command = Commands(args.command)
 
+    if args.verbose:
+        log_settings('DEBUG', console=True)
+        
+
     if command == Commands.SERIAL:
-        AdapterCommand('serial').run(remaining_args)
+        AdapterShell('serial').run(remaining_args)
     elif command == Commands.IP:
-        AdapterCommand('ip').run(remaining_args)
+        AdapterShell('ip').run(remaining_args)
     else:
         raise RuntimeError(f"Command '{command.value}' is not supported yet")
 

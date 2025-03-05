@@ -1,10 +1,11 @@
-from .command import Command, Argument, Mode
-import argparse
-from ..adapters.timeout import Timeout
+#from .command import Command, Argument, Mode
+from argparse import ArgumentParser
+from ..adapters.timeout import Timeout, TimeoutException
 from ..adapters.ip import IP
 from ..adapters.adapter import Adapter
 from ..adapters.serialport import SerialPort
 from ..protocols.delimited import Delimited
+from ..protocols.raw import Raw
 from enum import Enum
 from cmd import Cmd
 import sys
@@ -20,6 +21,22 @@ try:
     COLORAMA_AVAILABLE = True
 except ImportError:
     COLORAMA_AVAILABLE = False
+
+class Mode(Enum):
+    COMMAND = 'command' # Command-like, write, read, write, read
+    FLOW = 'flow' # Write and read at the same time
+
+class Format(Enum):
+    TEXT = 'text'
+    HEX = 'hex'
+
+class Argument:
+    def __init__(self, *args, **kwargs) -> None:
+        self.args = args
+        self.kwargs = kwargs
+
+    def add_to_parser(self, parser : ArgumentParser):
+        parser.add_argument(*self.args, **self.kwargs)
 
 class Kind(Enum):
     IP = 'ip'
@@ -38,11 +55,25 @@ LINE_ENDING_CHARS = {
     LineEnding.NONE : ''
 }
 
-TIMEOUT_ARGUMENT = Argument('-t', '--timeout', nargs='+', type=float, required=False, default=5, help='Adapter timeout (response)')
-END = Argument('-e', '--end', required=False, default=LineEnding.LF.value, help='Termination, cr, lf, crlf or none', choices=[x.value for x in LineEnding])
+TIMEOUT_ARGUMENT = Argument('-t', '--timeout', nargs='+', type=float, required=False, default=[2], help='Adapter timeout (response)')
+END = Argument('-e', '--end', required=False, default=LineEnding.LF.value, help='Termination, cr, lf, crlf or none. Only used with text format', choices=[x.value for x in LineEnding])
 MODE_ARGUMENT = Argument('-m', '--mode', choices=[x.value for x in Mode], default=Mode.COMMAND)
+FORMAT_ARGUMENT = Argument('-f', '--format', default=Format.TEXT, help='Format, text or hex', choices=[x.value for x in Format])
 
-class AdapterShell(Cmd):
+def hex2array(raw : str):
+    s = raw.replace(' ', '')
+    if len(s) % 2 != 0:
+        s = '0' + s
+    try:
+        array = bytes([int(s[2*i:2*(i+1)], 16) for i in range(len(s)//2)])
+    except ValueError:
+        raise ValueError(f'Cannot parse hex string : {raw}')
+    return array
+
+def array2hex(array : bytes):
+    return ' '.join([f'{x:02X}' for x in array])
+
+class AdapterCmd(Cmd):
     __hiden_methods = ('do_EOF','do_clear','do_cls')
     if COLORIST_AVAILABLE:
         PROMPT_COLOR = ColorRGB(28, 90, 145)
@@ -52,9 +83,11 @@ class AdapterShell(Cmd):
     else:
         prompt = f'❯ '
 
-    def __init__(self, adapter : Adapter) -> None:
+    def __init__(self, adapter : Adapter, _format : Format) -> None:
         super().__init__()
         self._adapter = adapter
+        self._format = _format
+
     def get_names(self):
         return [n for n in dir(self.__class__) if n not in self.__hiden_methods]
 
@@ -63,9 +96,25 @@ class AdapterShell(Cmd):
         return True
 
     def default(self, inp):
-        cmd = inp
-        output = self._adapter.query(cmd)
-        print(output)
+        # TODO : Add flow mode here, manage it somehow, maybe not with AdapterCmd ? Maybe with a more custom one ?
+        if self._format == Format.TEXT:
+            # Send the data directly
+            cmd = inp
+        elif self._format == Format.HEX:
+            # Parse it, remove spaces, convert to int
+            cmd = hex2array(inp)
+
+        try:
+            output = self._adapter.query(cmd)
+        except TimeoutException:
+            printed_output = ''
+        else:
+            if self._format == Format.TEXT:
+                printed_output = output
+            elif self._format == Format.HEX:
+                printed_output = array2hex(output)
+
+        print(printed_output)
 
     def do_clear(self, _):
         if sys.platform == "linux" or sys.platform == "linux2" or sys.platform == "darwin":
@@ -122,12 +171,13 @@ class AdapterShell(Cmd):
 
     do_EOF = do_exit # Allow CTRL+d to exit
 
-class AdapterCommand(Command):
+class AdapterShell:
     def __init__(self, kind : str) -> None:
-        super().__init__()
+        self._parser = ArgumentParser()
         MODE_ARGUMENT.add_to_parser(self._parser)
         TIMEOUT_ARGUMENT.add_to_parser(self._parser)
         END.add_to_parser(self._parser)
+        FORMAT_ARGUMENT.add_to_parser(self._parser)
 
         self._kind = Kind(kind)
         if self._kind == Kind.IP:
@@ -145,16 +195,24 @@ class AdapterCommand(Command):
 
         timeout = Timeout(args.timeout)
 
-        line_ending = LINE_ENDING_CHARS[LineEnding(args.end)]
-        # Open the adapter
+        # Create the adapter
         if self._kind == Kind.IP:
-            self._adapter = Delimited(IP(address=args.address, port=args.port, transport=args.protocol, timeout=timeout), termination=line_ending)
-        elif self._kind == Kind.SERIAL:
-            self._adapter = Delimited(SerialPort(port=args.port, baudrate=args.baudrate, timeout=timeout), termination=line_ending)
+            adapter = IP(address=args.address, port=args.port, transport=args.protocol, timeout=timeout)
+        else:
+            adapter = SerialPort(port=args.port, baudrate=args.baudrate, timeout=timeout)
 
+        adapter.set_default_timeout(Timeout(on_response='return'))
 
-        shell = AdapterShell(self._adapter)
-        shell.intro = f"Connected to {self._adapter}"
+        # Add the protocol
+        _format = Format(args.format)
+        if _format == Format.HEX:
+            self._protocol = Raw(adapter)
+        elif _format == Format.TEXT:
+            line_ending = LINE_ENDING_CHARS[LineEnding(args.end)]
+            self._protocol = Delimited(adapter, termination=line_ending)
+
+        shell = AdapterCmd(self._protocol, _format)
+        shell.intro = f"Connected to {self._protocol}"
         # Enter the shell
         try:
             shell.cmdloop()
