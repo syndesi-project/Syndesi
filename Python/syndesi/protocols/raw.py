@@ -26,3 +26,6 @@ class Raw(Protocol):
 
     def read(self, timeout=None, stop_condition=None, return_metrics : bool = False) -> bytes:
         return self._adapter.read(timeout=timeout, stop_condition=stop_condition, return_metrics=return_metrics)
+
+    def __str__(self) -> str:
+        return f'Raw({self._adapter})'
