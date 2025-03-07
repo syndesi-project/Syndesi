@@ -11,7 +11,7 @@ from typing import Union
 from .proxy_api import *
 from ..api.api import *
 import logging
-from ..tools.log import LoggerAlias, set_log_stream
+from ..tools.log import LoggerAlias, log_settings
 
 class AdapterType(Enum):
     SERIAL = 'serial'
@@ -34,7 +34,7 @@ def main():
     args = parser.parse_args()
 
     if args.verbose:
-        set_log_stream(True, 'DEBUG')
+        log_settings('DEBUG', console=True)
 
     proxy_server = ProxyServer(adapter_type=args.adapter_type, port=args.port, address=args.address, baudrate=args.baudrate)
 
