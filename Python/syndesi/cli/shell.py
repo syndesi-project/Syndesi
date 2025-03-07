@@ -187,6 +187,7 @@ class AdapterShell:
         elif self._kind == Kind.SERIAL:
             self._parser.add_argument('-p', '--port', type=str, required=True)
             self._parser.add_argument('-b', '--baudrate', type=int, required=True)
+            self._parser.add_argument('--rtscts', action='store_true', default=False, help='Enable RTS/CTS')
         else:
             raise ValueError('Unsupported Kind')
 
@@ -199,7 +200,7 @@ class AdapterShell:
         if self._kind == Kind.IP:
             adapter = IP(address=args.address, port=args.port, transport=args.protocol, timeout=timeout)
         else:
-            adapter = SerialPort(port=args.port, baudrate=args.baudrate, timeout=timeout)
+            adapter = SerialPort(port=args.port, baudrate=args.baudrate, timeout=timeout, rts_cts=args.rtscts)
 
         adapter.set_default_timeout(Timeout(on_response='return'))
 
