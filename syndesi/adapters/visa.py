@@ -1,103 +1,44 @@
+# File : visa.py
+# Author : Sébastien Deriaz
+# License : GPL
+#
+# VISA adatper, uses a VISA backend like pyvisa-py or NI to communicate with instruments
 
-from pyvisa import ResourceManager, VisaIOError
-from pyvisa.resources import Resource
-import socket
-from .timed_queue import TimedQueue
+from collections.abc import Callable
+from types import EllipsisType
+
+from syndesi.adapters.backend.adapter_backend import AdapterSignal
+from syndesi.adapters.stop_condition import StopCondition
+
 from .adapter import Adapter
-from ..tools.types import to_bytes
+from .backend.descriptors import VisaDescriptor
 from .timeout import Timeout
-from .stop_conditions import StopCondition
-from typing import Union
-from threading import Thread
-
-class VISA(Adapter):
-    def __init__(self, resource : str):
-        """
-        USB VISA stack adapter
-
-        Parameters
-        ----------
-        resource : str
-            resource address string
-        """
-        self._resource = resource
-        self._rm = ResourceManager()
-        self._inst : Resource
-        self._inst = self._rm.open_resource(self._resource)
-        self._inst.write_termination = ''
-        self._inst.read_termination = ''
-
-    def list_devices(self=None):
-        """
-        Returns a list of available VISA devices
-        """
-        # To list available devices only and not previously connected ones,
-        # each device will be opened and added to the list only if that succeeded
-        rm = ResourceManager()
-
-        available_resources = []
-        for device in rm.list_resources():
-            try:
-                d = rm.open_resource(device)
-                d.close()
-                available_resources.append(device)
-            except VisaIOError:
-                pass
-
-        return available_resources
-
-    def flushRead(self):
-        pass
-
-    def open(self):
-        self._inst.open()
-
-    def close(self):
-        super().close()
-        self._inst.close()
-            
-    def write(self, data : Union[bytes, str]):
-        data = to_bytes(data)
-        self._inst.write_raw(data)
-
-    def _start_thread(self):
-        super()._start_thread()
-        if self._thread is None or not self._thread.is_alive():
-            self._thread = Thread(target=self._read_thread, daemon=True, args=(self._inst, self._read_queue, self._thread_stop_read))
-            self._thread.start()
 
 
-    def _read_thread(self, inst : Resource, read_queue : TimedQueue, stop : socket.socket):
-        inst.timeout = 0.05
-        stop.setblocking(False)
-        while True:
-            if(stop.recv(1)):
-                break
-            else:
-                try:
-                    payload = inst.read_raw()
-                except TimeoutError: # TODO : Check if this is the error raised when a timeout occurs
-                    pass
-                else:
-                    read_queue.put(payload)
+class Visa(Adapter):
+    def __init__(
+        self,
+        descriptor: str,
+        alias: str = "",
+        stop_condition: StopCondition | None | EllipsisType = ...,
+        timeout: None | float | Timeout | EllipsisType = ...,
+        encoding: str = "utf-8",
+        event_callback: Callable[[AdapterSignal], None] | None = None,
+        backend_address: str | None = None,
+        backend_port: int | None = None,
+    ) -> None:
+        super().__init__(
+            VisaDescriptor.from_string(descriptor),
+            alias=alias,
+            stop_conditions=stop_condition,
+            timeout=timeout,
+            encoding=encoding,
+            event_callback=event_callback,
+            backend_address=backend_address,
+            backend_port=backend_port,
+        )
 
-    def read(self, timeout: Timeout = ..., stop_condition: StopCondition = ..., return_metrics: bool = False) -> bytes:
-        return super().read(timeout, stop_condition, return_metrics)
-    
-    def query(self, data : Union[bytes, str], timeout : Timeout = ..., stop_condition : StopCondition = ..., return_metrics : bool = False) -> bytes:
-        """
-        Shortcut function that combines
-        - flush_read
-        - write
-        - read
-        """
-        if stop_condition is not Ellipsis:
-            raise NotImplementedError("Cannot use stop-conditions with VISA adapter")
-        if return_metrics:
-            raise NotImplementedError("Cannot use return_metrics with VISA adapter")
-        if timeout is not Ellipsis:
-            timeout = Timeout(timeout)
-            self._inst.timeout = timeout._response
+        self._logger.info("Setting up VISA IP adapter")
 
-        self.write(data)
-        return self.read()
+    def _default_timeout(self) -> Timeout:
+        return Timeout(response=5, action="error")

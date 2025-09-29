@@ -34,6 +34,7 @@ mm = SDM3055(IP("192.168.1.123"))
 ## 4) Use
 voltage = mm.measure_dc_voltage()
 ```
+
 ## Layers
 
 The first layer is the "Device" base class
@@ -73,3 +74,28 @@ Note that both device drivers and application drivers can be omitted and can als
     - Two kinds of timeouts ?
       - One where "we read as much as possible during the available time"
       - One where "we expect a response within X otherwise it's trash"
+
+24.08.2025 : Shell and terminal
+
+There will be two console tools : shell and terminal
+
+- Shell : Run commands from drivers, protocols and adapters similar to ipython so "write_coil 0 1", "read_register 12", "read_temperature". I think using the POSIX utility argument syntax is a good idea. Another solution would be to use the Python syntax, so write_register(0, 1)
+- Terminal : Send raw data to a driver, a protocol, an adapter, etc... Multiple formats are possible such as text, hex or bytes
+
+The use could implement both Shell and Terminal in their classes and then call them from syndesi. I'm thinking of 4 ways to get shells or terminals 
+
+- Built-ins "syndesi shell ..." or "syndesi terminal ..."
+- relative path "syndesi shell xxx.py" or "syndesi terminal xxx.py"
+- plugin, modules behave like built-ins using the plugin/hook system (?) not sure about this one
+- dotted syntax, the user can use the dotted syntax to call their modules "syndesi terminal mypkg.myterm:MyTerminal"
+
+11.09.2025 : Read and buffers
+
+When a user calls a read, there's two behaviours :
+
+1) Only data that is received after the read() call is be returned (or slightly before with a delay)
+2) The first data available (can be way before the read() call) is returned
+
+Choice has been made to go with the second solution. This is the expected behaviour and it's easier to simulate the first option by using this architecture than the other way around. To obtain a "read only what's after" we can use the flush method or query with flush enabled
+
+The consequence is that the adapter has to keep a buffer of data

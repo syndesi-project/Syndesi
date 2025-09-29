@@ -1,221 +1,245 @@
-#from .command import Command, Argument, Mode
-from argparse import ArgumentParser
-from ..adapters.timeout import Timeout, TimeoutException
-from ..adapters.ip import IP
-from ..adapters.adapter import Adapter
-from ..adapters.serialport import SerialPort
-from ..protocols.delimited import Delimited
-from ..protocols.raw import Raw
-from enum import Enum
-from cmd import Cmd
-import sys
-import os
-from ..version import __version__
-try:
-    from colorist import ColorRGB
-    COLORIST_AVAILABLE = True
-except ImportError:
-    COLORIST_AVAILABLE = False
-try:
-    from colorama import Fore
-    COLORAMA_AVAILABLE = True
-except ImportError:
-    COLORAMA_AVAILABLE = False
+# File : adapter_shell.py
+# Author : Sébastien Deriaz
+# License : GPL
 
-class Mode(Enum):
-    COMMAND = 'command' # Command-like, write, read, write, read
-    FLOW = 'flow' # Write and read at the same time
+
+from argparse import ArgumentParser
+from enum import Enum
+
+from syndesi.adapters.adapter import Adapter
+from syndesi.adapters.backend.adapter_backend import (
+    AdapterDisconnected,
+    AdapterReadPayload,
+    AdapterSignal,
+)
+
+from ..adapters.ip import IP
+from ..adapters.serialport import SerialPort
+from ..adapters.timeout import Timeout
+from ..adapters.visa import Visa
+from ..protocols.delimited import Delimited
+from ..protocols.protocol import Protocol
+from ..protocols.raw import Raw
+from .console import Shell
+
+HISTORY_FILE_NAME = "syndesi"
+
 
 class Format(Enum):
-    TEXT = 'text'
-    HEX = 'hex'
+    TEXT = "text"
+    HEX = "hex"
+    BYTES = "bytes"
 
-class Argument:
-    def __init__(self, *args, **kwargs) -> None:
-        self.args = args
-        self.kwargs = kwargs
 
-    def add_to_parser(self, parser : ArgumentParser):
-        parser.add_argument(*self.args, **self.kwargs)
-
-class Kind(Enum):
-    IP = 'ip'
-    SERIAL = 'serial'
-
-class LineEnding(Enum):
-    CR = 'cr'
-    LF = 'lf'
-    CRLF = 'crlf'
-    NONE = 'none'
-
-LINE_ENDING_CHARS = {
-    LineEnding.CR : '\r',
-    LineEnding.LF : '\n',
-    LineEnding.CRLF : '\r\n',
-    LineEnding.NONE : ''
+FORMAT_DESCRIPTION = {
+    Format.TEXT: "Encoded text",
+    Format.HEX: "Hex bytes either space separated or joined",
+    Format.BYTES: "Use Python bytes display syntax",
 }
 
-TIMEOUT_ARGUMENT = Argument('-t', '--timeout', nargs='+', type=float, required=False, default=[2], help='Adapter timeout (response)')
-END = Argument('-e', '--end', required=False, default=LineEnding.LF.value, help='Termination, cr, lf, crlf or none. Only used with text format', choices=[x.value for x in LineEnding])
-MODE_ARGUMENT = Argument('-m', '--mode', choices=[x.value for x in Mode], default=Mode.COMMAND)
-FORMAT_ARGUMENT = Argument('-f', '--format', default=Format.TEXT, help='Format, text or hex', choices=[x.value for x in Format])
 
-def hex2array(raw : str):
-    s = raw.replace(' ', '')
+class AdapterType(Enum):
+    IP = "ip"
+    SERIAL = "serial"
+    VISA = "visa"
+
+
+class SpecialLineEnding(Enum):
+    CR = "cr"
+    LF = "lf"
+    CRLF = "crlf"
+
+
+LINE_ENDING_CHARS = {
+    SpecialLineEnding.CR: "\r",
+    SpecialLineEnding.LF: "\n",
+    SpecialLineEnding.CRLF: "\r\n",
+}
+
+
+def hex2array(raw: str) -> bytes:
+    s = raw.replace(" ", "")
     if len(s) % 2 != 0:
-        s = '0' + s
+        s = "0" + s
     try:
-        array = bytes([int(s[2*i:2*(i+1)], 16) for i in range(len(s)//2)])
-    except ValueError:
-        raise ValueError(f'Cannot parse hex string : {raw}')
+        array = bytes([int(s[2 * i : 2 * (i + 1)], 16) for i in range(len(s) // 2)])
+    except ValueError as err:
+        raise ValueError(f"Cannot parse hex string : {raw}") from err
     return array
 
-def array2hex(array : bytes):
-    return ' '.join([f'{x:02X}' for x in array])
 
-class AdapterCmd(Cmd):
-    __hiden_methods = ('do_EOF','do_clear','do_cls')
-    if COLORIST_AVAILABLE:
-        PROMPT_COLOR = ColorRGB(28, 90, 145)
-        prompt = f'{PROMPT_COLOR}❯ {PROMPT_COLOR.OFF}'
-    elif COLORAMA_AVAILABLE:
-        prompt = f'{Fore.CYAN}❯{Fore.RESET} '
-    else:
-        prompt = f'❯ '
+def array2hex(array: bytes) -> str:
+    return " ".join([f"{x:02X}" for x in array])
 
-    def __init__(self, adapter : Adapter, _format : Format) -> None:
-        super().__init__()
-        self._adapter = adapter
-        self._format = _format
 
-    def get_names(self):
-        return [n for n in dir(self.__class__) if n not in self.__hiden_methods]
+def parse_end_argument(arg: str | None) -> str | None:
+    if arg is None:
+        return None
+    # Return a special line end char if it corresponds
+    for s, t in LINE_ENDING_CHARS.items():
+        if arg == s.value:
+            return t
+    # Otherwise parse "\\n" -> "\n"
+    return arg.replace("\\n", "\n").replace("\\r", "\r")
 
-    def do_exit(self, inp):
-        """Exit"""
-        return True
-
-    def default(self, inp):
-        # TODO : Add flow mode here, manage it somehow, maybe not with AdapterCmd ? Maybe with a more custom one ?
-        if self._format == Format.TEXT:
-            # Send the data directly
-            cmd = inp
-        elif self._format == Format.HEX:
-            # Parse it, remove spaces, convert to int
-            cmd = hex2array(inp)
-
-        try:
-            output = self._adapter.query(cmd)
-        except TimeoutException:
-            printed_output = ''
-        else:
-            if self._format == Format.TEXT:
-                printed_output = output
-            elif self._format == Format.HEX:
-                printed_output = array2hex(output)
-
-        print(printed_output)
-
-    def do_clear(self, _):
-        if sys.platform == "linux" or sys.platform == "linux2" or sys.platform == "darwin":
-            # linux
-            os.system('clear')
-        elif sys.platform == "win32":
-            # Windows
-            os.system('cls')
-
-    def do_cls(self, _):
-        self.do_clear()
-
-    def do_help(self, arg: str) -> bool | None:
-        if arg:
-            # Use Cmd's help
-            super().do_help(arg)
-        else:
-            # Otherwise, print a custom help
-            names = self.get_names()
-
-            cmds_doc = []
-            cmds_undoc = []
-            docs = []
-            topics = set()
-            for name in names:
-                if name[:5] == 'help_':
-                    topics.add(name[5:])
-            names.sort()
-            # There can be duplicates if routines overridden
-            prevname = ''
-            for name in names:
-                if name[:3] == 'do_':
-                    if name == prevname:
-                        continue
-                    prevname = name
-                    cmd=name[3:]
-                    if cmd in topics:
-                        #cmds_doc.append(cmd)
-                        topics.remove(cmd)
-                    elif getattr(self, name).__doc__:
-                        cmds_doc.append(cmd)
-                        docs.append(getattr(self, name).__doc__)
-                    else:
-                        cmds_undoc.append(cmd)
-
-            print(f"Syndesi shell V{__version__}")
-            print("Available commands :")
-            max_width = max([len(cmd) for cmd in cmds_doc])
-            for cmd, doc in zip(cmds_doc, docs):
-                print(f"  {cmd:<{max_width+2}} : {doc}")
-
-            #self.print_topics(self.misc_header,  sorted(topics),15,80)
-            #self.print_topics(self.undoc_header, cmds_undoc, 15,80)
-
-    do_EOF = do_exit # Allow CTRL+d to exit
 
 class AdapterShell:
-    def __init__(self, kind : str) -> None:
+    DEFAULT_TERMINATION = "\n"
+
+    def __init__(self, kind: AdapterType, input_arguments: list[str]) -> None:
+
         self._parser = ArgumentParser()
-        MODE_ARGUMENT.add_to_parser(self._parser)
-        TIMEOUT_ARGUMENT.add_to_parser(self._parser)
-        END.add_to_parser(self._parser)
-        FORMAT_ARGUMENT.add_to_parser(self._parser)
+        self._parser.add_argument(
+            "-t",
+            "--timeout",
+            nargs="+",
+            type=float,
+            required=False,
+            default=[2],
+            help="Adapter timeout (response)",
+        )
+        self._parser.add_argument(
+            "-e",
+            "--end",
+            required=False,
+            default=SpecialLineEnding.LF.value,
+            help="Termination, cr, lf, crlf, none or a custom string. Only used with text format. Custom receive end can be set with --receive-end",
+        )
+        self._parser.add_argument(
+            "--receive-end",
+            required=False,
+            default=None,
+            help="Reception termination, same as --end but for reception only. If not set, the value of --end will be used",
+        )
+        self._parser.add_argument(
+            "-f",
+            "--format",
+            default=Format.TEXT,
+            help="Format, text or hex",
+            choices=[x.value for x in Format],
+        )
+        self._parser.add_argument(
+            "--backend-address", default=None, help="Address of the backend server"
+        )
+        self._parser.add_argument(
+            "--backend-port", default=None, help="Port of the backend server"
+        )
 
-        self._kind = Kind(kind)
-        if self._kind == Kind.IP:
-            self._parser.add_argument('-a', '--address', type=str, required=True)
-            self._parser.add_argument('-p', '--port', type=int, required=True)
-            self._parser.add_argument('--protocol', choices=['TCP', 'UDP'], default='TCP')
-        elif self._kind == Kind.SERIAL:
-            self._parser.add_argument('-p', '--port', type=str, required=True)
-            self._parser.add_argument('-b', '--baudrate', type=int, required=True)
-            self._parser.add_argument('--rtscts', action='store_true', default=False, help='Enable RTS/CTS')
+        if kind == AdapterType.IP:
+            self._parser.add_argument("address", type=str)
+            self._parser.add_argument("port", type=int)
+            self._parser.add_argument(
+                "--protocol", choices=["TCP", "UDP"], default="TCP"
+            )
+        elif kind == AdapterType.SERIAL:
+            self._parser.add_argument("port", type=str)
+            self._parser.add_argument("baudrate", type=int)
+            self._parser.add_argument(
+                "--rtscts", action="store_true", default=False, help="Enable RTS/CTS"
+            )
+        elif kind == AdapterType.VISA:
+            self._parser.add_argument("descriptor", type=str)
         else:
-            raise ValueError('Unsupported Kind')
-
-    def run(self, remaining_args):
-        args = self._parser.parse_args(remaining_args)
+            raise ValueError("Unsupported Kind")
+        args = self._parser.parse_args(input_arguments)
 
         timeout = Timeout(args.timeout)
 
+        self.adapter: Adapter
         # Create the adapter
-        if self._kind == Kind.IP:
-            adapter = IP(address=args.address, port=args.port, transport=args.protocol, timeout=timeout)
-        else:
-            adapter = SerialPort(port=args.port, baudrate=args.baudrate, timeout=timeout, rts_cts=args.rtscts)
+        if kind == AdapterType.IP:
+            self.adapter = IP(
+                address=args.address,
+                port=args.port,
+                transport=args.protocol,
+                timeout=timeout,
+                backend_address=args.backend_address,
+                backend_port=args.backend_port,
+            )
+        elif kind == AdapterType.SERIAL:
+            self.adapter = SerialPort(
+                port=args.port,
+                baudrate=args.baudrate,
+                timeout=timeout,
+                rts_cts=args.rtscts,
+                backend_address=args.backend_address,
+                backend_port=args.backend_port,
+            )
+        elif kind == AdapterType.VISA:
+            self.adapter = Visa(
+                descriptor=args.descriptor,
+                timeout=timeout,
+                backend_address=args.backend_address,
+                backend_port=args.backend_port,
+            )
 
-        adapter.set_default_timeout(Timeout(on_response='return'))
+        self.adapter.set_default_timeout(Timeout(action="return"))
 
         # Add the protocol
         _format = Format(args.format)
+        self._protocol: Protocol
         if _format == Format.HEX:
-            self._protocol = Raw(adapter)
+            self._protocol = Raw(self.adapter, event_callback=self.event)
         elif _format == Format.TEXT:
-            line_ending = LINE_ENDING_CHARS[LineEnding(args.end)]
-            self._protocol = Delimited(adapter, termination=line_ending)
+            send_end = parse_end_argument(args.end)
+            receive_end = parse_end_argument(args.receive_end)
+            if send_end is None:
+                send_end = self.DEFAULT_TERMINATION
+            if receive_end is None:
+                receive_end = send_end
 
-        shell = AdapterCmd(self._protocol, _format)
-        shell.intro = f"Connected to {self._protocol}"
-        # Enter the shell
-        try:
-            shell.cmdloop()
-        except KeyboardInterrupt:
-            pass
+            self._protocol = Delimited(
+                self.adapter,
+                termination=send_end,
+                receive_termination=receive_end,
+                event_callback=self.event,
+            )
+
+        # Create the shell
+        self.shell = Shell(
+            on_command=self.on_command,
+            history_file_name=HISTORY_FILE_NAME,
+            commands=[],
+        )
+
+    def run(self) -> None:
+        # try:
+        self.adapter.open()
+        # except Exception:  # TODO : Change this to a suitable exception
+        #     self.shell.print(
+        #         f"Failed to open adapter {self.adapter.descriptor}",
+        #         style=Shell.Style.ERROR,
+        #     )
+        #     self.adapter.close()  # TODO : Maybe force here ?
+        # else:
+        self.shell.print(
+            f"Opened adapter {self.adapter.descriptor}", style=Shell.Style.NOTE
+        )
+        self.shell.run()
+
+    def on_command(self, command: str) -> None:
+        self._protocol.write(command)
+
+    def event(self, signal: AdapterSignal) -> None:
+        if isinstance(signal, AdapterDisconnected):
+
+            def f(answer: str) -> None:
+                if answer.lower() == "y":
+                    # try:
+                    self._protocol.open()
+                    # except Exception:  # TODO : Change this
+                    #     self.shell.print(
+                    #         "Failed to open adapter", style=Shell.Style.WARNING
+                    #     )
+                    # else:
+                    #     self.shell.print("Adapter opened", style=Shell.Style.NOTE)
+                else:
+                    # Set the stop flag, exit will be effective on reprompt
+                    self.shell.stop()
+                self.shell.reprompt()
+
+            self.shell.ask("Adapter disconnected, reconnect ? (y/n): ", f)
+        elif isinstance(signal, AdapterReadPayload):
+            data = signal.data()
+            # TODO : Catch data from delimited with formatting
+            self.shell.print(data.decode("ASCII"))

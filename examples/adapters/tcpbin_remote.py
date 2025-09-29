@@ -1,9 +1,10 @@
 from syndesi.adapters import IP, Proxy
 
 # Settings
-ADDRESS = 'tcpbin.com'
+ADDRESS = "tcpbin.com"
 PORT = 4242
-DATA = b'Hello World\n'
+DATA = b"Hello World\n"
+
 
 def main():
     # Create a proxy server
@@ -17,5 +18,6 @@ def main():
     received = adapter.query(DATA)
     print(f"Received : {repr(received)}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
