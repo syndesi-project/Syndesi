@@ -24,14 +24,14 @@ from .descriptors import VisaDescriptor
 
 # --- Typing-only imports so mypy knows pyvisa symbols without requiring it at runtime
 if TYPE_CHECKING:
-    import pyvisa
-    from pyvisa.resources import Resource
+    import pyvisa # type: ignore
+    from pyvisa.resources import Resource # type: ignore
 
 # --- Runtime optional import
 try:
     import pyvisa as _pyvisa_runtime
 except Exception:
-    _pyvisa_runtime = None  # type:ignore
+    _pyvisa_runtime = None
 
 pyvisa: ModuleType | None = _pyvisa_runtime  # type: ignore
 
@@ -105,8 +105,8 @@ class VisaBackend(AdapterBackend):
 
         if self._status == AdapterBackendStatus.DISCONNECTED:
             # These attributes exist on pyvisa resources
-            self._inst.write_termination = ""  # type: ignore[attr-defined]
-            self._inst.read_termination = None  # type: ignore[attr-defined]
+            self._inst.write_termination = ""
+            self._inst.read_termination = None
 
             self._inst_lock = threading.Lock()
             self._status = AdapterBackendStatus.CONNECTED
@@ -136,7 +136,7 @@ class VisaBackend(AdapterBackend):
         super().write(data)
         with self._inst_lock:
             if self._inst is not None:
-                self._inst.write_raw(data)  # type: ignore[attr-defined]
+                self._inst.write_raw(data)
         return True
 
     def _socket_read(self) -> Fragment:
@@ -169,7 +169,7 @@ class VisaBackend(AdapterBackend):
             try:
                 while True:
                     # Read up to an error
-                    payload += inst.read_bytes(1)  # type: ignore[attr-defined]
+                    payload += inst.read_bytes(1)
                     inst.timeout = 0
             except pyvisa.VisaIOError:
                 # Timeout

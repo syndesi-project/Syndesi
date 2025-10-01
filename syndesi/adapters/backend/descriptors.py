@@ -69,8 +69,9 @@ class IPDescriptor(Descriptor):
 
     DETECTION_PATTERN = r"(\d+.\d+.\d+.\d+|[\w\.]+):\d+:(UDP|TCP)"
     address: str
+    transport: Transport
     port: int | None = None
-    transport: Transport | None = None
+    #transport: Transport | None = None
 
     @staticmethod
     def from_string(string: str) -> "IPDescriptor":
@@ -78,7 +79,7 @@ class IPDescriptor(Descriptor):
         address = parts[0]
         port = int(parts[1])
         transport = IPDescriptor.Transport(parts[2])
-        return IPDescriptor(address, port, transport)
+        return IPDescriptor(address, transport, port)
 
     def __str__(self) -> str:
         return f"{self.address}:{self.port}:{self.Transport(self.transport).value}"

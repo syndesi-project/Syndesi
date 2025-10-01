@@ -20,7 +20,7 @@ class Visa(Adapter):
         self,
         descriptor: str,
         alias: str = "",
-        stop_condition: StopCondition | None | EllipsisType = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         timeout: None | float | Timeout | EllipsisType = ...,
         encoding: str = "utf-8",
         event_callback: Callable[[AdapterSignal], None] | None = None,
@@ -30,7 +30,7 @@ class Visa(Adapter):
         super().__init__(
             VisaDescriptor.from_string(descriptor),
             alias=alias,
-            stop_conditions=stop_condition,
+            stop_conditions=stop_conditions,
             timeout=timeout,
             encoding=encoding,
             event_callback=event_callback,

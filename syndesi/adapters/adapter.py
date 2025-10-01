@@ -462,7 +462,7 @@ class Adapter(ABC):
     def read_detailed(
         self,
         timeout: Timeout | EllipsisType | None = ...,
-        stop_condition: StopCondition | EllipsisType | None = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope : str = ReadScope.BUFFERED.value,
     ) -> AdapterReadPayload | None:
         """
@@ -484,6 +484,7 @@ class Adapter(ABC):
         t = time.time()
         _scope = ReadScope(scope)
         output_signal = None
+        read_timeout = None
 
         # First, we check if data is in the buffer and if the scope if set to BUFFERED
         while _scope == ReadScope.BUFFERED and self._signal_queue.has_read_payload():
@@ -545,106 +546,28 @@ class Adapter(ABC):
 
         if output_signal is None:
             # TODO : Make read_timeout always Timeout, never None ?
-            match read_timeout.action:
-                case TimeoutAction.RETURN:
-                    return None
-                case TimeoutAction.ERROR:
-                    raise TimeoutError(
-                        f"No response received from device within {read_timeout.response()} seconds"
-                    )
-                case _:
-                    raise NotImplementedError()
+            if read_timeout is None:
+                return None
+            else:
+                match read_timeout.action:
+                    case TimeoutAction.RETURN:
+                        return None
+                    case TimeoutAction.ERROR:
+                        raise TimeoutError(
+                            f"No response received from device within {read_timeout.response()} seconds"
+                        )
+                    case _:
+                        raise NotImplementedError()
         
         else:
             return output_signal
 
-
-        # Okay idea : Remove the start read and instead ask for the time of the backend.
-        # Then we read whatever payload comes from the backend and compare that to the time
-        # If it doesn't match our criteria, we trash it
-        # When waiting for the backend payload, we wait +0.5s so make sure we received everything
-        # This 0.5s could be changed if we're local or not by the way
-
-
-        # # First, ask for the backend time, this is the official start of the read 
-        # backend_read_start_time = cast(NumberLike, self._make_backend_request(Action.GET_BACKEND_TIME)[0])
-
-        # If not timeout is specified, use the default one
-
-        # Calculate last_valid_timestamp, the limit at which a payload is not accepted anymore
-        # Calculate the queue timeout (time for a response + small delay)
-        #last_valid_timestamp = None
-        # queue_timeout_timestamp = None
-        # if read_timeout is not None:
-        #     response_delay = read_timeout.response()
-        # else:
-        #     response_delay = None
-
-        # if response_delay is not None:
-        #     #last_valid_timestamp = backend_read_start_time + response_delay
-        #     queue_timeout_timestamp = time.time() + response_delay + BACKEND_REQUEST_DEFAULT_TIMEOUT
-
-        # output_signal : AdapterReadPayload | None
-        # # This delay is given by the backend when a fragment is received. It basically says
-        # # "I've received something, wait at most x seconds before raising an error"
-        # read_init_end_delay : float | None = None
-
-        # # Ready to read payloads
-        # while True:
-        #     if read_init_end_delay is not None:
-        #         # Find the next timeout
-        #         queue_timeout = read_init_end_delay + 0.1 # TODO : Make this clean, this is the delay to let data arrive to the frontend
-        #     elif queue_timeout_timestamp is None:
-        #         queue_timeout = None
-        #     else:
-        #         queue_timeout = queue_timeout_timestamp - time.time()
-        #         if queue_timeout < 0:
-        #             queue_timeout = 0
-
-        #     try:
-        #         response = self._signal_queue.peek(block=True, timeout=queue_timeout)
-        #         signal = response[1]
-
-        #         if isinstance(signal, AdapterReadPayload):
-        #             if response_delay is not None and signal.response_timestamp - backend_read_start_time > response_delay:
-        #                 # This signal happened after the max response time, act as if a timeout occured
-        #                 # and do not pop it out of the queue
-        #                 # TODO : Make _timeout always Timeout, never None ?
-        #                 output_signal = None
-        #                 break
-
-        #             if _scope == ReadScope.NEXT and signal.response_timestamp < backend_read_start_time:
-        #                 # The payload happened before the read start
-        #                 self._signal_queue.get()
-        #                 continue
-
-        #             if response_delay is not None:
-        #                 if signal.response_timestamp - backend_read_start_time > response_delay:
-        #                     self._signal_queue.get()
-        #                     output_signal = None
-        #                     break
-                    
-        #             # Other wise the payload is valid
-        #             self._signal_queue.get()
-        #             output_signal = signal
-        #             break
-        #         elif isinstance(signal, AdapterReadInit):
-        #             read_init_end_delay = signal.end_delay
-        #             self._signal_queue.get()
-        #         elif isinstance(signal, AdapterDisconnected):
-        #             self._signal_queue.get()
-                    
-
-        #     except queue.Empty:
-        #         output_signal = None
-        #         break
-
     def read(
         self,
         timeout: Timeout | EllipsisType | None = ...,
-        stop_condition: StopCondition | EllipsisType | None = ...,
-    ) -> bytes:
-        signal = self.read_detailed(timeout=timeout, stop_condition=stop_condition)
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> bytes | None:
+        signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
         if signal is None:
             return None
         else:
@@ -658,8 +581,8 @@ class Adapter(ABC):
         self,
         data: bytes | str,
         timeout: Timeout | EllipsisType | None = ...,
-        stop_condition: StopCondition | EllipsisType | None = ...,
-    ) -> tuple[bytes, AdapterReadPayload | None]:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> AdapterReadPayload | None:
         """
         Shortcut function that combines
         - flush_read
@@ -668,16 +591,16 @@ class Adapter(ABC):
         """
         self.flushRead()
         self.write(data)
-        return self.read_detailed(timeout=timeout, stop_condition=stop_condition)
+        return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
 
     def query(
         self,
         data: bytes | str,
         timeout: Timeout | EllipsisType | None = ...,
-        stop_condition: StopCondition | EllipsisType | None = ...,
-    ) -> bytes:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> bytes | None:
         signal = self.query_detailed(
-            data=data, timeout=timeout, stop_condition=stop_condition
+            data=data, timeout=timeout, stop_conditions=stop_conditions
         )
         if signal is None:
             return None

@@ -37,7 +37,7 @@ def auto_adapter(adapter_or_string: Adapter | str) -> Adapter:
             return IP(
                 address=descriptor.address,
                 port=descriptor.port,
-                transport=descriptor.transport,
+                transport=descriptor.transport.value,
             )
         elif isinstance(descriptor, SerialPortDescriptor):
             return SerialPort(port=descriptor.port, baudrate=descriptor.baudrate)

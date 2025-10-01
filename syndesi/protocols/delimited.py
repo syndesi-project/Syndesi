@@ -110,10 +110,8 @@ class Delimited(Protocol):
     def query(
         self,
         data: str,
-        timeout: Timeout | None | EllipsisType = ...,
-        decode: bool = True,
-        full_output: bool = False,
-    ) -> str | tuple[str, AdapterSignal]:
+        timeout: Timeout | None | EllipsisType = ...
+    ) -> str | None:
         """
         Writes then reads from the device and return the result
 
@@ -130,13 +128,13 @@ class Delimited(Protocol):
         """
         self._adapter.flushRead()
         self.write(data)
-        return self.read(timeout=timeout, decode=decode, full_output=full_output)
+        return self.read(timeout=timeout)
 
     def read_raw(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-    ) -> tuple[bytes, AdapterReadPayload | None]:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> bytes | None:
         """
         Reads command and formats it as a str
 
@@ -151,30 +149,33 @@ class Delimited(Protocol):
         """
 
         # Send up to the termination
-        raw_data, signal = self._adapter.read_detailed(
-            timeout=timeout, stop_condition=stop_condition
+        signal = self._adapter.read_detailed(
+            timeout=timeout, stop_conditions=stop_conditions
         )
-
-        return raw_data, signal
+        if signal is None:
+            return None
+        else:
+            return signal.data()
 
     def read_detailed(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-    ) -> tuple[str, AdapterReadPayload | None]:
-        raw_data, signal = self.read_raw(timeout=timeout, stop_condition=stop_condition)
-
-        data_out = self._decode(raw_data)
-        return data_out, signal
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
+    ) -> AdapterReadPayload | None:
+        signal = self._adapter.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
+        return signal
 
     def read(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-        decode: bool = True,
-        full_output: bool = False,
-    ) -> str:
-        return self.read_detailed(timeout=timeout, stop_condition=stop_condition)[0]
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
+    ) -> str | None:
+        signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
+        if signal is None:
+            return None
+        else:
+            return self._decode(signal.data())
+
 
     def _decode(self, data: bytes) -> str:
         try:

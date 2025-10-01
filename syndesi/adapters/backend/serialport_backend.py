@@ -6,7 +6,7 @@
 
 import time
 
-import serial  # type: ignore
+import serial
 from serial.serialutil import PortNotOpenError
 
 from syndesi.tools.backend_api import AdapterBackendStatus, Fragment
@@ -83,10 +83,10 @@ class SerialPortBackend(AdapterBackend):
                 baudrate=self.descriptor.baudrate,
                 rtscts=self._rts_cts,
             )
-        elif not self._port.isOpen():
+        elif not self._port.isOpen(): # type: ignore
             self._port.open()
 
-        if self._port.isOpen():
+        if self._port.isOpen(): # type: ignore
             self._logger.info(f"Adapter {self.descriptor} opened")
             self._status = AdapterBackendStatus.CONNECTED
             return True
@@ -112,7 +112,7 @@ class SerialPortBackend(AdapterBackend):
             return False
         else:
             if self._rts_cts:  # Experimental
-                self._port.setRTS(True)  # type : ignore
+                self._port.setRTS(True)  # type: ignore
             # TODO : Implement auto open
             # if self._status == AdapterBackendStatus.DISCONNECTED:
             #     self.open()
@@ -230,7 +230,7 @@ class SerialPortBackend(AdapterBackend):
 
     def is_opened(self) -> bool:
         if self._port is not None:
-            if self._port.isOpen():  # type : ignore
+            if self._port.isOpen():  # type: ignore
                 return True
 
         return False
