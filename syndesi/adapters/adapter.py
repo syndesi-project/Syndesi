@@ -37,6 +37,7 @@ from ..tools.backend_api import (
     BACKEND_PORT,
     Action,
     BackendResponse,
+    Fragment,
     default_host,
     raise_if_error,
     EXTRA_BUFFER_RESPONSE_TIME
@@ -49,7 +50,7 @@ from .backend.adapter_backend import (
     AdapterSignal,
 )
 from .backend.descriptors import Descriptor
-from .stop_condition import StopCondition, Continuation, Total
+from .stop_condition import StopCondition, Continuation, StopConditionType, Total
 from .timeout import Timeout, TimeoutAction, any_to_timeout
 
 DEFAULT_STOP_CONDITION = Continuation(time=0.1)
@@ -385,7 +386,7 @@ class Adapter(ABC):
         elif stop_conditions is None:
             self._stop_conditions = []
 
-        self._make_backend_request(Action.SET_STOP_CONDITION, self._stop_conditions)
+        self._make_backend_request(Action.SET_STOP_CONDITIONs, self._stop_conditions)
 
     def set_default_stop_condition(self, stop_condition: StopCondition) -> None:
         """
@@ -464,7 +465,7 @@ class Adapter(ABC):
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope : str = ReadScope.BUFFERED.value,
-    ) -> AdapterReadPayload | None:
+    ) -> AdapterReadPayload:
         """
         Read data from the device
 
@@ -481,10 +482,22 @@ class Adapter(ABC):
         data : bytes
         signal : AdapterReadPayload
         """
-        t = time.time()
         _scope = ReadScope(scope)
         output_signal = None
         read_timeout = None
+
+        if timeout is ...:
+            read_timeout = self._timeout
+        else:
+            read_timeout = any_to_timeout(timeout)
+            
+        if read_timeout is None:
+            raise RuntimeError("Cannot read without setting a timeout")
+
+        if stop_conditions is not ...:
+            if isinstance(stop_conditions, StopCondition):
+                stop_conditions = [stop_conditions]    
+            self._make_backend_request(Action.SET_STOP_CONDITIONs, stop_conditions)
 
         # First, we check if data is in the buffer and if the scope if set to BUFFERED
         while _scope == ReadScope.BUFFERED and self._signal_queue.has_read_payload():
@@ -496,30 +509,25 @@ class Adapter(ABC):
         else:
             # Nothing was found, ask the backend with a START_READ request. The backend will
             # respond at most after the response_time with either data or a RESPONSE_TIMEOUT
-            if timeout is ...:
-                read_timeout = self._timeout
+
+            if not read_timeout.is_initialized():
+                raise RuntimeError("Timeout needs to be initialized")
+
+            _response = read_timeout.response()
+
+            read_init_time = time.time()
+            start_read_id = self._make_backend_request(Action.START_READ, _response)[0]
+
+            if _response is None:
+                # Wait indefinitely
+                read_stop_timestamp = None
             else:
-                read_timeout = any_to_timeout(timeout)
+                # Wait for the response time + a bit more
+                read_stop_timestamp = read_init_time + _response
 
-            if read_timeout is not None:
-                if not read_timeout.is_initialized():
-                    raise RuntimeError("Timeout needs to be initialized")
-
-                _response = read_timeout.response()
-
-                read_init_time = time.time()
-                start_read_id = self._make_backend_request(Action.START_READ, _response)[0]
-
-                if _response is None:
-                    # Wait indefinitely
-                    read_stop_timestamp = None
-                else:
-                    # Wait for the response time + a bit more
-                    read_stop_timestamp = read_init_time + _response
-
-            else:
-                start_read_id = None
-                read_init_time = None
+            # else:
+            #     start_read_id = None
+            #     read_init_time = None
 
             
             while True:
@@ -543,21 +551,25 @@ class Adapter(ABC):
                         break
                     # Otherwise ignore it
 
-
         if output_signal is None:
             # TODO : Make read_timeout always Timeout, never None ?
-            if read_timeout is None:
-                return None
-            else:
-                match read_timeout.action:
-                    case TimeoutAction.RETURN:
-                        return None
-                    case TimeoutAction.ERROR:
-                        raise TimeoutError(
-                            f"No response received from device within {read_timeout.response()} seconds"
-                        )
-                    case _:
-                        raise NotImplementedError()
+            match read_timeout.action:
+                case TimeoutAction.RETURN_EMPTY:
+                    t = time.time()
+                    return AdapterReadPayload(
+                        fragments=[Fragment(b'', t)],
+                        stop_timestamp=t,
+                        stop_condition_type=StopConditionType.TIMEOUT,
+                        previous_read_buffer_used=False,
+                        response_timestamp=None,
+                        response_delay=None
+                    )
+                case TimeoutAction.ERROR:
+                    raise TimeoutError(
+                        f"No response received from device within {read_timeout.response()} seconds"
+                    )
+                case _:
+                    raise NotImplementedError()
         
         else:
             return output_signal
@@ -566,12 +578,9 @@ class Adapter(ABC):
         self,
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes | None:
+    ) -> bytes:
         signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-        if signal is None:
-            return None
-        else:
-            return signal.data()
+        return signal.data()
 
     def _cleanup(self) -> None:
         if self._init_ok and self.opened:
@@ -582,7 +591,7 @@ class Adapter(ABC):
         data: bytes | str,
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload | None:
+    ) -> AdapterReadPayload:
         """
         Shortcut function that combines
         - flush_read
@@ -598,14 +607,11 @@ class Adapter(ABC):
         data: bytes | str,
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes | None:
+    ) -> bytes:
         signal = self.query_detailed(
             data=data, timeout=timeout, stop_conditions=stop_conditions
         )
-        if signal is None:
-            return None
-        else:
-            return signal.data()
+        return signal.data()
 
     def set_event_callback(self, callback: Callable[[AdapterSignal], None]) -> None:
         self.event_callback = callback

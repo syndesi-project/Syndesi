@@ -111,7 +111,7 @@ class Delimited(Protocol):
         self,
         data: str,
         timeout: Timeout | None | EllipsisType = ...
-    ) -> str | None:
+    ) -> str:
         """
         Writes then reads from the device and return the result
 
@@ -134,7 +134,7 @@ class Delimited(Protocol):
         self,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes | None:
+    ) -> bytes:
         """
         Reads command and formats it as a str
 
@@ -152,16 +152,13 @@ class Delimited(Protocol):
         signal = self._adapter.read_detailed(
             timeout=timeout, stop_conditions=stop_conditions
         )
-        if signal is None:
-            return None
-        else:
-            return signal.data()
+        return signal.data()
 
     def read_detailed(
         self,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
-    ) -> AdapterReadPayload | None:
+    ) -> AdapterReadPayload:
         signal = self._adapter.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
         return signal
 
@@ -169,12 +166,9 @@ class Delimited(Protocol):
         self,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
-    ) -> str | None:
+    ) -> str:
         signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-        if signal is None:
-            return None
-        else:
-            return self._decode(signal.data())
+        return self._decode(signal.data())
 
 
     def _decode(self, data: bytes) -> str:

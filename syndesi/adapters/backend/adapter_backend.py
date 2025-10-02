@@ -260,7 +260,6 @@ class AdapterBackend(ABC):
         else:
             fragment_delta_t = float("nan")
         if fragment.data == b"":
-            self._logger.debug('Empty data -> close')
             self.close()
             yield AdapterDisconnected()
         else:

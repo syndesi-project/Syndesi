@@ -50,7 +50,7 @@ class Raw(Protocol):
         data: bytes,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes | None:
+    ) -> bytes:
         self._adapter.flushRead()
         self.write(data)
         return self.read(timeout=timeout, stop_conditions=stop_conditions)
@@ -60,7 +60,7 @@ class Raw(Protocol):
         data: bytes,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload | None:
+    ) -> AdapterReadPayload:
         self._adapter.flushRead()
         self.write(data)
         return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
@@ -69,18 +69,15 @@ class Raw(Protocol):
         self,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes | None:
+    ) -> bytes:
         signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-        if signal is None:
-            return None
-        else: 
-            return signal.data()
+        return signal.data() 
 
     def read_detailed(
         self,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload | None:
+    ) -> AdapterReadPayload:
         return self._adapter.read_detailed(
             timeout=timeout, stop_conditions=stop_conditions
         )

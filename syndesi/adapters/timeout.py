@@ -13,7 +13,7 @@ from ..tools.types import NumberLike, is_number
 
 class TimeoutAction(Enum):
     ERROR = "error"
-    RETURN = "return"
+    RETURN_EMPTY = "return_empty"
 
 
 class IsInitialized(Protocol):

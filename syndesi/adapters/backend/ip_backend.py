@@ -140,6 +140,7 @@ class IPBackend(AdapterBackend):
 
             if fragment.data == b"":
                 # Socket disconnected
+                self._logger.debug('## Socket disconnected')
                 self.close()
 
         return fragment

@@ -34,7 +34,7 @@ class Action(Enum):
     #FORCE_CLOSE = "force_close"  # (descriptor,) -> ()
     WRITE = "write"  # (descriptor,data) -> ()
     READ = "read"  # (descriptor,full_output,temporary_timeout,temporary_stop_condition) -> (data,metrics)
-    SET_STOP_CONDITION = "set_stop_condition"  # (descriptor,stop_condition)
+    SET_STOP_CONDITIONs = "set_stop_condition"  # (descriptor,stop_condition)
     FLUSHREAD = "flushread"
     START_READ = "start_read"  # Start a read (descriptor,response_time)
     RESPONSE_TIMEOUT = "response_timeout"

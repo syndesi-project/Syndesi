@@ -106,7 +106,7 @@ class SCPI(Protocol):
         command: str,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> str | None:
+    ) -> str:
         self._adapter.flushRead()
         self.write(command)
 
@@ -116,37 +116,28 @@ class SCPI(Protocol):
         self,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes | None:
+    ) -> bytes:
         signal = self.read_detailed(
             timeout=timeout,
             stop_conditions=stop_conditions,
         )
-        if signal is None:
-            return None
-        else:
-            return signal.data() 
+        return signal.data() 
 
     def read_detailed(
         self,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload | None:
+    ) -> AdapterReadPayload:
 
         signal = self._adapter.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-        if signal is None:
-            return None
-        else:
-            return signal
+        return signal
 
     def read(
         self,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> str | None:
+    ) -> str:
         signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-        if signal is None:
-            return None
-        else:
-            raw_data = signal.data()
-            return self._unformatCommand(self._from_bytes(raw_data))
+        raw_data = signal.data()
+        return self._unformatCommand(self._from_bytes(raw_data))
         

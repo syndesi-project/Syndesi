@@ -123,11 +123,11 @@ def test_response_B():
     client = IP(
         HOST,
         port=PORT,
+        timeout=Timeout(response=delay - TIME_DELTA, action="return_empty"),
         stop_conditions=Continuation(0.1),
-        timeout=Timeout(response=delay - TIME_DELTA, action="return"),
     )
     data = client.query(encode_sequences([(sequence, delay)]))
-    assert data == None
+    assert data == b''
     sleep(2 * TIME_DELTA)
     data = client.read()
     assert data == sequence
@@ -243,17 +243,17 @@ def test_length_short_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA, action="return"),
+        timeout=Timeout(response=delay - TIME_DELTA, action="return_empty"),
         stop_conditions=Length(10),
     )
     data = client.query(encode_sequences([(sequence, delay)]))
-    assert data == None
+    assert data == b''
     data = client.read()
     assert data == sequence[:N]
     data = client.read()
     assert data == sequence[N : 2 * N]
     data = client.read()  # Too short
-    assert data == None
+    assert data == b''
     client.flushRead()
     client.close()
 
@@ -266,7 +266,7 @@ def test_length_long_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA, action="return"),
+        timeout=Timeout(response=delay + TIME_DELTA, action="return_empty"),
         stop_conditions=Length(10),
     )
     client.write(encode_sequences([(sequence, delay)]))
@@ -275,7 +275,7 @@ def test_length_long_timeout():
     data = client.read()
     assert data == sequence[N : 2 * N]
     data = client.read()
-    assert data == None
+    assert data == b''
 
     client.close()
 
@@ -373,13 +373,13 @@ def test_timeout_on_return():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA, action='return'),
+        timeout=Timeout(response=delay - TIME_DELTA, action="return_empty"),
         stop_conditions=Termination(termination),
         transport="UDP",
     )
     client.write(encode_sequences([(A, delay)]))
     data = client.read()
-    assert data == None
+    assert data == b''
     sleep(TIME_DELTA*2)
     client.flushRead()
     client.close()
@@ -441,7 +441,7 @@ def test_continuation_return():
         HOST,
         port=PORT,
         timeout=Timeout(
-            response=delay + TIME_DELTA, action='return'
+            response=delay + TIME_DELTA, action="return_empty"
         ),
         stop_conditions=[
             Termination(termination),
@@ -484,10 +484,10 @@ def test_read_timeout_reconfiguration():
     client.write(encode_sequences([(B+termination, delay)]))
     data = client.read(
         timeout=Timeout(
-            response=delay-TIME_DELTA, action='return'
+            response=delay-TIME_DELTA, action="return_empty"
         )
     )
-    assert data == None
+    assert data == b''
     client.flushRead()
     client.close()
 
