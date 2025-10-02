@@ -11,7 +11,7 @@ dynamic = ["version"]
 description = "Syndesi"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "GPL" }  # update if different
+license = { text = "GPL" }
 authors = [{ name = "Sébastien Deriaz", email = "sebastien.deriaz1@gmail.com" }]
 keywords = ["python", "syndesi", "interface", "ethernet", "serial", "visa"]
 classifiers = [
@@ -42,8 +42,6 @@ include = ["syndesi*"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-#select = ["D","E","F","I","B"]   # include pydocstyle rules ("D")
-#ignore = ["D203","D213"]         # pick your preferences
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
