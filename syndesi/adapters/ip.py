@@ -63,7 +63,7 @@ class IP(Adapter):
             descriptor=IPDescriptor(
                 address=address,
                 port=port,
-                transport=IPDescriptor.Transport(transport.upper())
+                transport=IPDescriptor.Transport(transport.upper()),
             ),
             alias=alias,
             timeout=timeout,
@@ -76,7 +76,7 @@ class IP(Adapter):
         )
         self.descriptor: IPDescriptor
 
-        #if self.descriptor.transport is not None:
+        # if self.descriptor.transport is not None:
         self._logger.info(f"Setting up {self.descriptor.transport.value} IP adapter")
 
         self.set_default_timeout(self._default_timeout())
@@ -98,7 +98,7 @@ class IP(Adapter):
         if self.descriptor.port is None:
             self.descriptor.port = port
 
-    def set_default_transport(self, transport : str | IPDescriptor.Transport) -> None:
+    def set_default_transport(self, transport: str | IPDescriptor.Transport) -> None:
         """
         Sets the default IP transport protocol
 

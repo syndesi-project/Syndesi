@@ -1,8 +1,8 @@
 import socket
 from multiprocessing.connection import Connection
 
-
 BACKEND_REQUEST_DEFAULT_TIMEOUT = 0.5
+
 
 def get_conn_addresses(conn: Connection) -> tuple[tuple[str, int], tuple[str, int]]:
     try:

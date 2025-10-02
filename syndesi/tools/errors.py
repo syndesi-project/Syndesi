@@ -6,6 +6,7 @@ from pathlib import Path
 
 PACKAGE_PATH = Path(__file__).resolve().parent.parent
 
+
 class SyndesiError(Exception):
     """Base class for all Syndesi errors"""
 
@@ -26,7 +27,7 @@ class AdapterError(SyndesiError):
     """Error inside an adapter frontend"""
 
 
-def make_error_description(e : Exception) -> str: 
+def make_error_description(e: Exception) -> str:
     tb = e.__traceback__
     if tb is None:
         error_message = ""
@@ -44,8 +45,6 @@ def make_error_description(e : Exception) -> str:
         frame = tb.tb_frame
         line_no = tb.tb_lineno
         filename = frame.f_code.co_filename
-        error_message = (
-            f"{_type} : {extra_arguments} {filename}:{line_no}"
-        )
+        error_message = f"{_type} : {extra_arguments} {filename}:{line_no}"
 
     return error_message

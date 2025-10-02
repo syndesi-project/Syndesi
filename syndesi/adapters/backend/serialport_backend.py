@@ -33,7 +33,6 @@ class SerialPortBackend(AdapterBackend):
 
         self.open()
 
-
     def set_baudrate(self, baudrate: int) -> None:
         """
         Set baudrate
@@ -83,10 +82,10 @@ class SerialPortBackend(AdapterBackend):
                 baudrate=self.descriptor.baudrate,
                 rtscts=self._rts_cts,
             )
-        elif not self._port.isOpen(): # type: ignore
+        elif not self._port.isOpen():  # type: ignore
             self._port.open()
 
-        if self._port.isOpen(): # type: ignore
+        if self._port.isOpen():  # type: ignore
             self._logger.info(f"Adapter {self.descriptor} opened")
             self._status = AdapterBackendStatus.CONNECTED
             return True
@@ -116,13 +115,13 @@ class SerialPortBackend(AdapterBackend):
             # TODO : Implement auto open
             # if self._status == AdapterBackendStatus.DISCONNECTED:
             #     self.open()
-            #write_start = time.time()
+            # write_start = time.time()
             try:
                 self._port.write(data)
             except (OSError, PortNotOpenError):
                 return False
-#            write_duration = time.time() - write_start
-            #self._logger.debug(f"Write [{write_duration * 1e3:.3f}ms]: {repr(data)}")
+            #            write_duration = time.time() - write_start
+            # self._logger.debug(f"Write [{write_duration * 1e3:.3f}ms]: {repr(data)}")
 
             return True
 
@@ -144,7 +143,7 @@ class SerialPortBackend(AdapterBackend):
                     return Fragment(data, t)
                 else:
                     return Fragment(b"", t)
-                    #self._logger.debug('Data is none -> b""')
+                    # self._logger.debug('Data is none -> b""')
                 # else:
                 #     self._logger.debug(f'{data=}')
 

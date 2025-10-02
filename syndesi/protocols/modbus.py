@@ -333,7 +333,7 @@ class Modbus(Protocol):
         Return data from PDU
         """
         if _pdu is None:
-            raise RuntimeError("Failed to read modbus data") 
+            raise RuntimeError("Failed to read modbus data")
         if self._modbus_type == ModbusType.TCP:
             # Return raw data
             # data = _pdu
@@ -398,8 +398,8 @@ class Modbus(Protocol):
             # timeout=Timeout(continuation=1),
             stop_conditions=[
                 Length(self._length(n_coil_bytes + 2)),
-                Continuation(time=1)
-              ]  # TODO : convert to multiple stop conditions here
+                Continuation(time=1),
+            ],  # TODO : convert to multiple stop conditions here
         )
         response = self._parse_pdu(pdu)
         self._raise_if_error(response, exception_codes=EXCEPTIONS)

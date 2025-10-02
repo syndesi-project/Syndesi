@@ -8,9 +8,6 @@ from typing import Any, Protocol
 
 from ..tools.types import NumberLike, is_number
 
-# from .backend.timeout import TimeoutAction, JsonKey
-
-
 class TimeoutAction(Enum):
     ERROR = "error"
     RETURN_EMPTY = "return_empty"
@@ -78,10 +75,9 @@ class Timeout:
             return None
         else:
             return self._response
-        
-    def is_initialized(self) -> bool:
-        return not self._response is Ellipsis
 
+    def is_initialized(self) -> bool:
+        return self._response is not Ellipsis
 
 
 def any_to_timeout(value: Any) -> Timeout:
@@ -93,26 +89,3 @@ def any_to_timeout(value: Any) -> Timeout:
         return value
     else:
         raise ValueError(f"Could not convert {value} to Timeout")
-
-
-# class TimeoutException(Exception):
-#     def __init__(self, value: NumberLike, limit: NumberLike) -> None:
-#         super().__init__()
-#         self._value = value
-#         self._limit = limit
-
-#     def __str__(self) -> str:
-#         try:
-#             value_string = f"{self._value * 1e3:.3f}ms"
-#         except (ValueError, TypeError):
-#             value_string = "not received"
-
-#         try:
-#             limit_string = f"{self._limit * 1e3:.3f}ms"
-#         except (ValueError, TypeError):
-#             limit_string = "not received"
-
-#         return f"{value_string} / {limit_string}"
-
-#     def __repr__(self) -> str:
-#         return self.__str__()

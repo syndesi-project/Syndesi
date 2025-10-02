@@ -24,8 +24,8 @@ from .descriptors import VisaDescriptor
 
 # --- Typing-only imports so mypy knows pyvisa symbols without requiring it at runtime
 if TYPE_CHECKING:
-    import pyvisa # type: ignore
-    from pyvisa.resources import Resource # type: ignore
+    import pyvisa  # type: ignore
+    from pyvisa.resources import Resource  # type: ignore
 
 # --- Runtime optional import
 try:

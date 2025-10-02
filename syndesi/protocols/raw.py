@@ -54,7 +54,7 @@ class Raw(Protocol):
         self._adapter.flushRead()
         self.write(data)
         return self.read(timeout=timeout, stop_conditions=stop_conditions)
-    
+
     def query_detailed(
         self,
         data: bytes,
@@ -71,7 +71,7 @@ class Raw(Protocol):
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> bytes:
         signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-        return signal.data() 
+        return signal.data()
 
     def read_detailed(
         self,

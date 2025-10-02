@@ -15,8 +15,8 @@
 # An adapter is meant to work with bytes objects but it can accept strings.
 # Strings will automatically be converted to bytes using utf-8 encoding
 
-from enum import Enum
 import logging
+import os
 import queue
 import subprocess
 import sys
@@ -25,42 +25,43 @@ import time
 import weakref
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from enum import Enum
 from multiprocessing.connection import Client, Connection
 from types import EllipsisType
 from typing import Any
-import os
 
-from .backend.backend_tools import BACKEND_REQUEST_DEFAULT_TIMEOUT
 from syndesi.tools.types import NumberLike, is_number
 
 from ..tools.backend_api import (
     BACKEND_PORT,
+    EXTRA_BUFFER_RESPONSE_TIME,
     Action,
     BackendResponse,
     Fragment,
     default_host,
     raise_if_error,
-    EXTRA_BUFFER_RESPONSE_TIME
 )
 from ..tools.log_settings import LoggerAlias
 from .backend.adapter_backend import (
     AdapterDisconnected,
-    AdapterResponseTimeout,
     AdapterReadPayload,
+    AdapterResponseTimeout,
     AdapterSignal,
 )
+from .backend.backend_tools import BACKEND_REQUEST_DEFAULT_TIMEOUT
 from .backend.descriptors import Descriptor
-from .stop_condition import StopCondition, Continuation, StopConditionType, Total
+from .stop_condition import Continuation, StopCondition, StopConditionType
 from .timeout import Timeout, TimeoutAction, any_to_timeout
 
 DEFAULT_STOP_CONDITION = Continuation(time=0.1)
 
-DEFAULT_TIMEOUT = Timeout(response=5, action='error')
+DEFAULT_TIMEOUT = Timeout(response=5, action="error")
 
 # Maximum time to let the backend start
 START_TIMEOUT = 2
 # Time to shutdown the backend
 SHUTDOWN_DELAY = 2
+
 
 class SignalQueue(queue.Queue[AdapterSignal]):
     def __init__(self) -> None:
@@ -70,12 +71,12 @@ class SignalQueue(queue.Queue[AdapterSignal]):
     def has_read_payload(self) -> bool:
         return self._read_payload_counter > 0
 
-
-    def put(self, signal: AdapterSignal, block: bool = True, timeout: float | None = None) -> None:
+    def put(
+        self, signal: AdapterSignal, block: bool = True, timeout: float | None = None
+    ) -> None:
         if isinstance(signal, AdapterReadPayload):
             self._read_payload_counter += 1
         return super().put(signal, block, timeout)
-    
 
     def get(self, block: bool = True, timeout: float | None = None) -> AdapterSignal:
         signal = super().get(block, timeout)
@@ -94,19 +95,20 @@ def is_backend_running(address: str, port: int) -> bool:
         conn.close()
         return True
 
+
 def start_backend(port: int | None = None) -> None:
     arguments = [
-            sys.executable,
-            "-m",
-            "syndesi.adapters.backend.backend",
-            "-s",
-            str(SHUTDOWN_DELAY),
-            "-q",
-            "-p",
-            str(BACKEND_PORT if port is None else port),
-        ]
-    
-    stdin  = subprocess.DEVNULL
+        sys.executable,
+        "-m",
+        "syndesi.adapters.backend.backend",
+        "-s",
+        str(SHUTDOWN_DELAY),
+        "-q",
+        "-p",
+        str(BACKEND_PORT if port is None else port),
+    ]
+
+    stdin = subprocess.DEVNULL
     stdout = subprocess.DEVNULL
     stderr = subprocess.DEVNULL
 
@@ -122,8 +124,8 @@ def start_backend(port: int | None = None) -> None:
 
     else:
         # Windows: detach from the parent's console so keyboard Ctrl+C won't propagate.
-        CREATE_NEW_PROCESS_GROUP = subprocess.CREATE_NEW_PROCESS_GROUP # type: ignore
-        DETACHED_PROCESS = 0x00000008          # not exposed by subprocess on all Pythons
+        CREATE_NEW_PROCESS_GROUP = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore
+        DETACHED_PROCESS = 0x00000008  # not exposed by subprocess on all Pythons
         # Optional: CREATE_NO_WINDOW (no window even for console apps)
         CREATE_NO_WINDOW = 0x08000000
 
@@ -138,9 +140,11 @@ def start_backend(port: int | None = None) -> None:
             close_fds=True,
         )
 
+
 class ReadScope(Enum):
-    NEXT = 'next'
-    BUFFERED = 'buffered'
+    NEXT = "next"
+    BUFFERED = "buffered"
+
 
 class Adapter(ABC):
     def __init__(
@@ -215,7 +219,7 @@ class Adapter(ABC):
             elif isinstance(stop_conditions, list):
                 self._stop_conditions = stop_conditions
             else:
-                raise ValueError('Invalid stop_conditions')
+                raise ValueError("Invalid stop_conditions")
 
         # Set the timeout
         self.is_default_timeout = False
@@ -335,7 +339,7 @@ class Adapter(ABC):
                 action = Action(response[0])
 
                 if action == Action.ADAPTER_SIGNAL:
-                #if is_event(action):
+                    # if is_event(action):
                     if len(response) <= 1:
                         raise RuntimeError(f"Invalid event response : {response}")
                     signal: AdapterSignal = response[1]
@@ -371,7 +375,9 @@ class Adapter(ABC):
             self._logger.debug(f"Setting default timeout to {default_timeout}")
             self._timeout = default_timeout
 
-    def set_stop_conditions(self, stop_conditions: StopCondition | None | list[StopCondition]) -> None:
+    def set_stop_conditions(
+        self, stop_conditions: StopCondition | None | list[StopCondition]
+    ) -> None:
         """
         Overwrite the stop-condition
 
@@ -411,7 +417,6 @@ class Adapter(ABC):
                 self._signal_queue.get(block=False)
             except queue.Empty:
                 break
-            
 
     def previous_read_buffer_empty(self) -> bool:
         """
@@ -464,7 +469,7 @@ class Adapter(ABC):
         self,
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-        scope : str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.BUFFERED.value,
     ) -> AdapterReadPayload:
         """
         Read data from the device
@@ -490,13 +495,13 @@ class Adapter(ABC):
             read_timeout = self._timeout
         else:
             read_timeout = any_to_timeout(timeout)
-            
+
         if read_timeout is None:
             raise RuntimeError("Cannot read without setting a timeout")
 
         if stop_conditions is not ...:
             if isinstance(stop_conditions, StopCondition):
-                stop_conditions = [stop_conditions]    
+                stop_conditions = [stop_conditions]
             self._make_backend_request(Action.SET_STOP_CONDITIONs, stop_conditions)
 
         # First, we check if data is in the buffer and if the scope if set to BUFFERED
@@ -525,21 +530,21 @@ class Adapter(ABC):
                 # Wait for the response time + a bit more
                 read_stop_timestamp = read_init_time + _response
 
-            # else:
-            #     start_read_id = None
-            #     read_init_time = None
-
-            
             while True:
                 try:
                     if read_stop_timestamp is None:
                         queue_timeout = None
                     else:
-                        queue_timeout = max(0, read_stop_timestamp - time.time() + EXTRA_BUFFER_RESPONSE_TIME)
+                        queue_timeout = max(
+                            0,
+                            read_stop_timestamp
+                            - time.time()
+                            + EXTRA_BUFFER_RESPONSE_TIME,
+                        )
 
                     signal = self._signal_queue.get(timeout=queue_timeout)
-                except queue.Empty:
-                    raise RuntimeError('Failed to receive response from backend')
+                except queue.Empty as e:
+                    raise RuntimeError("Failed to receive response from backend") from e
                 if isinstance(signal, AdapterReadPayload):
                     output_signal = signal
                     break
@@ -552,17 +557,16 @@ class Adapter(ABC):
                     # Otherwise ignore it
 
         if output_signal is None:
-            # TODO : Make read_timeout always Timeout, never None ?
             match read_timeout.action:
                 case TimeoutAction.RETURN_EMPTY:
                     t = time.time()
                     return AdapterReadPayload(
-                        fragments=[Fragment(b'', t)],
+                        fragments=[Fragment(b"", t)],
                         stop_timestamp=t,
                         stop_condition_type=StopConditionType.TIMEOUT,
                         previous_read_buffer_used=False,
                         response_timestamp=None,
-                        response_delay=None
+                        response_delay=None,
                     )
                 case TimeoutAction.ERROR:
                     raise TimeoutError(
@@ -570,7 +574,7 @@ class Adapter(ABC):
                     )
                 case _:
                     raise NotImplementedError()
-        
+
         else:
             return output_signal
 

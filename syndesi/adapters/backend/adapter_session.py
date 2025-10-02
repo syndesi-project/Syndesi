@@ -11,9 +11,11 @@ import threading
 import time
 from enum import Enum
 from multiprocessing.connection import Pipe, wait
-from typing import Any, Tuple
+from typing import Any
 
-from syndesi.adapters.backend.stop_condition_backend import StopConditionBackend, stop_condition_to_backend
+from syndesi.adapters.backend.stop_condition_backend import (
+    stop_condition_to_backend,
+)
 from syndesi.tools.errors import make_error_description
 from syndesi.tools.types import NumberLike
 
@@ -21,9 +23,6 @@ from ...tools.backend_api import Action, frontend_send
 from ...tools.log_settings import LoggerAlias
 from .adapter_backend import (
     AdapterBackend,
-    AdapterDisconnected,
-    #AdapterReadInit,
-    AdapterReadPayload,
     Selectable,
     nmin,
 )
@@ -37,15 +36,16 @@ from .descriptors import (
 )
 from .ip_backend import IPBackend
 from .serialport_backend import SerialPortBackend
-#from .stop_condition_backend import stop_condition_from_list
+
+# from .stop_condition_backend import stop_condition_from_list
 from .visa_backend import VisaBackend
-from pathlib import Path
 
 
 class TimeoutEvent(Enum):
     MONITORING = 0
     ADAPTER = 1
-    #CONNECTIONS = 2
+    # CONNECTIONS = 2
+
 
 def get_adapter(descriptor: Descriptor) -> AdapterBackend:
     # The adapter doesn't exist, create it
@@ -99,11 +99,9 @@ class AdapterSession(threading.Thread):
             self._shutdown_counter_top = None
             self._shutdown_counter = None
 
-        #self._timeout_events: list[tuple[TimeoutEvent, float]] = []
+        # self._timeout_events: list[tuple[TimeoutEvent, float]] = []
 
         self._read_init_id = 0
-
-
 
     def add_connection(self, conn: NamedConnection) -> None:
         with self._connections_lock:
@@ -142,13 +140,12 @@ class AdapterSession(threading.Thread):
             except Exception as e:
                 error_message = make_error_description(e)
 
-
                 self._logger.critical(
                     f"Error in {self._adapter.descriptor} session loop : {error_message}"
                 )
                 try:
                     error_message = make_error_description(e)
-                        
+
                     for conn in self.connections:
                         frontend_send(conn.conn, Action.ERROR_GENERIC, error_message)
                 except Exception:
@@ -167,15 +164,13 @@ class AdapterSession(threading.Thread):
         # The wait has a timeout set by the adapter, it corresponds to the current continuation/total timeout
 
         # Create a list of what is awaited
-        wait_list: list[Selectable] = [
-            conn.conn for conn in self.connections
-        ]
+        wait_list: list[Selectable] = [conn.conn for conn in self.connections]
         adapter_fd = self._adapter.selectable()
         if adapter_fd is not None and adapter_fd.fileno() >= 0:
             wait_list.append(adapter_fd)
 
         wait_list.append(self._new_connection_r)
-    
+
         timeout_timestamp = None
         event = None
 
@@ -183,8 +178,11 @@ class AdapterSession(threading.Thread):
         if adapter_timestamp is not None:
             timeout_timestamp = nmin(timeout_timestamp, adapter_timestamp)
             event = TimeoutEvent.ADAPTER
-        
-        if timeout_timestamp is None or self._next_monitoring_timestamp < timeout_timestamp:
+
+        if (
+            timeout_timestamp is None
+            or self._next_monitoring_timestamp < timeout_timestamp
+        ):
             timeout_timestamp = self._next_monitoring_timestamp
             event = TimeoutEvent.MONITORING
 
@@ -253,7 +251,6 @@ class AdapterSession(threading.Thread):
             return
         try:
             request = conn.conn.recv()
-            request_timestamp = time.time()
         except (EOFError, ConnectionResetError) as e:
             # Probably a ping or an error
             self._logger.warning(
@@ -280,7 +277,7 @@ class AdapterSession(threading.Thread):
                                 response_action = Action.OPEN
                             else:
                                 response_action = Action.ERROR_FAILED_TO_OPEN
-                            extra_arguments = ("",)                            
+                            extra_arguments = ("",)
                         case Action.WRITE:
                             data = request[1]
                             if self._adapter.is_opened():
@@ -302,9 +299,9 @@ class AdapterSession(threading.Thread):
                         case Action.PING:
                             response_action, extra_arguments = Action.PING, ()
                         case Action.SET_STOP_CONDITIONs:
-                            self._adapter.set_stop_conditions([
-                                stop_condition_to_backend(sc) for sc in request[1]
-                                ])
+                            self._adapter.set_stop_conditions(
+                                [stop_condition_to_backend(sc) for sc in request[1]]
+                            )
                             response_action, extra_arguments = (
                                 Action.SET_STOP_CONDITIONs,
                                 (),
@@ -315,7 +312,9 @@ class AdapterSession(threading.Thread):
                         case Action.START_READ:
                             response_time = float(request[1])
                             self._adapter.start_read(response_time, self._read_init_id)
-                            response_action, extra_arguments = Action.START_READ, (self._read_init_id,)
+                            response_action, extra_arguments = Action.START_READ, (
+                                self._read_init_id,
+                            )
                             self._read_init_id += 1
 
                         # case Action.GET_BACKEND_TIME:

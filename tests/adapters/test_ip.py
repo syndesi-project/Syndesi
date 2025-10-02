@@ -517,10 +517,11 @@ def _test_delayer(ip_delayer_port):
         transport='UDP')
     for _ in range(N):
         delay = random.random()*0.5
-        data, metrics = client.query_detailed(encode_sequences([(sequence, delay)]))
-        metrics : AdapterReadPayload
+        payload = client.query_detailed(encode_sequences([(sequence, delay)]))
+        data = payload.data()
+        payload : AdapterReadPayload
         #print(f'Error : {metrics.response_delay - delay:.3f}s')
         assert data == sequence
-        assert abs(metrics.response_delay - delay) < TIME_DELTA
+        assert abs(payload.response_delay - delay) < TIME_DELTA
     client.flushRead()
     client.close()

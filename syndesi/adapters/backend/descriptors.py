@@ -71,7 +71,7 @@ class IPDescriptor(Descriptor):
     address: str
     transport: Transport
     port: int | None = None
-    #transport: Transport | None = None
+    # transport: Transport | None = None
 
     @staticmethod
     def from_string(string: str) -> "IPDescriptor":

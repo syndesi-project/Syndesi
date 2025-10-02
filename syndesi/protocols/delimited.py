@@ -107,11 +107,7 @@ class Delimited(Protocol):
         command = self._format_command(command)
         self._adapter.write(self._to_bytes(command))
 
-    def query(
-        self,
-        data: str,
-        timeout: Timeout | None | EllipsisType = ...
-    ) -> str:
+    def query(self, data: str, timeout: Timeout | None | EllipsisType = ...) -> str:
         """
         Writes then reads from the device and return the result
 
@@ -157,19 +153,20 @@ class Delimited(Protocol):
     def read_detailed(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> AdapterReadPayload:
-        signal = self._adapter.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
+        signal = self._adapter.read_detailed(
+            timeout=timeout, stop_conditions=stop_conditions
+        )
         return signal
 
     def read(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> str:
         signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
         return self._decode(signal.data())
-
 
     def _decode(self, data: bytes) -> str:
         try:
@@ -184,15 +181,3 @@ class Delimited(Protocol):
                 data_string += self._receive_termination
 
         return data_string
-
-    # @overload
-    # def _append_missing_termination(self, data : str) -> str: ...
-    # @overload
-    # def _append_missing_termination(self, data : bytes) -> bytes: ...
-    # def _append_missing_termination(self, data : Union[str, bytes]) -> Union[str, bytes]:
-    #     if isinstance(data, str):
-    #         return data + self._receive_termination
-    #     elif isinstance(data, bytes): # type bytes
-    #         return data + self._receive_termination.encode(self._encoding)
-    #     else:
-    #         raise ValueError(f"Couldn't append termination do {data}")

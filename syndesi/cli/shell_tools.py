@@ -2,11 +2,6 @@
 # Author : Sébastien Deriaz
 # License : GPL
 
-import inspect
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
-from typing import Any
-
 
 # @dataclass
 # class CommandSpec:

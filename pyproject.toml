@@ -42,7 +42,7 @@ include = ["syndesi*"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-select = ["D","E","F","I","B"]   # include pydocstyle rules ("D")
+#select = ["D","E","F","I","B"]   # include pydocstyle rules ("D")
 #ignore = ["D203","D213"]         # pick your preferences
 
 [tool.ruff.lint]

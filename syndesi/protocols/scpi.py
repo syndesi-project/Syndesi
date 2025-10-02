@@ -5,7 +5,7 @@
 
 from types import EllipsisType
 
-from syndesi.adapters.backend.adapter_backend import AdapterReadPayload, AdapterSignal
+from syndesi.adapters.backend.adapter_backend import AdapterReadPayload
 
 from ..adapters.adapter import Adapter
 from ..adapters.ip import IP
@@ -121,7 +121,7 @@ class SCPI(Protocol):
             timeout=timeout,
             stop_conditions=stop_conditions,
         )
-        return signal.data() 
+        return signal.data()
 
     def read_detailed(
         self,
@@ -129,7 +129,9 @@ class SCPI(Protocol):
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> AdapterReadPayload:
 
-        signal = self._adapter.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
+        signal = self._adapter.read_detailed(
+            timeout=timeout, stop_conditions=stop_conditions
+        )
         return signal
 
     def read(
@@ -140,4 +142,3 @@ class SCPI(Protocol):
         signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
         raw_data = signal.data()
         return self._unformatCommand(self._from_bytes(raw_data))
-        

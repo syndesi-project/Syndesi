@@ -26,25 +26,22 @@ default_host = LOCALHOST
 
 EXTRA_BUFFER_RESPONSE_TIME = 1
 
+
 class Action(Enum):
     # All adapters
     SELECT_ADAPTER = "select"
     OPEN = "open"  # (descriptor,stop_condition) -> ()
-    CLOSE = "close"  # (descriptor,force) -> () 
-    #FORCE_CLOSE = "force_close"  # (descriptor,) -> ()
+    CLOSE = "close"  # (descriptor,force) -> ()
+    # FORCE_CLOSE = "force_close"  # (descriptor,) -> ()
     WRITE = "write"  # (descriptor,data) -> ()
     READ = "read"  # (descriptor,full_output,temporary_timeout,temporary_stop_condition) -> (data,metrics)
     SET_STOP_CONDITIONs = "set_stop_condition"  # (descriptor,stop_condition)
     FLUSHREAD = "flushread"
     START_READ = "start_read"  # Start a read (descriptor,response_time)
     RESPONSE_TIMEOUT = "response_timeout"
-    #GET_BACKEND_TIME = "get_time"
 
     # Signal
     ADAPTER_SIGNAL = "adapter_signal"
-    #ADAPTER_EVENT_DATA_READY = "event_adapter_data_ready"
-    #ADAPTER_EVENT_DISCONNECTED = "event_adapter_disconnected"
-    #ADAPTER_EVENT_READ_INIT = "event_adapter_read_init"
 
     # Other
     SET_ROLE_ADAPTER = (
@@ -72,21 +69,14 @@ class Action(Enum):
     ERROR_FAILED_TO_OPEN = "error_failed_to_open"
 
 
-# def is_event(action: Action) -> bool:
-#     return action.value.startswith("event_")
-
-
 def is_action_error(action: Action) -> bool:
     return action.value.startswith("error_")
-
 
 class BackendException(Exception):
     pass
 
-
 class ValidFragment(Protocol):
     data: bytes
-
 
 @dataclass
 class Fragment:
@@ -103,23 +93,6 @@ class Fragment:
         # if self.data is None:
         #     raise IndexError('Cannot index invalid fragment')
         return Fragment(self.data[key], self.timestamp)
-
-
-# def get_conn_addresses(conn: Connection) -> tuple[str, str]:
-#     try:
-#         fd = conn.fileno()
-#     except OSError:
-#         return ("closed", "closed")
-#     else:
-#         sock = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
-#         try:
-#             # address, port = sock.getpeername()  # (IP, port) tuple
-#             peer_address = sock.getpeername()
-#             sock_address = sock.getsockname()
-#             return sock_address, peer_address
-#         except Exception:
-#             return ("error", "closed")
-
 
 BackendResponse = tuple[object, ...]
 
@@ -200,9 +173,3 @@ class AdapterBackendStatus(Enum):
 class ClientStatus(Enum):
     DISCONNECTED = 0
     CONNECTED = 1
-
-
-# class StatusSnapshot(TypedDict):
-#     type : Literal['snapshot']
-#     adapters :
-#     #clients : List[str]
