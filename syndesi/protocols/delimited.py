@@ -107,13 +107,7 @@ class Delimited(Protocol):
         command = self._format_command(command)
         self._adapter.write(self._to_bytes(command))
 
-    def query(
-        self,
-        data: str,
-        timeout: Timeout | None | EllipsisType = ...,
-        decode: bool = True,
-        full_output: bool = False,
-    ) -> str | tuple[str, AdapterSignal]:
+    def query(self, data: str, timeout: Timeout | None | EllipsisType = ...) -> str:
         """
         Writes then reads from the device and return the result
 
@@ -130,13 +124,13 @@ class Delimited(Protocol):
         """
         self._adapter.flushRead()
         self.write(data)
-        return self.read(timeout=timeout, decode=decode, full_output=full_output)
+        return self.read(timeout=timeout)
 
     def read_raw(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-    ) -> tuple[bytes, AdapterReadPayload | None]:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> bytes:
         """
         Reads command and formats it as a str
 
@@ -151,30 +145,28 @@ class Delimited(Protocol):
         """
 
         # Send up to the termination
-        raw_data, signal = self._adapter.read_detailed(
-            timeout=timeout, stop_condition=stop_condition
+        signal = self._adapter.read_detailed(
+            timeout=timeout, stop_conditions=stop_conditions
         )
-
-        return raw_data, signal
+        return signal.data()
 
     def read_detailed(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-    ) -> tuple[str, AdapterReadPayload | None]:
-        raw_data, signal = self.read_raw(timeout=timeout, stop_condition=stop_condition)
-
-        data_out = self._decode(raw_data)
-        return data_out, signal
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> AdapterReadPayload:
+        signal = self._adapter.read_detailed(
+            timeout=timeout, stop_conditions=stop_conditions
+        )
+        return signal
 
     def read(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-        decode: bool = True,
-        full_output: bool = False,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> str:
-        return self.read_detailed(timeout=timeout, stop_condition=stop_condition)[0]
+        signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
+        return self._decode(signal.data())
 
     def _decode(self, data: bytes) -> str:
         try:
@@ -189,15 +181,3 @@ class Delimited(Protocol):
                 data_string += self._receive_termination
 
         return data_string
-
-    # @overload
-    # def _append_missing_termination(self, data : str) -> str: ...
-    # @overload
-    # def _append_missing_termination(self, data : bytes) -> bytes: ...
-    # def _append_missing_termination(self, data : Union[str, bytes]) -> Union[str, bytes]:
-    #     if isinstance(data, str):
-    #         return data + self._receive_termination
-    #     elif isinstance(data, bytes): # type bytes
-    #         return data + self._receive_termination.encode(self._encoding)
-    #     else:
-    #         raise ValueError(f"Couldn't append termination do {data}")

@@ -222,60 +222,7 @@ class Shell:
             FormattedText([(f"class:{style.value}", text)]), style=self._toolkit_styles
         )
 
-    # def ask(self, question: str):
-    #     loop = self.session.app.loop
-    #     fut = asyncio.run_coroutine_threadsafe(self._ask_on_app_loop(question), loop)
-    #     return fut.result()
-
-    # async def _ask_on_app_loop(self, question: str):
-    #     def _blocking_prompt():
-    #         temp_session = prompt_toolkit.PromptSession()
-    #         return temp_session.prompt(question)
-    #         # Or just: return input(question) if styling isn't needed
-
-    #     return await prompt_toolkit.application.run_in_terminal(_blocking_prompt)
-
-    # def ask(self, question: str):
-    #     loop = self.session.app.loop
-    #     fut = asyncio.run_coroutine_threadsafe(self._ask_dialog(question), loop)
-    #     return fut.result()
-
-    # async def _ask_dialog(self, question: str):
-    #     dlg = yes_no_dialog(title="Adapter Disconnected", text=question)
-    #     return await dlg.run_async()
-
     def ask(self, question: str, callback: Callable[[str], None]) -> None:
         self.ask_event.set()
         self.ask_callback = callback
         self.reprompt(question)
-
-    #     loop = self.session.app.loop
-    #     fut = asyncio.run_coroutine_threadsafe(self._ask_inline(question), loop)
-    #     return fut.result()
-
-    # async def _ask_inline(self, question: str) -> bool:
-    #     from prompt_toolkit.patch_stdout import patch_stdout
-    #     from prompt_toolkit.shortcuts import prompt
-
-    #     # patch_stdout ensures print() doesn't mess up your REPL display
-    #     with patch_stdout():
-    #         ans = await prompt(f"{question} (y/n) ").strip().lower()
-    #     return ans.startswith("y")
-
-    # def ask(self, question: str):
-    #     fut = asyncio.run_coroutine_threadsafe(
-    #         self._ask_on_app_loop(question), self.session.app.loop
-    #     )
-    #     answer = fut.result()  # blocks THIS thread until user answers
-    #     return answer
-
-    # # on your shell object (runs on the app loop):
-    # async def _ask_on_app_loop(self, question):
-    #     def _blocking_prompt():
-    #         # Use your existing shell ask/prompt; it runs while the UI is suspended.
-    #         # If you have a PromptSession: return self.shell.session.prompt(...)
-    #         return self.session.prompt(question)
-
-    #     self.session.app.run
-    #     # Suspends rendering & CPR handling safely, runs in a thread pool.
-    #     return await prompt_toolkit.application.run_in_terminal(_blocking_prompt)

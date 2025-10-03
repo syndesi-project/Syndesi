@@ -41,7 +41,6 @@ class BackendLogger(threading.Thread):
                         self.conn_description = conn.local()
                     self._logger.info("Backend connected")
 
-
                 try:
                     backend_request(conn.conn, Action.SET_ROLE_LOGGER)
                 except BackendCommunicationError:

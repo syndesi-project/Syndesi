@@ -95,8 +95,6 @@ class BackendStatus:
         # Buffer for last N_CONSOLE_LINES log messages
         self.console_lines: list[str] = []
         self.console_lock = threading.Lock()  # Lock for thread safety
-        # self._backend_logger = BackendLogger()  # use_queue=True)
-        # self._backend_logger.start()
         log_manager.enable_backend_logging()
         self._start_time = time.time()
         self.conn: NamedConnection | None = None
@@ -155,7 +153,9 @@ class BackendStatus:
                                     adapter_table = Table(
                                         "", box=None, caption_justify="right"
                                     )
-                                    snapshot: dict[str, tuple[bool, list[str]]] = event[1]
+                                    snapshot: dict[str, tuple[bool, list[str]]] = event[
+                                        1
+                                    ]
                                     unique_clients: set[str] = set()
                                     for _, (_, adapter_clients) in snapshot.items():
                                         unique_clients |= set(adapter_clients)
@@ -191,7 +191,9 @@ class BackendStatus:
                                         pad_edge=False,
                                     )
                                     # Update monitoring connections
-                                    monitoring_response: list[tuple[str, str]] = event[1]
+                                    monitoring_response: list[tuple[str, str]] = event[
+                                        1
+                                    ]
 
                                     for connection, desc in monitoring_response:
                                         if (
@@ -206,10 +208,6 @@ class BackendStatus:
                                         monitoring_connections.add_row(
                                             f"[{style[0]}]{connection}[/] [{style[1]}]({desc})[/]"
                                         )
-                                        # if connection == status_conn:
-                                        #     logger_connections.add_row(f"[grey50]{connection}[/]")
-                                        # else:
-                                        #     logger_connections.add_row(c_string)
                                     for _ in range(
                                         self.CONNECTIONS_MIN_HEIGHT
                                         - len(monitoring_response)
@@ -273,4 +271,4 @@ class BackendStatus:
             self.console_lines.append(formated_text)
             if len(self.console_lines) > self._n_console_lines:
                 self.console_lines = self.console_lines[-self._n_console_lines :]
-        self._new_console_line_w.send(b'\x00')
+        self._new_console_line_w.send(b"\x00")

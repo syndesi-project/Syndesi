@@ -22,9 +22,7 @@ def main() -> None:
         prog="syndesi", description="Syndesi command line tool", epilog=""
     )
 
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {__version__}"
-    )
+    parser.add_argument("--version", action="version", version=f"Syndesi {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument(
         "command",

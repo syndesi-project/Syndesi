@@ -49,33 +49,37 @@ class Raw(Protocol):
         self,
         data: bytes,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-        full_output: bool = False,
-    ) -> bytes | tuple[bytes, AdapterSignal]:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> bytes:
         self._adapter.flushRead()
         self.write(data)
-        return self.read(
-            timeout=timeout,
-            stop_condition=stop_condition,
-            full_output=full_output,
-        )
+        return self.read(timeout=timeout, stop_conditions=stop_conditions)
+
+    def query_detailed(
+        self,
+        data: bytes,
+        timeout: Timeout | None | EllipsisType = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> AdapterReadPayload:
+        self._adapter.flushRead()
+        self.write(data)
+        return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
 
     def read(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-        full_output: bool = False,
-    ) -> bytes | tuple[bytes, AdapterSignal]:
-
-        return self.read_detailed(timeout=timeout, stop_condition=stop_condition)[0]
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> bytes:
+        signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
+        return signal.data()
 
     def read_detailed(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-    ) -> tuple[bytes, AdapterSignal | None]:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> AdapterReadPayload:
         return self._adapter.read_detailed(
-            timeout=timeout, stop_condition=stop_condition
+            timeout=timeout, stop_conditions=stop_conditions
         )
 
     def _on_data_ready_event(self, data: AdapterReadPayload) -> None:

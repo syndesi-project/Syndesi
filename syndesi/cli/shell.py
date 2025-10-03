@@ -173,7 +173,7 @@ class AdapterShell:
                 backend_port=args.backend_port,
             )
 
-        self.adapter.set_default_timeout(Timeout(action="return"))
+        self.adapter.set_default_timeout(Timeout(action="return_empty"))
 
         # Add the protocol
         _format = Format(args.format)
@@ -205,13 +205,6 @@ class AdapterShell:
     def run(self) -> None:
         # try:
         self.adapter.open()
-        # except Exception:  # TODO : Change this to a suitable exception
-        #     self.shell.print(
-        #         f"Failed to open adapter {self.adapter.descriptor}",
-        #         style=Shell.Style.ERROR,
-        #     )
-        #     self.adapter.close()  # TODO : Maybe force here ?
-        # else:
         self.shell.print(
             f"Opened adapter {self.adapter.descriptor}", style=Shell.Style.NOTE
         )
@@ -227,12 +220,6 @@ class AdapterShell:
                 if answer.lower() == "y":
                     # try:
                     self._protocol.open()
-                    # except Exception:  # TODO : Change this
-                    #     self.shell.print(
-                    #         "Failed to open adapter", style=Shell.Style.WARNING
-                    #     )
-                    # else:
-                    #     self.shell.print("Adapter opened", style=Shell.Style.NOTE)
                 else:
                     # Set the stop flag, exit will be effective on reprompt
                     self.shell.stop()

@@ -7,27 +7,24 @@
 
 import logging
 import socket
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Generator
 from dataclasses import dataclass
 from enum import Enum
 from multiprocessing.connection import Connection
 from threading import Thread
-import time
-from typing import Protocol, cast
-
-from syndesi.tools.types import NumberLike
+from typing import Protocol
 
 from ...tools.backend_api import AdapterBackendStatus, Fragment
 from ...tools.log_settings import LoggerAlias
+from ..stop_condition import StopConditionType
 from .descriptors import Descriptor
 from .stop_condition_backend import (
     ContinuationBackend,
     StopConditionBackend,
     TotalBackend,
 )
-
-from ..stop_condition import Continuation, StopConditionType
 
 
 class HasFileno(Protocol):
@@ -82,12 +79,13 @@ class AdapterDisconnected(AdapterSignal):
 #     def __repr__(self) -> str:
 #         return self.__str__()
 
+
 @dataclass
 class AdapterResponseTimeout(AdapterSignal):
-    identifier : int
+    identifier: int
 
     def __str__(self) -> str:
-        return f"Response timeout"
+        return "Response timeout"
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -99,9 +97,9 @@ class AdapterReadPayload(AdapterSignal):
     stop_timestamp: float
     stop_condition_type: StopConditionType
     previous_read_buffer_used: bool
-    response_timestamp : float | None
+    response_timestamp: float | None
     # Only used by client and set by frontend
-    response_delay : float | None = None
+    response_delay: float | None = None
 
     def data(self) -> bytes:
         return b"".join([f.data for f in self.fragments])
@@ -118,9 +116,10 @@ class AdapterReadPayload(AdapterSignal):
 @dataclass
 class ResponseRequest:
     timestamp: float
-    identifier : int
+    identifier: int
 
-def nmin(a : float | None, b : float | None) -> float | None:
+
+def nmin(a: float | None, b: float | None) -> float | None:
     if a is None and b is None:
         return None
     elif a is None:
@@ -129,6 +128,7 @@ def nmin(a : float | None, b : float | None) -> float | None:
         return a
     else:
         return min(a, b)
+
 
 class AdapterBackend(ABC):
     class ThreadCommands(Enum):
@@ -168,7 +168,7 @@ class AdapterBackend(ABC):
         # None : No ask
         # float : Ask for a response to happen at the specified value at max
         self._response_request: ResponseRequest | None = None
-        self._response_request_start : float | None = None
+        self._response_request_start: float | None = None
 
         self._first_fragment = True
 
@@ -246,10 +246,10 @@ class AdapterBackend(ABC):
     @abstractmethod
     def _socket_read(self) -> Fragment:
         raise NotImplementedError
-    
-    def _fragments_to_string(self, fragments : list[Fragment]) -> str:
+
+    def _fragments_to_string(self, fragments: list[Fragment]) -> str:
         if len(fragments) > 0:
-            return '+'.join(repr(f.data) for f in fragments)
+            return "+".join(repr(f.data) for f in fragments)
         else:
             return str([])
 
@@ -260,11 +260,13 @@ class AdapterBackend(ABC):
         else:
             fragment_delta_t = float("nan")
         if fragment.data == b"":
-            self._logger.debug('Empty data -> close')
             self.close()
             yield AdapterDisconnected()
         else:
-            self._logger.debug(f"New fragment {fragment_delta_t:+.3f} {fragment}" + (" (first)" if self._first_fragment else ""))
+            self._logger.debug(
+                f"New fragment {fragment_delta_t:+.3f} {fragment}"
+                + (" (first)" if self._first_fragment else "")
+            )
             if self._status == AdapterBackendStatus.CONNECTED:
                 t = time.time()
 
@@ -273,7 +275,9 @@ class AdapterBackend(ABC):
 
                 if self._response_request is not None:
                     for stop_condition in self._stop_conditions:
-                        if isinstance(stop_condition, (ContinuationBackend, TotalBackend)):
+                        if isinstance(
+                            stop_condition, (ContinuationBackend, TotalBackend)
+                        ):
                             self._response_request = None
                             break
 
@@ -288,15 +292,18 @@ class AdapterBackend(ABC):
                     kept = fragment
 
                     # Run each stop condition one after the other, if a stop is reached, stop evaluating
-                    stop_condition_type : StopConditionType
+                    stop_condition_type: StopConditionType
                     for stop_condition in self._stop_conditions:
-                        stop, kept, self._previous_buffer, self._next_timeout_timestamp = \
-                            stop_condition.evaluate(kept)
+                        (
+                            stop,
+                            kept,
+                            self._previous_buffer,
+                            self._next_timeout_timestamp,
+                        ) = stop_condition.evaluate(kept)
                         if stop:
                             stop_condition_type = stop_condition.type()
                             break
 
-                    
                     # if kept.data != b'':
                     #     self.fragments.append(kept)
 
@@ -304,14 +311,22 @@ class AdapterBackend(ABC):
 
                     if stop:
                         self._first_fragment = True
-                        self._logger.debug(f"Payload {self._fragments_to_string(self.fragments)} ({stop_condition_type.value})")
-                        if self._response_request_start is None or len(self.fragments) == 0:
+                        self._logger.debug(
+                            f"Payload {self._fragments_to_string(self.fragments)} ({stop_condition_type.value})"
+                        )
+                        if (
+                            self._response_request_start is None
+                            or len(self.fragments) == 0
+                        ):
                             response_delay = None
                         else:
                             if self.fragments[0].timestamp is None:
                                 response_delay = None
                             else:
-                                response_delay = self.fragments[0].timestamp - self._response_request_start
+                                response_delay = (
+                                    self.fragments[0].timestamp
+                                    - self._response_request_start
+                                )
                             self._response_request_start = None
                         yield AdapterReadPayload(
                             fragments=self.fragments,
@@ -319,9 +334,9 @@ class AdapterBackend(ABC):
                             stop_condition_type=stop_condition_type,
                             previous_read_buffer_used=False,
                             response_timestamp=self.fragments[0].timestamp,
-                            response_delay=response_delay
+                            response_delay=response_delay,
                         )
-                        self._next_timeout_timestamp = None # Experiment !
+                        self._next_timeout_timestamp = None  # Experiment !
                         self.fragments.clear()
 
                     if len(self._previous_buffer.data) > 0 and stop:
@@ -342,8 +357,9 @@ class AdapterBackend(ABC):
         """
         self._response_request_start = time.time()
         self._logger.debug(f"Setup read [{identifier}] in {response_time:.3f} s")
-        self._response_request = ResponseRequest(self._response_request_start + response_time, identifier)
-        
+        self._response_request = ResponseRequest(
+            self._response_request_start + response_time, identifier
+        )
 
     @abstractmethod
     def is_opened(self) -> bool:
@@ -367,7 +383,9 @@ class AdapterBackend(ABC):
                 response_delay = None
             else:
                 if self.fragments[0].timestamp is not None:
-                    response_delay = self.fragments[0].timestamp - self._response_request_start
+                    response_delay = (
+                        self.fragments[0].timestamp - self._response_request_start
+                    )
                 else:
                     response_delay = None
                 self._response_request_start = None
@@ -377,8 +395,10 @@ class AdapterBackend(ABC):
                 stop_condition_type=StopConditionType.TIMEOUT,
                 previous_read_buffer_used=False,
                 fragments=self.fragments,
-                response_timestamp=self.fragments[0].timestamp if len(self.fragments) > 0 else None,
-                response_delay=response_delay
+                response_timestamp=(
+                    self.fragments[0].timestamp if len(self.fragments) > 0 else None
+                ),
+                response_delay=response_delay,
             )
             # Reset response request
             if self._response_request is not None:
@@ -389,8 +409,7 @@ class AdapterBackend(ABC):
             return output
 
         elif (
-            self._next_timeout_origin
-            == self.AdapterTimeoutEventOrigin.RESPONSE_REQUEST
+            self._next_timeout_origin == self.AdapterTimeoutEventOrigin.RESPONSE_REQUEST
         ):
             if self._response_request is not None:
                 signal = AdapterResponseTimeout(self._response_request.identifier)
@@ -402,8 +421,6 @@ class AdapterBackend(ABC):
     def get_next_timeout(self) -> float | None:
         min_timestamp = None
         self._next_timeout_origin = None
-
-        t = time.time()
 
         if self._next_timeout_timestamp is not None:
             min_timestamp = self._next_timeout_timestamp

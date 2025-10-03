@@ -5,7 +5,7 @@
 
 from types import EllipsisType
 
-from syndesi.adapters.backend.adapter_backend import AdapterSignal
+from syndesi.adapters.backend.adapter_backend import AdapterReadPayload
 
 from ..adapters.adapter import Adapter
 from ..adapters.ip import IP
@@ -105,37 +105,40 @@ class SCPI(Protocol):
         self,
         command: str,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> str:
         self._adapter.flushRead()
         self.write(command)
 
-        return self.read(timeout=timeout, stop_condition=stop_condition)
+        return self.read(timeout=timeout, stop_conditions=stop_conditions)
 
     def read_raw(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-    ) -> tuple[bytes, AdapterSignal | None]:
-        return self._adapter.read_detailed(
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> bytes:
+        signal = self.read_detailed(
             timeout=timeout,
-            stop_condition=stop_condition,
+            stop_conditions=stop_conditions,
         )
+        return signal.data()
 
     def read_detailed(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
-    ) -> tuple[str, AdapterSignal | None]:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> AdapterReadPayload:
 
-        raw_data, signal = self.read_raw(timeout=timeout, stop_condition=stop_condition)
-        data_out = self._unformatCommand(self._from_bytes(raw_data))
-
-        return data_out, signal
+        signal = self._adapter.read_detailed(
+            timeout=timeout, stop_conditions=stop_conditions
+        )
+        return signal
 
     def read(
         self,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_condition: StopCondition | None | EllipsisType = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> str:
-        return self.read_detailed(timeout=timeout, stop_condition=stop_condition)[0]
+        signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
+        raw_data = signal.data()
+        return self._unformatCommand(self._from_bytes(raw_data))

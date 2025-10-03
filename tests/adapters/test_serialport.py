@@ -41,7 +41,7 @@ def test_delayer():
     DATA = b"test_delayer"
     port = SerialPort(port=PORT, baudrate=1000000)
     port.write(encode_sequences([(DATA, 0.2)]))
-    received = port.read(stop_condition=Length(len(DATA)))
+    received = port.read(stop_conditions=Length(len(DATA)))
     assert received == DATA
     port.flushRead()
     port.close(force=True)
@@ -229,7 +229,7 @@ def test_length_short_timeout():
         raise RuntimeError("No timeout exception was raised")
     data = client.read()
     assert data == sequence[:N]
-    data = client.read(stop_condition=Continuation(time=0.1))
+    data = client.read(stop_conditions=Continuation(time=0.1))
     # Length is still N because that was read before
     assert data == sequence[N:N+10]
     client.flushRead()

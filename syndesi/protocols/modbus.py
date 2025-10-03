@@ -14,7 +14,7 @@ from unittest.mock import DEFAULT
 from ..adapters.adapter import Adapter
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
-from ..adapters.stop_condition import Length
+from ..adapters.stop_condition import Continuation, Length
 from ..adapters.timeout import Timeout
 from .protocol import Protocol
 
@@ -328,10 +328,12 @@ class Modbus(Protocol):
     def _error_code(self, response: bytes) -> int:
         return response[1]
 
-    def _parse_pdu(self, _pdu: bytes) -> bytes:
+    def _parse_pdu(self, _pdu: bytes | None) -> bytes:
         """
         Return data from PDU
         """
+        if _pdu is None:
+            raise RuntimeError("Failed to read modbus data")
         if self._modbus_type == ModbusType.TCP:
             # Return raw data
             # data = _pdu
@@ -391,12 +393,13 @@ class Modbus(Protocol):
         )
 
         n_coil_bytes = ceil(number_of_coils / 8)
-        pdu: bytes = self._adapter.query(
+        pdu: bytes | None = self._adapter.query(
             self._make_pdu(query),
             # timeout=Timeout(continuation=1),
-            stop_condition=Length(
-                self._length(n_coil_bytes + 2)
-            ),  # TODO : convert to multiple stop conditions here
+            stop_conditions=[
+                Length(self._length(n_coil_bytes + 2)),
+                Continuation(time=1),
+            ],  # TODO : convert to multiple stop conditions here
         )
         response = self._parse_pdu(pdu)
         self._raise_if_error(response, exception_codes=EXCEPTIONS)
@@ -465,7 +468,7 @@ class Modbus(Protocol):
         response = self._parse_pdu(
             self._adapter.query(
                 self._make_pdu(query),
-                stop_condition=Length(self._length(byte_count + 2)),
+                stop_conditions=Length(self._length(byte_count + 2)),
             )
         )
         self._raise_if_error(response, exception_codes=EXCEPTIONS)
@@ -515,7 +518,7 @@ class Modbus(Protocol):
         response = self._parse_pdu(
             self._adapter.query(
                 self._make_pdu(query),
-                stop_condition=Length(self._length(2 + number_of_registers * 2)),
+                stop_conditions=Length(self._length(2 + number_of_registers * 2)),
             )
         )
         self._raise_if_error(response, exception_codes=EXCEPTIONS)
@@ -769,7 +772,7 @@ class Modbus(Protocol):
         )
         response = self._parse_pdu(
             self._adapter.query(
-                self._make_pdu(query), stop_condition=Length(self._length(len(query)))
+                self._make_pdu(query), stop_conditions=Length(self._length(len(query)))
             )
         )
         self._raise_if_error(response, EXCEPTIONS)
@@ -805,7 +808,7 @@ class Modbus(Protocol):
         )
         response = self._parse_pdu(
             self._adapter.query(
-                self._make_pdu(query), stop_condition=Length(self._length(len(query)))
+                self._make_pdu(query), stop_conditions=Length(self._length(len(query)))
             )
         )
         self._raise_if_error(response, EXCEPTIONS)
@@ -1198,7 +1201,7 @@ class Modbus(Protocol):
         )
         response = self._parse_pdu(
             self._adapter.query(
-                self._make_pdu(query), stop_condition=Length(self._length(5))
+                self._make_pdu(query), stop_conditions=Length(self._length(5))
             )
         )
         self._raise_if_error(response, EXCEPTIONS)
@@ -1250,7 +1253,7 @@ class Modbus(Protocol):
         )
         response = self._parse_pdu(
             self._adapter.query(
-                self._make_pdu(query), stop_condition=Length(self._length(5))
+                self._make_pdu(query), stop_conditions=Length(self._length(5))
             )
         )
         self._raise_if_error(response, EXCEPTIONS)
@@ -1451,7 +1454,7 @@ class Modbus(Protocol):
         )
         response = self._parse_pdu(
             self._adapter.query(
-                self._make_pdu(query), stop_condition=Length(self._length(len(query)))
+                self._make_pdu(query), stop_conditions=Length(self._length(len(query)))
             )
         )
         self._raise_if_error(response, EXCEPTIONS)
@@ -1521,7 +1524,7 @@ class Modbus(Protocol):
         response = self._parse_pdu(
             self._adapter.query(
                 self._make_pdu(query),
-                stop_condition=Length(self._length(2 + number_of_read_registers * 2)),
+                stop_conditions=Length(self._length(2 + number_of_read_registers * 2)),
             )
         )
         self._raise_if_error(response, EXCEPTIONS)
