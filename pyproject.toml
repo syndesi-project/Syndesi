@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = { attr = "syndesi.version.__version__" }
+
+[project]
+name = "syndesi"
+dynamic = ["version"]
+description = "Syndesi"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL" }
+authors = [{ name = "Sébastien Deriaz", email = "sebastien.deriaz1@gmail.com" }]
+keywords = ["python", "syndesi", "interface", "ethernet", "serial", "visa"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Education",
+    "Programming Language :: Python :: 3",
+    "Operating System :: Unix",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+]
+dependencies = ['prompt_toolkit', 'pyserial', 'rich', 'platformdirs']
+
+#[project.optional-dependencies]
+#extra = [""]
+
+[project.scripts]
+syndesi = "syndesi.scripts.syndesi:main"
+syndesi-backend = "syndesi.scripts.syndesi_backend:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["syndesi*"]
+
+# ----------------------------
+# Tooling configs
+# ----------------------------
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"              # or "google"
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+exclude = ["^tests/fixtures/"]
+
+[tool.bandit]
+skips = ["B101"]
+exclude = ["tests"]
+
