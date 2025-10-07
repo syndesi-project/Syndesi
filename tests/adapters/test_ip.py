@@ -4,7 +4,7 @@ from time import sleep
 import time
 
 from syndesi import IP
-from syndesi.adapters.backend.adapter_backend import AdapterDisconnected, AdapterReadPayload
+from syndesi.adapters.backend.adapter_backend import AdapterDisconnectedSignal, AdapterReadPayload
 from syndesi.adapters.stop_condition import *
 from syndesi.adapters.timeout import Timeout
 import socket
@@ -16,6 +16,8 @@ import subprocess
 import pytest
 
 from pathlib import Path
+
+from syndesi.tools.errors import AdapterTimeoutError
 HOST = "localhost"
 PORT = 8888
 
@@ -400,7 +402,7 @@ def test_on_response_error():
     client.write(encode_sequences([(A + termination, delay)]))
     try:
         client.read()
-    except TimeoutError as te:
+    except AdapterTimeoutError as te:
         pass
     else:
         raise RuntimeError("No exception raised")

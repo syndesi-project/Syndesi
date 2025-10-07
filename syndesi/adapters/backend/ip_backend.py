@@ -10,7 +10,7 @@ from typing import cast
 
 import _socket
 
-from ...tools.backend_api import AdapterBackendStatus, Fragment
+from ...tools.backend_api import DEFAULT_ADAPTER_OPEN_TIMEOUT, AdapterBackendStatus, Fragment
 from .adapter_backend import AdapterBackend, HasFileno
 from .descriptors import IPDescriptor
 
@@ -77,10 +77,10 @@ class IPBackend(AdapterBackend):
                     )
             try:
                 self._socket.settimeout(
-                    0.5
-                )  # TODO : Configure this cleanly, it has to be less than the receive timeout of the frontend
+                    DEFAULT_ADAPTER_OPEN_TIMEOUT
+                )
                 self._socket.connect((self.descriptor.address, self.descriptor.port))
-            except OSError as e:  # TODO : Maybe change the exception ?
+            except OSError as e:
                 self._logger.error(f"Failed to open adapter {self.descriptor} : {e}")
             else:
                 self._status = AdapterBackendStatus.CONNECTED

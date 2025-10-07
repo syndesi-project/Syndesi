@@ -61,7 +61,7 @@ class AdapterSignal:
     pass
 
 
-class AdapterDisconnected(AdapterSignal):
+class AdapterDisconnectedSignal(AdapterSignal):
     def __str__(self) -> str:
         return "Adapter disconnected"
 
@@ -261,7 +261,7 @@ class AdapterBackend(ABC):
             fragment_delta_t = float("nan")
         if fragment.data == b"":
             self.close()
-            yield AdapterDisconnected()
+            yield AdapterDisconnectedSignal()
         else:
             self._logger.debug(
                 f"New fragment {fragment_delta_t:+.3f} {fragment}"
