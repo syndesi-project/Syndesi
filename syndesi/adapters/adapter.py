@@ -30,7 +30,7 @@ from multiprocessing.connection import Client, Connection
 from types import EllipsisType
 from typing import Any
 
-from syndesi.tools.errors import AdapterDisconnected, AdapterTimeoutError, BackendCommunicationError, BackendError
+from syndesi.tools.errors import AdapterDisconnected, AdapterFailedToOpen, AdapterTimeoutError, BackendCommunicationError, BackendError
 from syndesi.tools.types import NumberLike, is_number
 
 from ..tools.backend_api import (
@@ -185,7 +185,7 @@ class Adapter(ABC):
         self._backend_connection_lock = threading.Lock()
         self._make_backend_request_queue: queue.Queue[BackendResponse] = queue.Queue()
         self._make_backend_request_flag = threading.Event()
-        self.opened = False
+        self._opened = False
         self._alias = alias
 
         if backend_address is None:
@@ -435,7 +435,15 @@ class Adapter(ABC):
         """
         self._make_backend_request(Action.OPEN, self._stop_conditions, timeout=BACKEND_REQUEST_DEFAULT_TIMEOUT + DEFAULT_ADAPTER_OPEN_TIMEOUT)
         self._logger.info("Adapter opened")
-        self.opened = True
+        self._opened = True
+
+    def try_open(self) -> bool:
+        try:
+            self.open()
+        except AdapterFailedToOpen:
+            return False
+        else:
+            return True
 
     def close(self, force: bool = False) -> None:
         """
@@ -451,7 +459,10 @@ class Adapter(ABC):
             if self.backend_connection is not None:
                 self.backend_connection.close()
 
-        self.opened = False
+        self._opened = False
+
+    def is_opened(self) -> bool:
+        return self._opened
 
     def write(self, data: bytes | str) -> None:
         """
@@ -588,7 +599,7 @@ class Adapter(ABC):
         return signal.data()
 
     def _cleanup(self) -> None:
-        if self._init_ok and self.opened:
+        if self._init_ok and self._opened:
             self.close()
 
     def query_detailed(
