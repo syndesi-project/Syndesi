@@ -14,18 +14,25 @@ class SyndesiError(Exception):
 class BackendCommunicationError(SyndesiError):
     """Error with backend communication"""
 
-
 class BackendError(SyndesiError):
     """Error inside the backend"""
 
-
-class AdapterBackendError(BackendError):
-    """Error inside an adapter backend"""
-
-
 class AdapterError(SyndesiError):
-    """Error inside an adapter frontend"""
+    """Adapter error"""
 
+class AdapterFailedToOpen(AdapterError):
+    """Adapter failed to open"""
+
+class AdapterDisconnected(AdapterError):
+    """Adapter disconnected"""
+
+class ProtocolError(SyndesiError):
+    """Protocol error"""
+
+class AdapterTimeoutError(AdapterError):
+    def __init__(self, timeout) -> None:
+        self.timeout = timeout
+        super().__init__(f'No response received from device within {self.timeout} seconds"')
 
 def make_error_description(e: Exception) -> str:
     tb = e.__traceback__

@@ -30,10 +30,12 @@ from multiprocessing.connection import Client, Connection
 from types import EllipsisType
 from typing import Any
 
+from syndesi.tools.errors import AdapterDisconnected, AdapterFailedToOpen, AdapterTimeoutError, BackendCommunicationError, BackendError
 from syndesi.tools.types import NumberLike, is_number
 
 from ..tools.backend_api import (
     BACKEND_PORT,
+    DEFAULT_ADAPTER_OPEN_TIMEOUT,
     EXTRA_BUFFER_RESPONSE_TIME,
     Action,
     BackendResponse,
@@ -43,7 +45,7 @@ from ..tools.backend_api import (
 )
 from ..tools.log_settings import LoggerAlias
 from .backend.adapter_backend import (
-    AdapterDisconnected,
+    AdapterDisconnectedSignal,
     AdapterReadPayload,
     AdapterResponseTimeout,
     AdapterSignal,
@@ -183,7 +185,7 @@ class Adapter(ABC):
         self._backend_connection_lock = threading.Lock()
         self._make_backend_request_queue: queue.Queue[BackendResponse] = queue.Queue()
         self._make_backend_request_flag = threading.Event()
-        self.opened = False
+        self._opened = False
         self._alias = alias
 
         if backend_address is None:
@@ -276,7 +278,7 @@ class Adapter(ABC):
         try:
             self.backend_connection = Client((default_host, BACKEND_PORT))
         except ConnectionRefusedError as err:
-            raise RuntimeError("Failed to connect to backend") from err
+            raise BackendCommunicationError("Failed to connect to backend") from err
         self._read_thread = threading.Thread(
             target=self.read_thread,
             args=(self._signal_queue, self._make_backend_request_queue),
@@ -293,7 +295,7 @@ class Adapter(ABC):
         if self.auto_open:
             self.open()
 
-    def _make_backend_request(self, action: Action, *args: Any) -> BackendResponse:
+    def _make_backend_request(self, action: Action, *args: Any, timeout=BACKEND_REQUEST_DEFAULT_TIMEOUT) -> BackendResponse:
         """
         Send a request to the backend and return the arguments
         """
@@ -305,10 +307,10 @@ class Adapter(ABC):
         self._make_backend_request_flag.set()
         try:
             response = self._make_backend_request_queue.get(
-                timeout=BACKEND_REQUEST_DEFAULT_TIMEOUT
+                timeout=timeout
             )
         except queue.Empty as err:
-            raise RuntimeError(
+            raise BackendCommunicationError(
                 f"Failed to receive response from backend to {action}"
             ) from err
 
@@ -330,18 +332,17 @@ class Adapter(ABC):
                     raise RuntimeError("Backend connection wasn't initialized")
                 response: tuple[Any, ...] = self.backend_connection.recv()
             except (EOFError, TypeError, OSError):
-                signal_queue.put(AdapterDisconnected())
+                signal_queue.put(AdapterDisconnectedSignal())
                 request_queue.put((Action.ERROR_BACKEND_DISCONNECTED,))
                 break
             else:
                 if not isinstance(response, tuple):
-                    raise RuntimeError(f"Invalid response from backend : {response}")
+                    raise BackendCommunicationError(f"Invalid response from backend : {response}")
                 action = Action(response[0])
 
                 if action == Action.ADAPTER_SIGNAL:
-                    # if is_event(action):
                     if len(response) <= 1:
-                        raise RuntimeError(f"Invalid event response : {response}")
+                        raise BackendCommunicationError(f"Invalid event response : {response}")
                     signal: AdapterSignal = response[1]
                     if self.event_callback is not None:
                         self.event_callback(signal)
@@ -432,9 +433,17 @@ class Adapter(ABC):
         """
         Start communication with the device
         """
-        self._make_backend_request(Action.OPEN, self._stop_conditions)
+        self._make_backend_request(Action.OPEN, self._stop_conditions, timeout=BACKEND_REQUEST_DEFAULT_TIMEOUT + DEFAULT_ADAPTER_OPEN_TIMEOUT)
         self._logger.info("Adapter opened")
-        self.opened = True
+        self._opened = True
+
+    def try_open(self) -> bool:
+        try:
+            self.open()
+        except AdapterFailedToOpen:
+            return False
+        else:
+            return True
 
     def close(self, force: bool = False) -> None:
         """
@@ -450,7 +459,10 @@ class Adapter(ABC):
             if self.backend_connection is not None:
                 self.backend_connection.close()
 
-        self.opened = False
+        self._opened = False
+
+    def is_opened(self) -> bool:
+        return self._opened
 
     def write(self, data: bytes | str) -> None:
         """
@@ -544,12 +556,12 @@ class Adapter(ABC):
 
                     signal = self._signal_queue.get(timeout=queue_timeout)
                 except queue.Empty as e:
-                    raise RuntimeError("Failed to receive response from backend") from e
+                    raise BackendCommunicationError("Failed to receive response from backend") from e
                 if isinstance(signal, AdapterReadPayload):
                     output_signal = signal
                     break
-                elif isinstance(signal, AdapterDisconnected):
-                    raise RuntimeError("Adapter disconnected")
+                elif isinstance(signal, AdapterDisconnectedSignal):
+                    raise AdapterDisconnected()
                 elif isinstance(signal, AdapterResponseTimeout):
                     if start_read_id == signal.identifier:
                         output_signal = None
@@ -569,8 +581,8 @@ class Adapter(ABC):
                         response_delay=None,
                     )
                 case TimeoutAction.ERROR:
-                    raise TimeoutError(
-                        f"No response received from device within {read_timeout.response()} seconds"
+                    raise AdapterTimeoutError(
+                        read_timeout.response()
                     )
                 case _:
                     raise NotImplementedError()
@@ -587,7 +599,7 @@ class Adapter(ABC):
         return signal.data()
 
     def _cleanup(self) -> None:
-        if self._init_ok and self.opened:
+        if self._init_ok and self._opened:
             self.close()
 
     def query_detailed(

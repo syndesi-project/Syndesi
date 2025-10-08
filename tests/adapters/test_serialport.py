@@ -6,6 +6,7 @@ from serial_delayer import SerialDelayer
 from syndesi import SerialPort
 from syndesi.adapters.stop_condition import Length, Termination, Continuation
 from syndesi.adapters.timeout import Timeout
+from syndesi.tools.errors import AdapterTimeoutError
 
 BAUDRATE = 115200
 TIME_DELTA = 30e-3
@@ -75,7 +76,7 @@ def test_response_B():
     client.write(encode_sequences([(sequence, delay)]))
     try:
         data = client.read()
-    except TimeoutError:
+    except AdapterTimeoutError:
         pass  # This is what we expect
     else:
         raise RuntimeError("No timeout exception was raised")
@@ -223,7 +224,7 @@ def test_length_short_timeout():
     try:
         data = client.read()
         print(f'Data : {data}')
-    except TimeoutError:
+    except AdapterTimeoutError:
         pass  # This is what we expect
     else:
         raise RuntimeError("No timeout exception was raised")
@@ -300,7 +301,7 @@ def test_discard_timeout_short():
     client.write(encode_sequences([(A, delay), (termination + B, 2*delay)]))
     try:
         client.read()
-    except TimeoutError:
+    except AdapterTimeoutError:
         pass
     else:
         raise RuntimeError('Failed to raise error')
@@ -433,7 +434,7 @@ def test_response_error():
     client.write(encode_sequences([(A + termination, delay)]))
     try:
         client.read()
-    except TimeoutError as te:
+    except AdapterTimeoutError as te:
         #assert te._type == TimeoutType.RESPONSE
         pass
     else:
@@ -545,7 +546,7 @@ def test_response_error():
 #     client.write(encode_sequences([(A, delay), (termination + B, delay)]))
 #     try:
 #         data = client.read()
-#     except TimeoutError:
+#     except AdapterTimeoutError:
 #         pass
 #         #assert te._type == TimeoutType.CONTINUATION
 #     else:

@@ -43,7 +43,7 @@ def main() -> None:
     elif command == SyndesiCommands.VISA:
         AdapterShell(AdapterType.VISA, remaining_args).run()
     else:
-        raise RuntimeError(f"Command '{command.value}' is not supported yet")
+        raise NotImplementedError(f"Command '{command.value}' is not supported yet")
 
 
 if __name__ == "__main__":

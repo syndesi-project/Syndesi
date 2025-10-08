@@ -60,6 +60,12 @@ class Protocol:
 
     def open(self) -> None:
         self._adapter.open()
+    
+    def try_open(self) -> bool:
+        return self._adapter.try_open()
+    
+    def is_opened(self) -> bool:
+        return self._adapter.is_opened()
 
     def close(self) -> None:
         self._adapter.close()

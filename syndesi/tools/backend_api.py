@@ -26,6 +26,9 @@ default_host = LOCALHOST
 
 EXTRA_BUFFER_RESPONSE_TIME = 1
 
+# Delay to let the adapter connect
+DEFAULT_ADAPTER_OPEN_TIMEOUT = 0.5
+
 
 class Action(Enum):
     # All adapters
