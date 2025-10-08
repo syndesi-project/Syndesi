@@ -99,16 +99,12 @@ class AdapterSession(threading.Thread):
             self._shutdown_counter_top = None
             self._shutdown_counter = None
 
-        # self._timeout_events: list[tuple[TimeoutEvent, float]] = []
-
         self._read_init_id = 0
 
     def add_connection(self, conn: NamedConnection) -> None:
         with self._connections_lock:
             self.connections.append(conn)
-            # os.write(self._new_connection_w, b"\x00")
             self._new_connection_w.send(b"\x00")
-            self._logger.info(f"New client : {conn.remote()}")
 
     def _remove_connection(self, conn: NamedConnection) -> None:
         with self._connections_lock:

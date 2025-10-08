@@ -87,7 +87,7 @@ class IPBackend(AdapterBackend):
                 self._logger.info(f"IP Adapter {self.descriptor} opened")
                 output = True
         else:
-            self._logger.info(f"Adapter {self.descriptor} already openend")
+            self._logger.warning(f"Adapter {self.descriptor} already openend")
             output = True
 
         return output
@@ -118,14 +118,16 @@ class IPBackend(AdapterBackend):
             self._logger.error(f"Cannot write to closed adapter {self.descriptor}")
             return False
         try:
-            self._socket.send(data)
+            ok = self._socket.send(data) == len(data)
         except (BrokenPipeError, OSError) as e:
             # Socket has been disconnected by the remote peer
+            ok = False
+
+        if not ok:
             self._logger.error(f"Failed to write to adapter {self.descriptor} ({e})")
             self.close()
-            return False
-        else:
-            return True
+            
+        return ok
 
     def _socket_read(self) -> Fragment:
         # This function is called only if the socket was ready

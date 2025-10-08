@@ -66,17 +66,12 @@ def background_proc():
     """Build and start ip_delayer once before tests."""
     global _PROC, _PATH
     _PATH = str(_compile_ip_delayer())
-    # Optional: verify port is free; if you want auto-pick, replace with a picker here.
-    print(f'Start delayer')
     _PROC = subprocess.Popen(
         [_PATH, "--port", str(PORT)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+        #stdout=subprocess.STDOUT,
+        #stderr=subprocess.STDOUT,
+        #text=True,
     )
-    # _PROC = subprocess.Popen(
-    #     [_PATH, "--port", str(_PORT)], text=True
-    # )
     if not _wait_port_open(PORT, timeout=5.0):
         try:
             out = _PROC.communicate(timeout=0.5)[0]
