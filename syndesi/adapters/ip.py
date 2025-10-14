@@ -1,8 +1,12 @@
 # File : ip.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# IP adapter, communicates with TCP or UDP
+
+"""
+IP adapter, communicates with TCP or UDP
+"""
+
+
 
 
 from collections.abc import Callable
@@ -18,7 +22,8 @@ from .timeout import Timeout
 
 # TODO : Server ? create an adapter from a socket ?
 
-# TODO : Manage opening and closing, modes ? open at instance or at write/read ? close after read ? error if already opened before / strict mode ?
+# TODO : Manage opening and closing, modes ? open at instance or at write/read ?
+# close after read ? error if already opened before / strict mode ?
 
 
 class IP(Adapter):

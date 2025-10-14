@@ -1,17 +1,19 @@
 # File : auto.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# Automatic adapter function
-# This function is used to automatically choose an adapter based on the user's input
-# 192.168.1.1 -> IP
-# COM4 -> Serial
-# /dev/tty* -> Serial
-# etc...
-# If an adapter class is supplied, it is passed through
-#
-# Additionnaly, it is possible to do COM4:115200 so as to make the life of the user easier
-# Same with /dev/ttyACM0:115200
+
+"""
+Automatic adapter function
+This function is used to automatically choose an adapter based on the user's input
+192.168.1.1 -> IP
+COM4 -> Serial
+/dev/tty* -> Serial
+etc...
+If an adapter class is supplied, it is passed through
+
+Additionnaly, it is possible to do COM4:115200 so as to make the life of the user easier
+Same with /dev/ttyACM0:115200
+"""
 
 
 from .adapter import Adapter
@@ -27,6 +29,15 @@ from .visa import Visa
 
 
 def auto_adapter(adapter_or_string: Adapter | str) -> Adapter:
+    """
+    Create an adapter from a string or an adapter
+
+    - <int>.<int>.<int>.<int>[:<int>] -> IP
+    - x.y[:<int>] -> IP
+    - COM<int> -> SerialPort
+    - /dev/tty[ACM|USB]<int> -> SerialPort
+
+    """
     if isinstance(adapter_or_string, Adapter):
         # Simply return it
         return adapter_or_string
@@ -39,12 +50,12 @@ def auto_adapter(adapter_or_string: Adapter | str) -> Adapter:
                 port=descriptor.port,
                 transport=descriptor.transport.value,
             )
-        elif isinstance(descriptor, SerialPortDescriptor):
+        if isinstance(descriptor, SerialPortDescriptor):
             return SerialPort(port=descriptor.port, baudrate=descriptor.baudrate)
-        elif isinstance(descriptor, VisaDescriptor):
+        if isinstance(descriptor, VisaDescriptor):
             return Visa(descriptor=descriptor.descriptor)
-        else:
-            raise RuntimeError(f"Invalid descriptor : {descriptor}")
+        
+        raise RuntimeError(f"Invalid descriptor : {descriptor}")
 
     else:
         raise ValueError(f"Invalid adapter : {adapter_or_string}")

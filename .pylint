@@ -1,15 +1,4 @@
-************* Module syndesi.version
-syndesi/version.py:1:0: C0114: Missing module docstring (missing-module-docstring)
-************* Module syndesi.adapters.auto
-syndesi/adapters/auto.py:1:0: C0114: Missing module docstring (missing-module-docstring)
-syndesi/adapters/auto.py:29:0: C0116: Missing function or method docstring (missing-function-docstring)
-syndesi/adapters/auto.py:30:4: R1705: Unnecessary "elif" after "return", remove the leading "el" from "elif" (no-else-return)
-syndesi/adapters/auto.py:36:8: R1705: Unnecessary "elif" after "return", remove the leading "el" from "elif" (no-else-return)
 ************* Module syndesi.adapters.ip
-syndesi/adapters/ip.py:21:0: C0301: Line too long (146/100) (line-too-long)
-syndesi/adapters/ip.py:19:1: W0511: TODO : Server ? create an adapter from a socket ? (fixme)
-syndesi/adapters/ip.py:21:1: W0511: TODO : Manage opening and closing, modes ? open at instance or at write/read ? close after read ? error if already opened before / strict mode ? (fixme)
-syndesi/adapters/ip.py:1:0: C0114: Missing module docstring (missing-module-docstring)
 syndesi/adapters/ip.py:24:0: C0115: Missing class docstring (missing-class-docstring)
 syndesi/adapters/ip.py:27:4: R0913: Too many arguments (12/5) (too-many-arguments)
 syndesi/adapters/ip.py:27:4: R0917: Too many positional arguments (12/5) (too-many-positional-arguments)
