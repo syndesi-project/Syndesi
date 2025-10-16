@@ -5,10 +5,6 @@
 """
 IP adapter, communicates with TCP or UDP
 """
-
-
-
-
 from collections.abc import Callable
 from types import EllipsisType
 
@@ -27,6 +23,28 @@ from .timeout import Timeout
 
 
 class IP(Adapter):
+    """
+    IP Adapter, allows for communication with IP devices through UDP or TCP
+    
+    Parameters
+    ----------
+    address : str
+        IP description
+    port : int
+        IP port
+    transport : str
+        'TCP' or 'UDP'
+    timeout : Timeout | float
+        Specify communication timeout
+    stop_condition : StopCondition
+        Specify a read stop condition (None by default)
+    auto_open : bool
+        Automatically open the adapter
+    socket : socket.socket
+        Specify a custom socket, this is reserved for server application
+    
+    
+    """
     DEFAULT_PROTOCOL = IPDescriptor.Transport.TCP
 
     def __init__(
@@ -34,6 +52,7 @@ class IP(Adapter):
         address: str,
         port: int | None = None,
         transport: str = DEFAULT_PROTOCOL.value,
+        *,
         timeout: Timeout | NumberLike | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         alias: str = "",
@@ -44,25 +63,7 @@ class IP(Adapter):
         backend_port: int | None = None,
     ):
         """
-        IP adapter
-
-        Parameters
-        ----------
-        address : str
-            IP description
-        port : int
-            IP port
-        transport : str
-            'TCP' or 'UDP'
-        timeout : Timeout | float
-            Specify communication timeout
-        stop_condition : StopCondition
-            Specify a read stop condition (None by default)
-        auto_open : bool
-            Automatically open the adapter
-        socket : socket.socket
-            Specify a custom socket, this is reserved for server application
-
+        Instanciate new IP adapter
         """
         super().__init__(
             descriptor=IPDescriptor(
