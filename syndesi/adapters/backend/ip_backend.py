@@ -10,7 +10,11 @@ from typing import cast
 
 import _socket
 
-from ...tools.backend_api import DEFAULT_ADAPTER_OPEN_TIMEOUT, AdapterBackendStatus, Fragment
+from ...tools.backend_api import (
+    DEFAULT_ADAPTER_OPEN_TIMEOUT,
+    AdapterBackendStatus,
+    Fragment,
+)
 from .adapter_backend import AdapterBackend, HasFileno
 from .descriptors import IPDescriptor
 
@@ -76,9 +80,7 @@ class IPBackend(AdapterBackend):
                         f"Invalid transport protocol : {self.descriptor.transport}"
                     )
             try:
-                self._socket.settimeout(
-                    DEFAULT_ADAPTER_OPEN_TIMEOUT
-                )
+                self._socket.settimeout(DEFAULT_ADAPTER_OPEN_TIMEOUT)
                 self._socket.connect((self.descriptor.address, self.descriptor.port))
             except OSError as e:
                 self._logger.error(f"Failed to open adapter {self.descriptor} : {e}")
@@ -119,14 +121,14 @@ class IPBackend(AdapterBackend):
             return False
         try:
             ok = self._socket.send(data) == len(data)
-        except (BrokenPipeError, OSError) as e:
+        except (BrokenPipeError, OSError):
             # Socket has been disconnected by the remote peer
             ok = False
 
         if not ok:
-            self._logger.error(f"Failed to write to adapter {self.descriptor} ({e})")
+            self._logger.error(f"Failed to write to adapter {self.descriptor}")
             self.close()
-            
+
         return ok
 
     def _socket_read(self) -> Fragment:

@@ -9,6 +9,7 @@ from typing import TextIO
 from .backend_logger import BackendLogger
 from .log_settings import LoggerAlias
 
+
 class LogManager:
     _lock = threading.Lock()
 

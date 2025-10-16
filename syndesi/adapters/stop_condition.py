@@ -5,10 +5,12 @@
 from abc import abstractmethod
 from enum import Enum
 
+
 class StopConditionType(Enum):
     TERMINATION = "termination"
     LENGTH = "length"
     TIMEOUT = "timeout"
+
 
 class StopCondition:
     @abstractmethod

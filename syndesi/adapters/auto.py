@@ -54,7 +54,7 @@ def auto_adapter(adapter_or_string: Adapter | str) -> Adapter:
             return SerialPort(port=descriptor.port, baudrate=descriptor.baudrate)
         if isinstance(descriptor, VisaDescriptor):
             return Visa(descriptor=descriptor.descriptor)
-        
+
         raise RuntimeError(f"Invalid descriptor : {descriptor}")
 
     else:

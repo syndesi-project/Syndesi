@@ -7,8 +7,6 @@ IP adapter, communicates with TCP or UDP
 """
 
 
-
-
 from collections.abc import Callable
 from types import EllipsisType
 
