@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from ..tools.types import NumberLike, is_number
 
+
 class TimeoutAction(Enum):
     ERROR = "error"
     RETURN_EMPTY = "return_empty"

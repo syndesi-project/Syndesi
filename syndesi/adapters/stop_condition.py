@@ -12,6 +12,7 @@ This is the frontend of the stop-conditions, the part that is imported by the us
 from enum import Enum
 from dataclasses import dataclass
 
+
 class StopConditionType(Enum):
     """
     Stop-condition type
