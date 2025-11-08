@@ -44,7 +44,7 @@ class Protocol:
         pass
 
     def flushRead(self) -> None:
-        self._adapter.flushRead()
+        self._adapter.flush_read()
 
     def event_callback(self, event: AdapterSignal) -> None:
         if self._event_callback is not None:

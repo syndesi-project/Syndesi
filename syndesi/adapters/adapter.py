@@ -32,13 +32,14 @@ from multiprocessing.connection import Client, Connection
 from types import EllipsisType
 from typing import Any
 
-from syndesi.tools.errors import (
+from ..component import Component
+from ..tools.errors import (
     AdapterDisconnected,
     AdapterFailedToOpen,
     AdapterTimeoutError,
     BackendCommunicationError,
 )
-from syndesi.tools.types import NumberLike, is_number
+from ..tools.types import NumberLike, is_number
 
 from ..tools.backend_api import (
     BACKEND_PORT,
@@ -144,14 +145,14 @@ def start_backend(port: int | None = None) -> None:
     stderr = subprocess.DEVNULL
 
     if os.name == "posix":
-        subprocess.Popen(
+        subprocess.Popen( #pylint: disable=consider-using-with
             arguments,
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
             start_new_session=True,
             close_fds=True,
-        ) #pylint: disable=consider-using-with
+        )
 
     else:
         # Windows: detach from the parent's console so keyboard Ctrl+C won't propagate.
@@ -162,14 +163,14 @@ def start_backend(port: int | None = None) -> None:
 
         creationflags = create_new_process_group | detached_process | create_no_window
 
-        subprocess.Popen(
+        subprocess.Popen( #pylint: disable=consider-using-with
             arguments,
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
             creationflags=creationflags,
             close_fds=True,
-        ) #pylint: disable=consider-using-with
+        )
 
 
 class ReadScope(Enum):
@@ -183,15 +184,17 @@ class ReadScope(Enum):
     BUFFERED = "buffered"
 
 
-class Adapter(ABC):
+class Adapter(Component[bytes]):
     """
     Adapter class
 
-    An adapter permits communication with a hardware devices. The adapter 
-
+    An adapter permits communication with a hardware device.
+    The adapter is the user interface of the backend adapter
     """
+    #pylint: disable=too-many-instance-attributes
     def __init__(
         self,
+        *,
         descriptor: Descriptor,
         alias: str = "",
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
@@ -216,9 +219,7 @@ class Adapter(ABC):
         encoding : str
             Which encoding to use if str has to be encoded into bytes
         """
-        self._init_ok = False
-        super().__init__()
-        self._logger = logging.getLogger(LoggerAlias.ADAPTER.value)
+        super().__init__(LoggerAlias.ADAPTER)
         self.encoding = encoding
         self._signal_queue: SignalQueue = SignalQueue()
         self.event_callback: Callable[[AdapterSignal], None] | None = event_callback
@@ -229,14 +230,9 @@ class Adapter(ABC):
         self._opened = False
         self._alias = alias
 
-        if backend_address is None:
-            self._backend_address = default_host
-        else:
-            self._backend_address = backend_address
-        if backend_port is None:
-            self._backend_port = BACKEND_PORT
-        else:
-            self._backend_port = backend_port
+        # Use custom backend or the default one
+        self._backend_address = default_host if backend_address is None else backend_address
+        self._backend_port = BACKEND_PORT if backend_port is None else backend_port
 
         # There a two possibilities here
         # A) The descriptor is fully initialized
@@ -244,9 +240,6 @@ class Adapter(ABC):
         # B) The descriptor is not fully initialized
         #    -> Wait for the protocol to set defaults and then connect the adapter
 
-        assert isinstance(
-            descriptor, Descriptor
-        ), "descriptor must be a Descriptor class"
         self.descriptor = descriptor
         self.auto_open = auto_open
 
@@ -286,7 +279,6 @@ class Adapter(ABC):
             self.connect()
 
         weakref.finalize(self, self._cleanup)
-        self._init_ok = True
 
         # We can auto-open only if auto_open is enabled and if
         # connection with the backend has been made (descriptor initialized)
@@ -294,6 +286,9 @@ class Adapter(ABC):
             self.open()
 
     def connect(self) -> None:
+        """
+        Connect to the backend
+        """
         if self.backend_connection is not None:
             # No need to connect, everything has been done already
             return
@@ -370,6 +365,12 @@ class Adapter(ABC):
         signal_queue: SignalQueue,
         request_queue: queue.Queue[BackendResponse],
     ) -> None:
+        """
+        Main adapter thread, it constantly listens for data coming from the backend
+        
+        - signal -> put only the signal in the signal queue
+        - otherwise -> put the whole request in the request queue
+        """
         while True:
             try:
                 if self.backend_connection is None:
@@ -455,7 +456,7 @@ class Adapter(ABC):
         if self._default_stop_condition:
             self.set_stop_conditions(stop_condition)
 
-    def flushRead(self) -> None:
+    def flush_read(self) -> None:
         """
         Flush the input buffer
         """
@@ -495,8 +496,7 @@ class Adapter(ABC):
             self.open()
         except AdapterFailedToOpen:
             return False
-        else:
-            return True
+        return True
 
     def close(self, force: bool = False) -> None:
         """
@@ -515,9 +515,16 @@ class Adapter(ABC):
         self._opened = False
 
     def is_opened(self) -> bool:
+        """
+        Return True if the adapter is opened and False otherwise
+
+        Returns
+        -------
+        opened : bool
+        """
         return self._opened
 
-    def write(self, data: bytes | str) -> None:
+    def write(self, data: bytes) -> None:
         """
         Send data to the device
 
@@ -615,9 +622,9 @@ class Adapter(ABC):
                 if isinstance(signal, AdapterReadPayload):
                     output_signal = signal
                     break
-                elif isinstance(signal, AdapterDisconnectedSignal):
+                if isinstance(signal, AdapterDisconnectedSignal):
                     raise AdapterDisconnected()
-                elif isinstance(signal, AdapterResponseTimeout):
+                if isinstance(signal, AdapterResponseTimeout):
                     if start_read_id == signal.identifier:
                         output_signal = None
                         break
@@ -655,7 +662,7 @@ class Adapter(ABC):
         return signal.data()
 
     def _cleanup(self) -> None:
-        if self._init_ok and self._opened:
+        if self._opened:
             self.close()
 
     def query_detailed(
@@ -670,7 +677,7 @@ class Adapter(ABC):
         - write
         - read
         """
-        self.flushRead()
+        self.flush_read()
         self.write(data)
         return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
 

@@ -91,12 +91,18 @@
 #         self._logger.info("Adapter closed !")
 #         self._opened = False
 
-#     def get_client(self, stop_condition : StopConditionBackend = None, timeout : Timeout = None) -> IP:
+#     def get_client(self,
+#           stop_condition : StopConditionBackend = None,
+#           timeout : Timeout = None) -> IP:
 #         """
 #         Wait for a client to connect to the server and return the corresponding adapter
 #         """
 #         if not self._opened:
 #             raise RuntimeError("open() must be called before getting client")
 #         client_socket, address = self._socket.accept()
-#         default_timeout = Timeout(response=None, continuation=IP.DEFAULT_CONTINUATION_TIMEOUT, total=None)
-#         return IP(_socket=client_socket, address=address, stop_condition=stop_condition, timeout=timeout_fuse(timeout, default_timeout))
+#         default_timeout = Timeout(response=None,
+#               continuation=IP.DEFAULT_CONTINUATION_TIMEOUT,
+#               total=None)
+#         return IP(_socket=client_socket, address=address,
+#           stop_condition=stop_condition,
+#           timeout=timeout_fuse(timeout, default_timeout))
