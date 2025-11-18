@@ -3,7 +3,7 @@
 # -- Project information
 
 project = "Syndesi"
-copyright = "2024, Sébastien Deriaz"
+copyright = "2025, Sébastien Deriaz"
 author = "Sébastien Deriaz"
 
 release = "0.1"
@@ -17,7 +17,23 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
+    "sphinx_autodoc_typehints"
 ]
+
+autosummary_generate = True
+autoclass_content = "both"
+autodoc_typehints = "description"
+autodoc_default_options = {
+    "members": True,
+    "undoc-members": False,
+    "inherited-members": True,
+    "show-inheritance": True,
+}
+napoleon_numpy_docstring = True
+napoleon_use_param = True
+napoleon_use_rtype = True
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),

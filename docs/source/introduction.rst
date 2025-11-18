@@ -1,11 +1,34 @@
 Introduction
 ============
 
-Syndesi is a Python package designed to facilitate reliable communication with electronic devices like Arduinos, lab equipment (e.g., multimeters, oscilloscopes, waveform generators), and servers via standard protocols.
+Syndesi is a Python package designed to facilitate reliable communication with hardware devices.
 
-The package aims to simplify testbench creation for engineers, hobbyists, and educators, providing a unified interface for various connection types (IP, SerialPort, VISA) and data formatting protocols (Delimited, SCPI, Modbus).
+Syndesi is particulary well suited for testbench creation and is aimed at engineers, hobbyists, and educators, providing a unified interface for various connection types (IP, SerialPort, VISA) and data formatting protocols (Delimited, SCPI, Modbus).
 
 **Main Features:**
 - Simple interface for establishing connections
 - Support for multiple communication protocols
 - Extensible design for adding new protocols or device-specific drivers
+
+**Installation**
+
+To install Syndesi, use the following:
+
+.. code-block:: bash
+    pip install syndesi
+
+**Quickstart Example:**
+
+.. code-block:: python
+    # Send and receive \n delimited data to a device on IP 192.168.1.10:80
+    from syndesi import IP, Delimited
+
+    protocol = Delimited(IP("192.168.1.10", port=80), termination="\n")
+    response = protocol.query("COMMAND")
+    print("Response:", response)
+
+
+Refer to the Adapters and Protocols sections for more details on configuring specific settings.
+
+
+

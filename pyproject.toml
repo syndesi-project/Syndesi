@@ -69,3 +69,9 @@ exclude = ["^tests/fixtures/"]
 skips = ["B101"]
 exclude = ["tests"]
 
+[tool.pylint]
+# Disable too-many-arguments, this is the case for adapters/protocols/drivers
+# All arguments are necessary and it would not make sense to group them / move them
+# too-many-positional-arguments is kept however because it makes sense
+# Also disable W1203 to allow f-strings in logging lines
+disable = ["R0913", "W1203"]

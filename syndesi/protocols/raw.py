@@ -51,7 +51,7 @@ class Raw(Protocol):
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> bytes:
-        self._adapter.flushRead()
+        self._adapter.flush_read()
         self.write(data)
         return self.read(timeout=timeout, stop_conditions=stop_conditions)
 
@@ -61,7 +61,7 @@ class Raw(Protocol):
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> AdapterReadPayload:
-        self._adapter.flushRead()
+        self._adapter.flush_read()
         self.write(data)
         return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
 

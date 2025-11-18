@@ -63,9 +63,12 @@ class StopConditionBackend:
 
 
 class TerminationBackend(StopConditionBackend):
-    def __init__(self, sequence: bytes) -> None:
+    def __init__(self, sequence: bytes | str) -> None:
         super().__init__()
-        self._sequence = sequence
+        if isinstance(sequence, str):
+            self._sequence = sequence.encode('utf-8')
+        else:
+            self._sequence = sequence
         self._sequence_found_length = 0
 
     def initiate_read(self) -> None:
@@ -210,10 +213,10 @@ def stop_condition_to_backend(stop_condition: StopCondition) -> StopConditionBac
     if isinstance(stop_condition, Termination):
         return TerminationBackend(stop_condition.sequence)
     elif isinstance(stop_condition, Length):
-        return LengthBackend(stop_condition.N)
+        return LengthBackend(stop_condition.n)
     elif isinstance(stop_condition, Continuation):
-        return ContinuationBackend(stop_condition.continuation)
+        return ContinuationBackend(stop_condition.time)
     elif isinstance(stop_condition, Total):
-        return TotalBackend(stop_condition.total)
+        return TotalBackend(stop_condition.time)
     else:
         raise RuntimeError(f"Invalid stop condition : {stop_condition}")

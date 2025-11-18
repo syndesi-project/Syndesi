@@ -105,7 +105,6 @@ class Backend:
     _backend_shutdown_timestamp: NumberLike | None
     shutdown_timer: threading.Timer | None
 
-
     def __init__(
         self,
         host: str,
@@ -281,7 +280,9 @@ class Backend:
         # Wait for adapter
         # ready = wait([client.conn], timeout=0.1)
         # selectors to work on Unix and Windows
-        ready, _, _ = select.select([client.conn], [], [], self.NEW_CLIENT_REQUEST_TIMEOUT)
+        ready, _, _ = select.select(
+            [client.conn], [], [], self.NEW_CLIENT_REQUEST_TIMEOUT
+        )
         if len(ready) == 0:
             client.conn.close()
             return
@@ -293,7 +294,7 @@ class Backend:
         action = Action(adapter_request[0])
         if action == Action.SELECT_ADAPTER:
             adapter_descriptor = adapter_request[1]
-            self._logger.info(f'New client for {adapter_descriptor}')
+            self._logger.info(f"New client for {adapter_descriptor}")
             # If the session exists but it is dead, delete it
             if (
                 adapter_descriptor in self.adapter_sessions
@@ -303,7 +304,7 @@ class Backend:
 
             if adapter_descriptor not in self.adapter_sessions:
                 # Create the adapter backend thread
-                #self._logger.info(f"Creating adapter session for {adapter_descriptor}")
+                # self._logger.info(f"Creating adapter session for {adapter_descriptor}")
                 thread = AdapterSession(
                     adapter_descriptor, shutdown_delay=self._session_shutdown_delay
                 )  # TODO : Put another delay here ?

@@ -1,19 +1,21 @@
 # File : adapters.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# Adapters provide a common abstraction for the media layers (physical + data link + network)
-# The following classes are provided, which all are derived from the main Adapter class
-#   - IP
-#   - Serial
-#   - VISA
-#
-# Note that technically VISA is not part of the media layer, only USB is.
-# This is a limitation as it is to this day not possible to communicate "raw"
-# with a device through USB yet
-#
-# An adapter is meant to work with bytes objects but it can accept strings.
-# Strings will automatically be converted to bytes using utf-8 encoding
+
+"""
+Adapters provide a common abstraction for the media layers (physical + data link + network)
+The following classes are provided, which all are derived from the main Adapter class
+  - IP
+  - Serial
+  - VISA
+
+Note that technically VISA is not part of the media layer, only USB is.
+This is a limitation as it is to this day not possible to communicate "raw"
+with a device through USB yet
+
+An adapter is meant to work with bytes objects but it can accept strings.
+Strings will automatically be converted to bytes using utf-8 encoding
+"""
 
 import logging
 import os
@@ -30,8 +32,14 @@ from multiprocessing.connection import Client, Connection
 from types import EllipsisType
 from typing import Any
 
-from syndesi.tools.errors import AdapterDisconnected, AdapterFailedToOpen, AdapterTimeoutError, BackendCommunicationError, BackendError
-from syndesi.tools.types import NumberLike, is_number
+from ..component import Component
+from ..tools.errors import (
+    AdapterDisconnected,
+    AdapterFailedToOpen,
+    AdapterTimeoutError,
+    BackendCommunicationError,
+)
+from ..tools.types import NumberLike, is_number
 
 from ..tools.backend_api import (
     BACKEND_PORT,
@@ -66,39 +74,61 @@ SHUTDOWN_DELAY = 2
 
 
 class SignalQueue(queue.Queue[AdapterSignal]):
+    """
+    A smart queue to hold adapter signals
+    """
     def __init__(self) -> None:
         self._read_payload_counter = 0
         super().__init__(0)
 
     def has_read_payload(self) -> bool:
+        """
+        Return True if the queue contains a read payload
+        """
         return self._read_payload_counter > 0
 
-    def put(
-        self, signal: AdapterSignal, block: bool = True, timeout: float | None = None
-    ) -> None:
+    def put(self, signal: AdapterSignal) -> None:
+        """
+        Put a signal in the queue
+        
+        Parameters
+        ----------
+        signal : AdapterSignal
+        """
         if isinstance(signal, AdapterReadPayload):
             self._read_payload_counter += 1
-        return super().put(signal, block, timeout)
+        return super().put(signal)
 
     def get(self, block: bool = True, timeout: float | None = None) -> AdapterSignal:
+        """
+        Get an AdapterSignal from the queue
+        """
         signal = super().get(block, timeout)
         if isinstance(signal, AdapterReadPayload):
             self._read_payload_counter -= 1
         return signal
 
-
 def is_backend_running(address: str, port: int) -> bool:
-
+    """
+    Return True if the backend is running
+    """
     try:
         conn = Client((address, port))
     except ConnectionRefusedError:
         return False
-    else:
-        conn.close()
-        return True
-
+    conn.close()
+    return True
 
 def start_backend(port: int | None = None) -> None:
+    """
+    Start the backend in a separate process
+
+    A custom port can be specified
+
+    Parameters
+    ----------
+    port : int
+    """
     arguments = [
         sys.executable,
         "-m",
@@ -115,7 +145,7 @@ def start_backend(port: int | None = None) -> None:
     stderr = subprocess.DEVNULL
 
     if os.name == "posix":
-        subprocess.Popen(
+        subprocess.Popen( #pylint: disable=consider-using-with
             arguments,
             stdin=stdin,
             stdout=stdout,
@@ -126,14 +156,14 @@ def start_backend(port: int | None = None) -> None:
 
     else:
         # Windows: detach from the parent's console so keyboard Ctrl+C won't propagate.
-        CREATE_NEW_PROCESS_GROUP = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore
-        DETACHED_PROCESS = 0x00000008  # not exposed by subprocess on all Pythons
+        create_new_process_group = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore
+        detached_process = 0x00000008  # not exposed by subprocess on all Pythons
         # Optional: CREATE_NO_WINDOW (no window even for console apps)
-        CREATE_NO_WINDOW = 0x08000000
+        create_no_window = 0x08000000
 
-        creationflags = CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | CREATE_NO_WINDOW
+        creationflags = create_new_process_group | detached_process | create_no_window
 
-        subprocess.Popen(
+        subprocess.Popen( #pylint: disable=consider-using-with
             arguments,
             stdin=stdin,
             stdout=stdout,
@@ -144,13 +174,27 @@ def start_backend(port: int | None = None) -> None:
 
 
 class ReadScope(Enum):
+    """
+    Read scope
+
+    NEXT : Only read data after the start of the read() call
+    BUFFERED : Return any data that was present before the read() call
+    """
     NEXT = "next"
     BUFFERED = "buffered"
 
 
-class Adapter(ABC):
+class Adapter(Component[bytes]):
+    """
+    Adapter class
+
+    An adapter permits communication with a hardware device.
+    The adapter is the user interface of the backend adapter
+    """
+    #pylint: disable=too-many-instance-attributes
     def __init__(
         self,
+        *,
         descriptor: Descriptor,
         alias: str = "",
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
@@ -175,9 +219,7 @@ class Adapter(ABC):
         encoding : str
             Which encoding to use if str has to be encoded into bytes
         """
-        self._init_ok = False
-        super().__init__()
-        self._logger = logging.getLogger(LoggerAlias.ADAPTER.value)
+        super().__init__(LoggerAlias.ADAPTER)
         self.encoding = encoding
         self._signal_queue: SignalQueue = SignalQueue()
         self.event_callback: Callable[[AdapterSignal], None] | None = event_callback
@@ -188,14 +230,9 @@ class Adapter(ABC):
         self._opened = False
         self._alias = alias
 
-        if backend_address is None:
-            self._backend_address = default_host
-        else:
-            self._backend_address = backend_address
-        if backend_port is None:
-            self._backend_port = BACKEND_PORT
-        else:
-            self._backend_port = backend_port
+        # Use custom backend or the default one
+        self._backend_address = default_host if backend_address is None else backend_address
+        self._backend_port = BACKEND_PORT if backend_port is None else backend_port
 
         # There a two possibilities here
         # A) The descriptor is fully initialized
@@ -203,9 +240,6 @@ class Adapter(ABC):
         # B) The descriptor is not fully initialized
         #    -> Wait for the protocol to set defaults and then connect the adapter
 
-        assert isinstance(
-            descriptor, Descriptor
-        ), "descriptor must be a Descriptor class"
         self.descriptor = descriptor
         self.auto_open = auto_open
 
@@ -245,7 +279,6 @@ class Adapter(ABC):
             self.connect()
 
         weakref.finalize(self, self._cleanup)
-        self._init_ok = True
 
         # We can auto-open only if auto_open is enabled and if
         # connection with the backend has been made (descriptor initialized)
@@ -253,6 +286,9 @@ class Adapter(ABC):
             self.open()
 
     def connect(self) -> None:
+        """
+        Connect to the backend
+        """
         if self.backend_connection is not None:
             # No need to connect, everything has been done already
             return
@@ -295,7 +331,12 @@ class Adapter(ABC):
         if self.auto_open:
             self.open()
 
-    def _make_backend_request(self, action: Action, *args: Any, timeout=BACKEND_REQUEST_DEFAULT_TIMEOUT) -> BackendResponse:
+    def _make_backend_request(
+        self,
+        action: Action,
+        *args: Any,
+        timeout: float = BACKEND_REQUEST_DEFAULT_TIMEOUT,
+    ) -> BackendResponse:
         """
         Send a request to the backend and return the arguments
         """
@@ -306,9 +347,7 @@ class Adapter(ABC):
 
         self._make_backend_request_flag.set()
         try:
-            response = self._make_backend_request_queue.get(
-                timeout=timeout
-            )
+            response = self._make_backend_request_queue.get(timeout=timeout)
         except queue.Empty as err:
             raise BackendCommunicationError(
                 f"Failed to receive response from backend to {action}"
@@ -326,6 +365,12 @@ class Adapter(ABC):
         signal_queue: SignalQueue,
         request_queue: queue.Queue[BackendResponse],
     ) -> None:
+        """
+        Main adapter thread, it constantly listens for data coming from the backend
+        
+        - signal -> put only the signal in the signal queue
+        - otherwise -> put the whole request in the request queue
+        """
         while True:
             try:
                 if self.backend_connection is None:
@@ -337,12 +382,16 @@ class Adapter(ABC):
                 break
             else:
                 if not isinstance(response, tuple):
-                    raise BackendCommunicationError(f"Invalid response from backend : {response}")
+                    raise BackendCommunicationError(
+                        f"Invalid response from backend : {response}"
+                    )
                 action = Action(response[0])
 
                 if action == Action.ADAPTER_SIGNAL:
                     if len(response) <= 1:
-                        raise BackendCommunicationError(f"Invalid event response : {response}")
+                        raise BackendCommunicationError(
+                            f"Invalid event response : {response}"
+                        )
                     signal: AdapterSignal = response[1]
                     if self.event_callback is not None:
                         self.event_callback(signal)
@@ -366,7 +415,8 @@ class Adapter(ABC):
 
     def set_default_timeout(self, default_timeout: Timeout | None) -> None:
         """
-        Set the default timeout for this adapter. If a previous timeout has been set, it will be fused
+        Set the default timeout for this adapter. If a previous
+        timeout has been set, it will be fused
 
         Parameters
         ----------
@@ -406,7 +456,7 @@ class Adapter(ABC):
         if self._default_stop_condition:
             self.set_stop_conditions(stop_condition)
 
-    def flushRead(self) -> None:
+    def flush_read(self) -> None:
         """
         Flush the input buffer
         """
@@ -433,7 +483,11 @@ class Adapter(ABC):
         """
         Start communication with the device
         """
-        self._make_backend_request(Action.OPEN, self._stop_conditions, timeout=BACKEND_REQUEST_DEFAULT_TIMEOUT + DEFAULT_ADAPTER_OPEN_TIMEOUT)
+        self._make_backend_request(
+            Action.OPEN,
+            self._stop_conditions,
+            timeout=BACKEND_REQUEST_DEFAULT_TIMEOUT + DEFAULT_ADAPTER_OPEN_TIMEOUT,
+        )
         self._logger.info("Adapter opened")
         self._opened = True
 
@@ -442,8 +496,7 @@ class Adapter(ABC):
             self.open()
         except AdapterFailedToOpen:
             return False
-        else:
-            return True
+        return True
 
     def close(self, force: bool = False) -> None:
         """
@@ -462,9 +515,16 @@ class Adapter(ABC):
         self._opened = False
 
     def is_opened(self) -> bool:
+        """
+        Return True if the adapter is opened and False otherwise
+
+        Returns
+        -------
+        opened : bool
+        """
         return self._opened
 
-    def write(self, data: bytes | str) -> None:
+    def write(self, data: bytes) -> None:
         """
         Send data to the device
 
@@ -556,13 +616,15 @@ class Adapter(ABC):
 
                     signal = self._signal_queue.get(timeout=queue_timeout)
                 except queue.Empty as e:
-                    raise BackendCommunicationError("Failed to receive response from backend") from e
+                    raise BackendCommunicationError(
+                        "Failed to receive response from backend"
+                    ) from e
                 if isinstance(signal, AdapterReadPayload):
                     output_signal = signal
                     break
-                elif isinstance(signal, AdapterDisconnectedSignal):
+                if isinstance(signal, AdapterDisconnectedSignal):
                     raise AdapterDisconnected()
-                elif isinstance(signal, AdapterResponseTimeout):
+                if isinstance(signal, AdapterResponseTimeout):
                     if start_read_id == signal.identifier:
                         output_signal = None
                         break
@@ -581,8 +643,9 @@ class Adapter(ABC):
                         response_delay=None,
                     )
                 case TimeoutAction.ERROR:
+                    timeout_value = read_timeout.response()
                     raise AdapterTimeoutError(
-                        read_timeout.response()
+                        float("nan") if timeout_value is None else timeout_value
                     )
                 case _:
                     raise NotImplementedError()
@@ -599,7 +662,7 @@ class Adapter(ABC):
         return signal.data()
 
     def _cleanup(self) -> None:
-        if self._init_ok and self._opened:
+        if self._opened:
             self.close()
 
     def query_detailed(
@@ -614,7 +677,7 @@ class Adapter(ABC):
         - write
         - read
         """
-        self.flushRead()
+        self.flush_read()
         self.write(data)
         return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
 

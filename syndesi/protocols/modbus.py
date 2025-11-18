@@ -10,13 +10,13 @@ from enum import Enum
 from math import ceil
 from typing import cast
 from unittest.mock import DEFAULT
-from ..tools.errors import ProtocolError
 
 from ..adapters.adapter import Adapter
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..adapters.stop_condition import Continuation, Length
 from ..adapters.timeout import Timeout
+from ..tools.errors import ProtocolError
 from .protocol import Protocol
 
 MODBUS_TCP_DEFAULT_PORT = 502

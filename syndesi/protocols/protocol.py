@@ -44,7 +44,7 @@ class Protocol:
         pass
 
     def flushRead(self) -> None:
-        self._adapter.flushRead()
+        self._adapter.flush_read()
 
     def event_callback(self, event: AdapterSignal) -> None:
         if self._event_callback is not None:
@@ -60,10 +60,10 @@ class Protocol:
 
     def open(self) -> None:
         self._adapter.open()
-    
+
     def try_open(self) -> bool:
         return self._adapter.try_open()
-    
+
     def is_opened(self) -> bool:
         return self._adapter.is_opened()
 
