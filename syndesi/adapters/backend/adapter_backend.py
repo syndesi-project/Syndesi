@@ -211,7 +211,7 @@ class AdapterBackend(ABC):
         return self._previous_buffer.data == b""
 
     @abstractmethod
-    def open(self) -> bool:
+    def open(self) -> None:
         """
         Start communication with the device
         """

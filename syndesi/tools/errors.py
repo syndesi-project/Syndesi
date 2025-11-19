@@ -24,6 +24,8 @@ class BackendError(SyndesiError):
 class AdapterError(SyndesiError):
     """Adapter error"""
 
+class AdapterConfigurationError(AdapterError):
+    """Adapter configuration error"""
 
 class AdapterFailedToOpen(AdapterError):
     """Adapter failed to open"""
