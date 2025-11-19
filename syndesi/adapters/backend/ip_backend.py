@@ -10,7 +10,13 @@ from typing import cast
 
 import _socket
 
-from ...tools.backend_api import AdapterBackendStatus, Fragment
+from syndesi.tools.errors import AdapterConfigurationError, AdapterFailedToOpen
+
+from ...tools.backend_api import (
+    DEFAULT_ADAPTER_OPEN_TIMEOUT,
+    AdapterBackendStatus,
+    Fragment,
+)
 from .adapter_backend import AdapterBackend, HasFileno
 from .descriptors import IPDescriptor
 
@@ -55,42 +61,37 @@ class IPBackend(AdapterBackend):
     def selectable(self) -> HasFileno | None:
         return self._socket
 
-    def open(self) -> bool:
-        output = False
-        if self._status == AdapterBackendStatus.DISCONNECTED:
-            if self.descriptor.port is None:  # TODO : Check if this is even possible
-                raise ValueError("Cannot open adapter without specifying a port")
+    def open(self):
+        if self._status == AdapterBackendStatus.CONNECTED:
+            self._logger.warning(f"Adapter {self.descriptor} already openend")
+            return
+        
+        if self.descriptor.port is None:
+            raise AdapterConfigurationError("Cannot open adapter without specifying a port")
 
-            if self._socket is None:
-                if self.descriptor.transport == IPDescriptor.Transport.TCP:
-                    self._socket = cast(
-                        _socket.socket,
-                        socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-                    )
-                elif self.descriptor.transport == IPDescriptor.Transport.UDP:
-                    self._socket = cast(
-                        _socket.socket, socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    )
-                else:
-                    raise ValueError(
-                        f"Invalid transport protocol : {self.descriptor.transport}"
-                    )
-            try:
-                self._socket.settimeout(
-                    0.5
-                )  # TODO : Configure this cleanly, it has to be less than the receive timeout of the frontend
-                self._socket.connect((self.descriptor.address, self.descriptor.port))
-            except OSError as e:  # TODO : Maybe change the exception ?
-                self._logger.error(f"Failed to open adapter {self.descriptor} : {e}")
+        if self._socket is None:
+            if self.descriptor.transport == IPDescriptor.Transport.TCP:
+                self._socket = cast(
+                    _socket.socket,
+                    socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+                )
+            elif self.descriptor.transport == IPDescriptor.Transport.UDP:
+                self._socket = cast(
+                    _socket.socket, socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                )
             else:
-                self._status = AdapterBackendStatus.CONNECTED
-                self._logger.info(f"IP Adapter {self.descriptor} opened")
-                output = True
+                raise AdapterConfigurationError(
+                    f"Invalid transport protocol : {self.descriptor.transport}"
+                )
+        try:
+            self._socket.settimeout(DEFAULT_ADAPTER_OPEN_TIMEOUT)
+            self._socket.connect((self.descriptor.address, self.descriptor.port))
+        except OSError as e:
+            self._logger.error(f"Failed to open adapter {self.descriptor} : {e}")
+            raise AdapterFailedToOpen(str(e))
         else:
-            self._logger.info(f"Adapter {self.descriptor} already openend")
-            output = True
-
-        return output
+            self._status = AdapterBackendStatus.CONNECTED
+            self._logger.info(f"IP Adapter {self.descriptor} opened")
 
     def close(self) -> bool:
         super().close()
@@ -118,14 +119,16 @@ class IPBackend(AdapterBackend):
             self._logger.error(f"Cannot write to closed adapter {self.descriptor}")
             return False
         try:
-            self._socket.send(data)
-        except (BrokenPipeError, OSError) as e:
+            ok = self._socket.send(data) == len(data)
+        except (BrokenPipeError, OSError):
             # Socket has been disconnected by the remote peer
-            self._logger.error(f"Failed to write to adapter {self.descriptor} ({e})")
+            ok = False
+
+        if not ok:
+            self._logger.error(f"Failed to write to adapter {self.descriptor}")
             self.close()
-            return False
-        else:
-            return True
+
+        return ok
 
     def _socket_read(self) -> Fragment:
         # This function is called only if the socket was ready

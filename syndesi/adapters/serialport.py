@@ -2,6 +2,12 @@
 # Author : Sébastien Deriaz
 # License : GPL
 
+"""
+SerialPort module, allows communication with serial devices using
+the OS layers (COMx, /dev/ttyUSBx or /dev/ttyACMx)
+
+"""
+
 from collections.abc import Callable
 from types import EllipsisType
 
@@ -15,10 +21,21 @@ from .timeout import Timeout
 
 
 class SerialPort(Adapter):
+    """
+    Serial communication adapter
+    
+    Parameters
+    ----------
+    port : str
+        Serial port (COMx or ttyACMx)
+    baudrate : int
+        Baudrate
+    """
     def __init__(
         self,
         port: str,
         baudrate: int | None = None,
+        *,
         timeout: Timeout | NumberLike | None | EllipsisType = ...,
         stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
         alias: str = "",
@@ -28,12 +45,7 @@ class SerialPort(Adapter):
         backend_port: int | None = None,
     ) -> None:
         """
-        Serial communication adapter
-
-        Parameters
-        ----------
-        port : str
-            Serial port (COMx or ttyACMx)
+        Instanciate new SerialPort adapter
         """
         descriptor = SerialPortDescriptor(port, baudrate)
         super().__init__(
@@ -48,7 +60,8 @@ class SerialPort(Adapter):
         self.descriptor: SerialPortDescriptor
 
         self._logger.info(
-            f"Setting up SerialPort adapter {self.descriptor}, timeout={timeout} and stop_conditions={self._stop_conditions}"
+            f"Setting up SerialPort adapter {self.descriptor}, \
+                timeout={timeout} and stop_conditions={self._stop_conditions}"
         )
 
         self.open()

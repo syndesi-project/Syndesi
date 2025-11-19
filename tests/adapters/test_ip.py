@@ -4,7 +4,7 @@ from time import sleep
 import time
 
 from syndesi import IP
-from syndesi.adapters.backend.adapter_backend import AdapterDisconnected, AdapterReadPayload
+from syndesi.adapters.backend.adapter_backend import AdapterDisconnectedSignal, AdapterReadPayload
 from syndesi.adapters.stop_condition import *
 from syndesi.adapters.timeout import Timeout
 import socket
@@ -16,6 +16,8 @@ import subprocess
 import pytest
 
 from pathlib import Path
+
+from syndesi.tools.errors import AdapterTimeoutError
 HOST = "localhost"
 PORT = 8888
 
@@ -66,17 +68,12 @@ def background_proc():
     """Build and start ip_delayer once before tests."""
     global _PROC, _PATH
     _PATH = str(_compile_ip_delayer())
-    # Optional: verify port is free; if you want auto-pick, replace with a picker here.
-    print(f'Start delayer')
     _PROC = subprocess.Popen(
         [_PATH, "--port", str(PORT)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+        #stdout=subprocess.STDOUT,
+        #stderr=subprocess.STDOUT,
+        #text=True,
     )
-    # _PROC = subprocess.Popen(
-    #     [_PATH, "--port", str(_PORT)], text=True
-    # )
     if not _wait_port_open(PORT, timeout=5.0):
         try:
             out = _PROC.communicate(timeout=0.5)[0]
@@ -111,7 +108,7 @@ def test_response_A():
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     assert data == sequence
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 
@@ -131,7 +128,7 @@ def test_response_B():
     sleep(2 * TIME_DELTA)
     data = client.read()
     assert data == sequence
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 
@@ -161,7 +158,7 @@ def test_continuation():
         )
     )
     assert data == sequence_response + sequence_continuation
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 
@@ -185,7 +182,7 @@ def test_termination():
     assert data == A
     data = client.read()
     assert data == B
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 
@@ -217,7 +214,7 @@ def test_termination_partial():
     sleep(delay + TIME_DELTA)
     data = client.read()
     assert data == B
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 
@@ -231,7 +228,7 @@ def test_length():
     assert data == sequence[:10]
     data = client.read()
     assert data == sequence[10:20]
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 
@@ -254,7 +251,7 @@ def test_length_short_timeout():
     assert data == sequence[N : 2 * N]
     data = client.read()  # Too short
     assert data == b''
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 
@@ -381,7 +378,7 @@ def test_timeout_on_return():
     data = client.read()
     assert data == b''
     sleep(TIME_DELTA*2)
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 
@@ -400,13 +397,13 @@ def test_on_response_error():
     client.write(encode_sequences([(A + termination, delay)]))
     try:
         client.read()
-    except TimeoutError as te:
+    except AdapterTimeoutError as te:
         pass
     else:
         raise RuntimeError("No exception raised")
     data = client.read()
     assert data == A
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 
@@ -456,7 +453,7 @@ def test_continuation_return():
     assert data == b""
     data = client.read()
     assert data == B
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 # Test if a new configuration is correctly applied
@@ -488,7 +485,7 @@ def test_read_timeout_reconfiguration():
         )
     )
     assert data == b''
-    client.flushRead()
+    client.flush_read()
     client.close()
 
 
@@ -500,7 +497,7 @@ def test_flush():
 
     client.write(encode_sequences([(A, 0)] * 3))
     sleep(1)
-    client.flushRead()
+    client.flush_read()
     sleep(0.2)
     client.write(encode_sequences([(B, 0)]))
     data = client.read()
@@ -523,5 +520,5 @@ def _test_delayer(ip_delayer_port):
         #print(f'Error : {metrics.response_delay - delay:.3f}s')
         assert data == sequence
         assert abs(payload.response_delay - delay) < TIME_DELTA
-    client.flushRead()
+    client.flush_read()
     client.close()

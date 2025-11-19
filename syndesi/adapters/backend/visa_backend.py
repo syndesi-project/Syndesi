@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from ...tools.backend_api import AdapterBackendStatus, Fragment
 from .adapter_backend import (
     AdapterBackend,
-    AdapterDisconnected,
+    AdapterDisconnectedSignal,
     AdapterSignal,
     HasFileno,
 )
@@ -143,7 +143,7 @@ class VisaBackend(AdapterBackend):
         self._notify_recv.recv(1)
         if not self._event_queue.empty():
             event = self._event_queue.get()
-            if isinstance(event, AdapterDisconnected):
+            if isinstance(event, AdapterDisconnectedSignal):
                 return Fragment(b"", None)
 
         with self._fragment_lock:
@@ -181,7 +181,7 @@ class VisaBackend(AdapterBackend):
                     # Tell the session that there's data (write to a virtual socket)
                     self._notify_send.send(b"1")
             except (TypeError, pyvisa.InvalidSession, BrokenPipeError):
-                event_queue.put(AdapterDisconnected())
+                event_queue.put(AdapterDisconnectedSignal())
                 self._notify_send.send(b"1")
             with self._stop_lock:
                 if self.stop:

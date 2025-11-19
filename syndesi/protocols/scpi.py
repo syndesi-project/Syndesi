@@ -107,7 +107,7 @@ class SCPI(Protocol):
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> str:
-        self._adapter.flushRead()
+        self._adapter.flush_read()
         self.write(command)
 
         return self.read(timeout=timeout, stop_conditions=stop_conditions)

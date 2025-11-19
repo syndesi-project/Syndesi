@@ -7,9 +7,10 @@
 import time
 
 import serial
-from serial.serialutil import PortNotOpenError
+from serial.serialutil import PortNotOpenError, SerialException
 
 from syndesi.tools.backend_api import AdapterBackendStatus, Fragment
+from syndesi.tools.errors import AdapterConfigurationError, AdapterFailedToOpen
 
 from .adapter_backend import AdapterBackend, HasFileno
 from .descriptors import SerialPortDescriptor
@@ -30,8 +31,6 @@ class SerialPortBackend(AdapterBackend):
         self._logger.info(f"Setting up SerialPort adapter {self.descriptor}")
         self._port: serial.Serial | None = None
         self._rts_cts = False
-
-        self.open()
 
     def set_baudrate(self, baudrate: int) -> None:
         """
@@ -72,27 +71,33 @@ class SerialPortBackend(AdapterBackend):
             self.close()
             self.open()
 
-    def open(self) -> bool:
+    def open(self) -> None:
         if self.descriptor.baudrate is None:
-            raise ValueError("Baudrate must be set, please use set_baudrate")
+            raise AdapterConfigurationError("Baudrate must be set, please use set_baudrate")
 
         if self._port is None:
-            self._port = serial.Serial(
-                port=self.descriptor.port,
-                baudrate=self.descriptor.baudrate,
-                rtscts=self._rts_cts,
-            )
+            try:
+                self._port = serial.Serial(
+                    port=self.descriptor.port,
+                    baudrate=self.descriptor.baudrate,
+                    rtscts=self._rts_cts,
+                )
+            except SerialException as e:
+                if 'No such file' in str(e):
+                    raise AdapterFailedToOpen(f"No such file or directory '{self.descriptor.port}'") from e
+                else:
+                    raise AdapterFailedToOpen('Unknown error') from e
+            
         elif not self._port.isOpen():  # type: ignore
             self._port.open()
 
         if self._port.isOpen():  # type: ignore
             self._logger.info(f"Adapter {self.descriptor} opened")
             self._status = AdapterBackendStatus.CONNECTED
-            return True
         else:
             self._logger.error(f"Failed to open adapter {self.descriptor}")
             self._status = AdapterBackendStatus.DISCONNECTED
-            return False
+            raise AdapterFailedToOpen('Unknown error')
 
     def close(self) -> bool:
         super().close()

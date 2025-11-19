@@ -16,7 +16,7 @@ from typing import Any
 from syndesi.adapters.backend.stop_condition_backend import (
     stop_condition_to_backend,
 )
-from syndesi.tools.errors import make_error_description
+from syndesi.tools.errors import AdapterError, make_error_description
 from syndesi.tools.types import NumberLike
 
 from ...tools.backend_api import Action, frontend_send
@@ -99,16 +99,12 @@ class AdapterSession(threading.Thread):
             self._shutdown_counter_top = None
             self._shutdown_counter = None
 
-        # self._timeout_events: list[tuple[TimeoutEvent, float]] = []
-
         self._read_init_id = 0
 
     def add_connection(self, conn: NamedConnection) -> None:
         with self._connections_lock:
             self.connections.append(conn)
-            # os.write(self._new_connection_w, b"\x00")
             self._new_connection_w.send(b"\x00")
-            self._logger.info(f"New client : {conn.remote()}")
 
     def _remove_connection(self, conn: NamedConnection) -> None:
         with self._connections_lock:
@@ -272,12 +268,15 @@ class AdapterSession(threading.Thread):
                             self._adapter.set_stop_conditions(
                                 [stop_condition_to_backend(sc) for sc in request[1]]
                             )
-                            if self._adapter.open():
+                            try:
+                                self._adapter.open()
+                            except AdapterError as e:
                                 # Success !
-                                response_action = Action.OPEN
-                            else:
                                 response_action = Action.ERROR_FAILED_TO_OPEN
-                            extra_arguments = ("",)
+                                extra_arguments = (str(e),)
+                            else:
+                                response_action = Action.OPEN
+                                extra_arguments = ("",)
                         case Action.WRITE:
                             data = request[1]
                             if self._adapter.is_opened():

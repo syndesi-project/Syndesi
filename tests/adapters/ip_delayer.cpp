@@ -167,6 +167,7 @@ static void tcp_client_thread(socket_t csock) {
             }
         }
     }
+    std::cout << "Closing socket (tcp client thread)" << std::endl;
     closesock(csock);
 }
 
@@ -176,17 +177,25 @@ static void tcp_server_thread(uint16_t port) {
     if (lsock < 0) { std::cerr << "TCP socket failed\n"; return; }
 
     int yes = 1;
-#if !defined(_WIN32)
-    setsockopt(lsock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-#else
+#if defined(_WIN32)
     setsockopt(lsock, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof(yes));
+#else
+    setsockopt(lsock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 #endif
 
     sockaddr_in addr{}; addr.sin_family = AF_INET; addr.sin_addr.s_addr = htonl(INADDR_ANY); addr.sin_port = htons(port);
     if (bind(lsock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-        std::cerr << "TCP bind failed (port busy?)\n"; closesock(lsock); return;
+        std::cout << "Closing socket (tcp bind fail)" << std::endl;
+        std::cerr << "TCP bind failed (port busy?)\n";
+        closesock(lsock);
+        return;
     }
-    if (listen(lsock, 16) != 0) { std::cerr << "listen failed\n"; closesock(lsock); return; }
+    if (listen(lsock, 16) != 0) {
+        std::cout << "Closing socket (tcp listen fail)" << std::endl;
+        std::cerr << "listen failed\n";
+        closesock(lsock);
+        return;
+    }
 
     for (;;) {
         sockaddr_in caddr{}; socklen_t clen = sizeof(caddr);
@@ -194,6 +203,7 @@ static void tcp_server_thread(uint16_t port) {
         if (csock < 0) break;
         std::thread(tcp_client_thread, csock).detach();
     }
+    std::cout << "Closing socket (tcp server thread)" << std::endl;
     closesock(lsock);
 }
 
@@ -202,15 +212,18 @@ static void udp_server_thread(uint16_t port) {
     if (usock < 0) { std::cerr << "UDP socket failed\n"; return; }
 
     int yes = 1;
-#if !defined(_WIN32)
-    setsockopt(usock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-#else
+#if defined(_WIN32)
     setsockopt(usock, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof(yes));
+#else
+    setsockopt(usock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 #endif
 
     sockaddr_in addr{}; addr.sin_family = AF_INET; addr.sin_addr.s_addr = htonl(INADDR_ANY); addr.sin_port = htons(port);
     if (bind(usock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-        std::cerr << "UDP bind failed (port busy?)\n"; closesock(usock); return;
+        std::cout << "Closing socket (udp fail)" << std::endl;
+        std::cerr << "UDP bind failed (port busy?)\n";
+        closesock(usock);
+        return;
     }
 
     for (;;) {

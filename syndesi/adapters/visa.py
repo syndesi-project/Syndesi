@@ -1,8 +1,10 @@
 # File : visa.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# VISA adatper, uses a VISA backend like pyvisa-py or NI to communicate with instruments
+
+"""
+VISA adatper, uses a VISA backend like pyvisa-py or NI to communicate with instruments
+"""
 
 from collections.abc import Callable
 from types import EllipsisType
@@ -16,9 +18,15 @@ from .timeout import Timeout
 
 
 class Visa(Adapter):
+    """
+    VISA Adapter, allows for communication with VISA-compatible devices.
+    It uses pyvisa under the hood 
+    
+    """
     def __init__(
         self,
         descriptor: str,
+        *,
         alias: str = "",
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         timeout: None | float | Timeout | EllipsisType = ...,
@@ -28,7 +36,7 @@ class Visa(Adapter):
         backend_port: int | None = None,
     ) -> None:
         super().__init__(
-            VisaDescriptor.from_string(descriptor),
+            descriptor=VisaDescriptor.from_string(descriptor),
             alias=alias,
             stop_conditions=stop_conditions,
             timeout=timeout,

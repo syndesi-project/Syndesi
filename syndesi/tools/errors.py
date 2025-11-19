@@ -4,6 +4,8 @@
 
 from pathlib import Path
 
+from syndesi.tools.types import NumberLike
+
 PACKAGE_PATH = Path(__file__).resolve().parent.parent
 
 
@@ -19,12 +21,30 @@ class BackendError(SyndesiError):
     """Error inside the backend"""
 
 
-class AdapterBackendError(BackendError):
-    """Error inside an adapter backend"""
-
-
 class AdapterError(SyndesiError):
-    """Error inside an adapter frontend"""
+    """Adapter error"""
+
+class AdapterConfigurationError(AdapterError):
+    """Adapter configuration error"""
+
+class AdapterFailedToOpen(AdapterError):
+    """Adapter failed to open"""
+
+
+class AdapterDisconnected(AdapterError):
+    """Adapter disconnected"""
+
+
+class ProtocolError(SyndesiError):
+    """Protocol error"""
+
+
+class AdapterTimeoutError(AdapterError):
+    def __init__(self, timeout: NumberLike) -> None:
+        self.timeout = timeout
+        super().__init__(
+            f'No response received from device within {self.timeout} seconds"'
+        )
 
 
 def make_error_description(e: Exception) -> str:

@@ -26,6 +26,9 @@ default_host = LOCALHOST
 
 EXTRA_BUFFER_RESPONSE_TIME = 1
 
+# Delay to let the adapter connect
+DEFAULT_ADAPTER_OPEN_TIMEOUT = 0.5
+
 
 class Action(Enum):
     # All adapters
@@ -72,11 +75,14 @@ class Action(Enum):
 def is_action_error(action: Action) -> bool:
     return action.value.startswith("error_")
 
+
 class BackendException(Exception):
     pass
 
+
 class ValidFragment(Protocol):
     data: bytes
+
 
 @dataclass
 class Fragment:
@@ -93,6 +99,7 @@ class Fragment:
         # if self.data is None:
         #     raise IndexError('Cannot index invalid fragment')
         return Fragment(self.data[key], self.timestamp)
+
 
 BackendResponse = tuple[object, ...]
 

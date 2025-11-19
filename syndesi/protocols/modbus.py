@@ -16,6 +16,7 @@ from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..adapters.stop_condition import Continuation, Length
 from ..adapters.timeout import Timeout
+from ..tools.errors import ProtocolError
 from .protocol import Protocol
 
 MODBUS_TCP_DEFAULT_PORT = 502
@@ -313,12 +314,12 @@ class Modbus(Protocol):
         self, response: bytes, exception_codes: ExceptionCodesType
     ) -> None:
         if response == b"":
-            raise RuntimeError("Empty response")
+            raise ProtocolError("Empty response")
         if response[0] & 0x80:
             # There is an error
             code = response[1]
             if code not in exception_codes:
-                raise RuntimeError(f"Unexpected modbus error code: {code}")
+                raise ProtocolError(f"Unexpected modbus error code: {code}")
             else:
                 raise ModbusException(f"{code:02X} : {exception_codes[code]}")
 
@@ -333,7 +334,7 @@ class Modbus(Protocol):
         Return data from PDU
         """
         if _pdu is None:
-            raise RuntimeError("Failed to read modbus data")
+            raise ProtocolError("Failed to read modbus data")
         if self._modbus_type == ModbusType.TCP:
             # Return raw data
             # data = _pdu
@@ -844,7 +845,7 @@ class Modbus(Protocol):
             4: "Couldn't read exception status",
         }
         if self._modbus_type == ModbusType.TCP:
-            raise RuntimeError("read_exception_status cannot be used with Modbus TCP")
+            raise ProtocolError("read_exception_status cannot be used with Modbus TCP")
         query = struct.pack(ENDIAN + "B", FunctionCode.READ_EXCEPTION_STATUS.value)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
         self._raise_if_error(response, EXCEPTIONS)
@@ -1208,7 +1209,7 @@ class Modbus(Protocol):
 
         _, _, coils_written = struct.unpack(ENDIAN + "BHH", response)
         if coils_written != number_of_coils:
-            raise RuntimeError(
+            raise ProtocolError(
                 f"Number of coils written ({coils_written}) doesn't match expected value : {number_of_coils}"
             )
 
@@ -1260,7 +1261,7 @@ class Modbus(Protocol):
 
         _, _, coils_written = struct.unpack(ENDIAN + "BHH", response)
         if coils_written != byte_count // 2:
-            raise RuntimeError(
+            raise ProtocolError(
                 f"Number of coils written ({coils_written}) doesn't match expected value : {byte_count // 2}"
             )
 

@@ -8,7 +8,7 @@ from enum import Enum
 
 from syndesi.adapters.adapter import Adapter
 from syndesi.adapters.backend.adapter_backend import (
-    AdapterDisconnected,
+    AdapterDisconnectedSignal,
     AdapterReadPayload,
     AdapterSignal,
 )
@@ -214,7 +214,7 @@ class AdapterShell:
         self._protocol.write(command)
 
     def event(self, signal: AdapterSignal) -> None:
-        if isinstance(signal, AdapterDisconnected):
+        if isinstance(signal, AdapterDisconnectedSignal):
 
             def f(answer: str) -> None:
                 if answer.lower() == "y":

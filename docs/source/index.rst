@@ -1,6 +1,6 @@
 .. Syndesi documentation master file
 
-Welcome to Syndesi's documentation!
+Welcome to Syndesi's documentation
 ===================================
 
 Contents:
@@ -10,16 +10,7 @@ Contents:
    :caption: Table of Contents
 
    introduction
-   getting_started
    adapters
    protocols
-   experimental_features
    error_handling
-   testing
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   api_reference

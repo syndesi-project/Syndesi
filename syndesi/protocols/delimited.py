@@ -122,7 +122,7 @@ class Delimited(Protocol):
         full_output : bool
             return metrics on read operation (False by default)
         """
-        self._adapter.flushRead()
+        self._adapter.flush_read()
         self.write(data)
         return self.read(timeout=timeout)
 
