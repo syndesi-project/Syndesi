@@ -17,7 +17,7 @@ An adapter is meant to work with bytes objects but it can accept strings.
 Strings will automatically be converted to bytes using utf-8 encoding
 """
 
-import logging
+
 import os
 import queue
 import subprocess
