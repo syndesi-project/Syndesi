@@ -19,8 +19,20 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
-    "sphinx_autodoc_typehints"
+    "sphinx_autodoc_typehints",
+
+    "sphinx.ext.graphviz",
+    "sphinx.ext.inheritance_diagram",
+    "sphinxcontrib.mermaid",
+    "sphinx_copybutton",
+    "sphinx_inline_tabs",
+    "sphinx_design",
 ]
+
+graphviz_output_format = "svg"
+
+mermaid_version = "10.9.0"
+mermaid_output_format = "raw"  # so it follows light/dark theme
 
 autosummary_generate = True
 autoclass_content = "both"

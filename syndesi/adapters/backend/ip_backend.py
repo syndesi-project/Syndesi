@@ -60,8 +60,36 @@ class IPBackend(AdapterBackend):
     def selectable(self) -> HasFileno | None:
         return self._socket
 
-    def open(self):
-        if self._status == AdapterBackendStatus.CONNECTED:
+    def open(self) -> bool:
+        output = False
+        if self._status == AdapterBackendStatus.DISCONNECTED:
+            if self.descriptor.port is None:  # TODO : Check if this is even possible
+                raise ValueError("Cannot open adapter without specifying a port")
+
+            if self._socket is None:
+                if self.descriptor.transport == IPDescriptor.Transport.TCP:
+                    self._socket = cast(
+                        _socket.socket,
+                        socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+                    )
+                elif self.descriptor.transport == IPDescriptor.Transport.UDP:
+                    self._socket = cast(
+                        _socket.socket, socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    )
+                else:
+                    raise ValueError(
+                        f"Invalid transport protocol : {self.descriptor.transport}"
+                    )
+            try:
+                self._socket.settimeout(DEFAULT_ADAPTER_OPEN_TIMEOUT)
+                self._socket.connect((self.descriptor.address, self.descriptor.port))
+            except OSError as e:
+                self._logger.error(f"Failed to open adapter {self.descriptor} : {e}")
+            else:
+                self._status = AdapterBackendStatus.CONNECTED
+                self._logger.info(f"IP Adapter {self.descriptor} opened")
+                output = True
+        else:
             self._logger.warning(f"Adapter {self.descriptor} already openend")
             return
 
