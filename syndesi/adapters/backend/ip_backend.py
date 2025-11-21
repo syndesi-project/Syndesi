@@ -1,8 +1,9 @@
 # File : ip.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# The IP backend communicates with TCP or UDP capable hosts using the IP layer
+"""
+The IP backend communicates with TCP or UDP capable hosts using the IP layer
+"""
 
 import socket
 import time
@@ -22,12 +23,10 @@ from .descriptors import IPDescriptor
 
 
 class IPBackend(AdapterBackend):
+    """
+    IP Backend, allows communication with IP devices through the socket interface
+    """
     BUFFER_SIZE = 65507
-    # _DEFAULT_BUFFER_SIZE = 1024
-    # DEFAULT_TIMEOUT = TimeoutBackend(
-    #     response=5,
-    #     action="error"
-    # )
     DEFAULT_STOP_CONDITION = None
 
     def __init__(self, descriptor: IPDescriptor):
@@ -65,7 +64,7 @@ class IPBackend(AdapterBackend):
         if self._status == AdapterBackendStatus.CONNECTED:
             self._logger.warning(f"Adapter {self.descriptor} already openend")
             return
-        
+
         if self.descriptor.port is None:
             raise AdapterConfigurationError("Cannot open adapter without specifying a port")
 
@@ -88,10 +87,10 @@ class IPBackend(AdapterBackend):
             self._socket.connect((self.descriptor.address, self.descriptor.port))
         except OSError as e:
             self._logger.error(f"Failed to open adapter {self.descriptor} : {e}")
-            raise AdapterFailedToOpen(str(e))
-        else:
-            self._status = AdapterBackendStatus.CONNECTED
-            self._logger.info(f"IP Adapter {self.descriptor} opened")
+            raise AdapterFailedToOpen(str(e)) from e
+
+        self._status = AdapterBackendStatus.CONNECTED
+        self._logger.info(f"IP Adapter {self.descriptor} opened")
 
     def close(self) -> bool:
         super().close()
@@ -102,9 +101,9 @@ class IPBackend(AdapterBackend):
             self._socket = None
             self._logger.info(f"Adapter {self.descriptor} closed")
             return True
-        else:
-            self._logger.error(f"Failed to close adapter {self.descriptor}")
-            return False
+
+        self._logger.error(f"Failed to close adapter {self.descriptor}")
+        return False
 
     def write(self, data: bytes) -> bool:
         super().write(data)
@@ -135,16 +134,16 @@ class IPBackend(AdapterBackend):
         t = time.time()
         if self._socket is None:
             return Fragment(b"", t)
-        else:
-            try:
-                fragment = Fragment(self._socket.recv(self.BUFFER_SIZE), t)
-            except (ConnectionRefusedError, OSError):
-                fragment = Fragment(b"", t)
 
-            if fragment.data == b"":
-                # Socket disconnected
-                self._logger.debug("## Socket disconnected")
-                self.close()
+        try:
+            fragment = Fragment(self._socket.recv(self.BUFFER_SIZE), t)
+        except (ConnectionRefusedError, OSError):
+            fragment = Fragment(b"", t)
+
+        if fragment.data == b"":
+            # Socket disconnected
+            self._logger.debug("## Socket disconnected")
+            self.close()
 
         return fragment
 

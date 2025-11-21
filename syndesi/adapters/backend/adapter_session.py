@@ -1,10 +1,11 @@
 # File : backendclient.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# The backend client manages the link between clients (frontend) and the adapter (backend)
-# It is instanctiated by the backend and has a thread to manage incoming data from clients
-# as well as read incoming data from the adapter backend
+"""
+The backend client manages the link between clients (frontend) and the adapter (backend)
+It is instanctiated by the backend and has a thread to manage incoming data from clients
+as well as read incoming data from the adapter backend
+"""
 
 import logging
 import threading
@@ -37,31 +38,46 @@ from .descriptors import (
 from .ip_backend import IPBackend
 from .serialport_backend import SerialPortBackend
 
-# from .stop_condition_backend import stop_condition_from_list
 from .visa_backend import VisaBackend
 
 
 class TimeoutEvent(Enum):
+    """
+    Timeout event enum
+    """
     MONITORING = 0
     ADAPTER = 1
-    # CONNECTIONS = 2
 
 
 def get_adapter(descriptor: Descriptor) -> AdapterBackend:
+    """
+    Return an adapter by descriptor
+
+    Parameters
+    ----------
+    descriptor : Descriptor
+
+    Returns
+    -------
+    adapter_backend : AdapterBackend
+    """
     # The adapter doesn't exist, create it
     if isinstance(
         descriptor, SerialPortDescriptor
-    ):  # Add mandatory timeout and stop_condition here ?
+    ):  # TODO : Add mandatory timeout and stop_condition here ?
         return SerialPortBackend(descriptor=descriptor)
-    elif isinstance(descriptor, IPDescriptor):
+    if isinstance(descriptor, IPDescriptor):
         return IPBackend(descriptor=descriptor)
-    elif isinstance(descriptor, VisaDescriptor):
+    if isinstance(descriptor, VisaDescriptor):
         return VisaBackend(descriptor=descriptor)
-    else:
-        raise ValueError(f"Unsupported descriptor : {descriptor}")
+    raise ValueError(f"Unsupported descriptor : {descriptor}")
 
-
+#pylint: disable=too-many-instance-attributes
 class AdapterSession(threading.Thread):
+    """
+    The AdapterSession is responsible for all the frontend-backend communication
+    regarding a specific adapter, it receives actions from the frontend and executes them
+    """
     MONITORING_DELAY = 0.5
     daemon = True
     _shutdown_counter_top: int | None
@@ -73,19 +89,14 @@ class AdapterSession(threading.Thread):
         self._logger.setLevel("DEBUG")
         self._role = None
         self._next_monitoring_timestamp = time.time() + self.MONITORING_DELAY
-
-        # self._stop_flag = False
         self._connections_lock = threading.Lock()
-        # self._connection_condition = threading.Condition(self._connections_lock)
 
         descriptor = adapter_descriptor_by_string(adapter_descriptor)
 
         self._adapter: AdapterBackend = get_adapter(descriptor)
 
         self.connections: list[NamedConnection] = []
-        # self.connection_names : Dict[NamedConnection] = {}
 
-        # self._new_connection_r, self._new_connection_w = os.pipe()
         # os.pipe does not work on Windows
         self._new_connection_r, self._new_connection_w = Pipe()
 
@@ -102,53 +113,77 @@ class AdapterSession(threading.Thread):
         self._read_init_id = 0
 
     def add_connection(self, conn: NamedConnection) -> None:
+        """
+        Add a connection to the list
+        """
         with self._connections_lock:
             self.connections.append(conn)
             self._new_connection_w.send(b"\x00")
 
     def _remove_connection(self, conn: NamedConnection) -> None:
+        """
+        Remove a connection from the list
+        """
         with self._connections_lock:
             if conn in self.connections:
                 conn.conn.close()
                 self.connections.remove(conn)
 
     def send(self, conn: NamedConnection, action: Action, *args: Any) -> None:
+        """
+        Send an action to the specified connection
+        """
         if not frontend_send(conn.conn, action, *args):
             self._logger.warning(f"Failed to send to {conn.remote()}")
             self._remove_connection(conn)
 
     def send_to_all(self, action: Action, *args: Any) -> None:
+        """
+        Broadcast an action to all clients
+        """
         for conn in self.connections:
             frontend_send(conn.conn, action, *args)
 
     def enumerate_connections(self) -> list[str]:
+        """
+        Return a list of all connections as strings
+        """
         return [x.remote_address() for x in self.connections]
 
     def is_adapter_opened(self) -> bool:
+        """
+        Return True if the adapter is opened, False otherwise
+        """
         return self._adapter.is_opened()
 
     def run(self) -> None:
+        """
+        Start the adapter session
+        """
         while True:
             try:
                 stop = self.loop()
                 if stop:
                     break
-            except Exception as e:
+            except Exception as e: #pylint: disable=broad-exception-caught
                 error_message = make_error_description(e)
 
                 self._logger.critical(
                     f"Error in {self._adapter.descriptor} session loop : {error_message}"
                 )
-                try:
-                    error_message = make_error_description(e)
 
-                    for conn in self.connections:
-                        frontend_send(conn.conn, Action.ERROR_GENERIC, error_message)
-                except Exception:
-                    break
-        self._logger.info(f"Exit {self._adapter.descriptor} session loop")
+                error_message = make_error_description(e)
 
+                for conn in self.connections:
+                    frontend_send(conn.conn, Action.ERROR_GENERIC, error_message)
+
+        self._logger.info("Exit {%s} session loop", self._adapter.descriptor)
+
+    #pylint: disable=too-many-branches
     def loop(self) -> bool:
+        """
+        Main adapter session loop, return True if the session should be stopped
+        """
         # This is the main loop of the session
         # It listens for the following events :
         # - New client
@@ -157,7 +192,8 @@ class AdapterSession(threading.Thread):
         #   -> listen to conn
         # - Adapter event
         #   -> listen to socket/fd
-        # The wait has a timeout set by the adapter, it corresponds to the current continuation/total timeout
+        # The wait has a timeout set by the adapter,
+        # it corresponds to the current continuation/total timeout
 
         # Create a list of what is awaited
         wait_list: list[Selectable] = [conn.conn for conn in self.connections]
@@ -219,6 +255,10 @@ class AdapterSession(threading.Thread):
         return False
 
     def _monitor(self) -> bool:
+        """
+        The monitoring method checks if there are still clients connected
+        If not, it shuts down the adapter
+        """
         stop = False
         if self._shutdown_counter is not None:
             with self._connections_lock:
@@ -226,7 +266,9 @@ class AdapterSession(threading.Thread):
                     if self._shutdown_counter == 0:
                         # Shutdown
                         self._logger.info(
-                            f"No clients on adapter {self._adapter.descriptor} for {self._shutdown_delay}s, closing"
+                            "No clients on adapter %s for %.1fs, closing",
+                            self._adapter.descriptor,
+                            self._shutdown_delay
                         )
                         self._adapter.close()
                         stop = True
@@ -237,7 +279,11 @@ class AdapterSession(threading.Thread):
 
         return stop
 
+    #pylint: disable=too-many-branches, too-many-statements
     def manage_conn(self, conn: NamedConnection) -> None:
+        """
+        Manage client connection
+        """
         extra_arguments: tuple[Any, ...]
         remove_after_response = False
         if not conn.conn.poll():
@@ -316,9 +362,6 @@ class AdapterSession(threading.Thread):
                             )
                             self._read_init_id += 1
 
-                        # case Action.GET_BACKEND_TIME:
-                        #     response_action = Action.GET_BACKEND_TIME
-                        #     extra_arguments = (request_timestamp, )
                         case Action.CLOSE:
                             force = request[1]
                             # Close this connection
@@ -331,7 +374,7 @@ class AdapterSession(threading.Thread):
                                 Action.ERROR_UNKNOWN_ACTION,
                                 (f"{action}",),
                             )
-                except Exception as e:
+                except Exception as e: # pylint: disable=broad-exception-caught
                     error_message = make_error_description(e)
 
                     response_action, extra_arguments = (

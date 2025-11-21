@@ -1,9 +1,10 @@
 # File : backend.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# The backend is responsible for managing incoming client connections (frontend)
-# and creating backend client threads if necessary
+"""
+The backend is responsible for managing incoming client connections (frontend)
+and creating backend client threads if necessary
+"""
 
 
 import argparse
@@ -39,6 +40,11 @@ DEFAULT_SESSION_SHUTDOWN_DELAY = 2
 
 
 class LogRelayHandler(logging.Handler):
+    """
+    The log relay handler catches all logging events from the backend and sends them
+    to all connected clients (logger client)
+    
+    """
     def __init__(self, history_size: int = 100):
         super().__init__()
         self.connections: set[NamedConnection] = (
@@ -52,6 +58,13 @@ class LogRelayHandler(logging.Handler):
     def add_connection(
         self, conn: NamedConnection, delete_callback: Callable[[NamedConnection], None]
     ) -> None:
+        """
+        Add the specified connection to the list of connections
+
+        the delete_callback is used if and when an error happens when sending
+        data back to the client (connection)
+        
+        """
         # Send log history to the new connection
         with self.log_history_lock:
             for record in self.log_history:
@@ -65,6 +78,9 @@ class LogRelayHandler(logging.Handler):
             self.connections.add(conn)
 
     def remove_connection(self, conn: NamedConnection) -> None:
+        """
+        Remove a specified connection from the list of connections
+        """
         with self.connections_lock:
             self.connections = {c for c in self.connections if c != conn}
 
@@ -88,6 +104,9 @@ class LogRelayHandler(logging.Handler):
 
 
 def is_request(x: object) -> TypeGuard[tuple[str, object]]:
+    """
+    Return True if the given object looks like a request
+    """
     if not isinstance(x, tuple) or not x:
         return False
     if not isinstance(x[0], str):
@@ -96,7 +115,12 @@ def is_request(x: object) -> TypeGuard[tuple[str, object]]:
     return True
 
 
+#pylint: disable=too-many-instance-attributes
 class Backend:
+    """
+    Backend class, the backend manages incoming frontend clients and creates
+    adapter sessions accordingly
+    """
     MONITORING_DELAY = 0.5
     NEW_CLIENT_REQUEST_TIMEOUT = 0.5
 
@@ -133,16 +157,12 @@ class Backend:
         self.host = host
         self.port = port
 
-        # self.adapters_lock = threading.Lock()
         self.listener: Listener = Listener((self.host, self.port), backlog=10)
         self.adapter_sessions: dict[str, AdapterSession] = {}
         self.shutdown_timer = None
 
         # Monitoring connections
         self._monitoring_connections: list[NamedConnection] = []
-
-        # Logger connections
-        # self._logger_connections: list[NamedConnection] = []
 
         # Configure loggers
         self._log_handler = LogRelayHandler(history_size=100)
@@ -173,11 +193,14 @@ class Backend:
 
     def _remove_session(self, descriptor: str) -> None:
         self._logger.info(f"Remove adapter session {descriptor}")
-        # with self.adapters_lock:
         self.adapter_sessions.pop(descriptor, None)
         self._update_monitoring(adapter_sessions=True)
 
     def manage_monitoring_clients(self, conn: NamedConnection) -> None:
+        """
+        Manage monitoring client requests
+        
+        """
         try:
             raw: object = conn.conn.recv()
         except (EOFError, ConnectionResetError):
@@ -257,10 +280,12 @@ class Backend:
                 self._backend_shutdown_timestamp = t + self._backend_shutdown_delay
 
     def active_threads(self) -> int:
-        # Check all threads, if one is active, return True
+        """
+        Return the number of active threads and remove idle sessions
+        """
+        # Check all threads and count active ones
         # Remove all of the dead ones
         # Make as many passes as necessary
-        # with self.adapters_lock:
         while True:
             i = 0
             for k, t in self.adapter_sessions.items():
@@ -304,11 +329,9 @@ class Backend:
 
             if adapter_descriptor not in self.adapter_sessions:
                 # Create the adapter backend thread
-                # self._logger.info(f"Creating adapter session for {adapter_descriptor}")
                 thread = AdapterSession(
                     adapter_descriptor, shutdown_delay=self._session_shutdown_delay
                 )  # TODO : Put another delay here ?
-                # with self.adapters_lock:
                 thread.start()
                 self.adapter_sessions[adapter_descriptor] = thread
 
@@ -320,14 +343,12 @@ class Backend:
         self._update_monitoring(adapter_sessions=True)
 
     def _new_monitoring_client(self, client: NamedConnection) -> None:
-        # with self._monitoring_connections_lock:
         self._monitoring_connections.append(client)
         self._update_monitoring(monitoring_sessions=True, stats=True)
 
     def _new_logger_client(self, client: NamedConnection) -> None:
         # Add connection to the single log handler
         self._log_handler.add_connection(client, self._remove_logger_connection)
-        # self._logger_connections.append(client)
         self._update_monitoring(monitoring_sessions=True)
 
     def _new_adapter_client(self, client: NamedConnection) -> None:
@@ -357,25 +378,25 @@ class Backend:
             client.conn.close()
 
     def start(self) -> None:
+        """
+        Main backend loop
+        """
         while self.running:
             # Use selectors to work on both Linux and Windows
-
             selectables: list[Selectable] = [
                 x.conn for x in self._monitoring_connections
             ]
+            # pylint: disable=protected-access
             selectables.append(self.listener._listener._socket)  # type: ignore
 
             ready, _, _ = select.select(selectables, [], [], self.MONITORING_DELAY)
 
-            # ready : List[Selectable] = wait( # type: ignore
-            #     [self.listener._listener._socket] + [x.conn for x in self._monitoring_connections], # type: ignore
-            #     timeout=self.MONITORING_DELAY,
-            # )
-
+            # pylint: disable=protected-access
             if self.listener._listener._socket in ready:  # type: ignore
                 conn = self.listener.accept()
 
                 self._new_adapter_client(NamedConnection(conn))
+                # pylint: disable=protected-access
                 ready.remove(self.listener._listener._socket)  # type: ignore
 
             self._monitoring(
@@ -393,23 +414,38 @@ class Backend:
             self.shutdown_timer.start()
 
     def stop(self) -> None:
+        """
+        Stop the backend, send a STOP action to the thread
+        """
         self.running = False
         # Open a connection to stop the server
+        # If the listener is on all interfaces, use localhost
+        if self.host == "0.0.0.0":  # ALL_ADDRESSES:
+            address = LOCALHOST
+        else:
+            address = self.host
+
         try:
-            # If the listener is on all interfaces, use localhost
-            if self.host == "0.0.0.0":  # ALL_ADDRESSES:
-                address = LOCALHOST
-            else:
-                address = self.host
             # Always connect to localhost
             conn = Client((address, self.port))
             frontend_send(conn, Action.STOP)
             conn.close()
-        except Exception:
+        except (BrokenPipeError, OSError, ConnectionResetError, ConnectionRefusedError):
             pass
 
 
 def main(input_args: list[str] | None = None) -> None:
+    """
+    Main backend function, is it called by a subprocess to run the backend or
+    through the command line to start the backend manually
+
+    Arguments
+    ---------
+    -a, --address : backend address, localhost by default. Set it to the network that will be used 
+    -p, --port : backend port
+    -s, --shutdown-delay : Delay before the backend shutdowns automatically,
+        automatic shutdown is disabled by default
+    """
 
     argument_parser = argparse.ArgumentParser()
 
@@ -428,8 +464,8 @@ def main(input_args: list[str] | None = None) -> None:
         default=None,
         help="Delay before the backend shutdowns automatically",
     )
-    argument_parser.add_argument("-q", "--quiet", default=False, action="store_true")
-    argument_parser.add_argument("-v", "--verbose", default=False, action="store_true")
+    #argument_parser.add_argument("-q", "--quiet", default=False, action="store_true")
+    #argument_parser.add_argument("-v", "--verbose", default=False, action="store_true")
 
     args = argument_parser.parse_args(input_args)
 

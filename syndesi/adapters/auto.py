@@ -42,7 +42,7 @@ def auto_adapter(adapter_or_string: Adapter | str) -> Adapter:
         # Simply return it
         return adapter_or_string
 
-    elif isinstance(adapter_or_string, str):
+    if isinstance(adapter_or_string, str):
         descriptor = adapter_descriptor_by_string(adapter_or_string)
         if isinstance(descriptor, IPDescriptor):
             return IP(
@@ -57,5 +57,4 @@ def auto_adapter(adapter_or_string: Adapter | str) -> Adapter:
 
         raise RuntimeError(f"Invalid descriptor : {descriptor}")
 
-    else:
-        raise ValueError(f"Invalid adapter : {adapter_or_string}")
+    raise ValueError(f"Invalid adapter : {adapter_or_string}")

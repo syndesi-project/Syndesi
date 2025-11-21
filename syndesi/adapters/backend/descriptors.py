@@ -1,9 +1,10 @@
 # File : descriptors.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# Descriptors are classes that describe how an adapter is connected to its device.
-# Depending on the protocol, they can hold strings, integers or enums
+"""
+Descriptors are classes that describe how an adapter is connected to its device.
+Depending on the protocol, they can hold strings, integers or enums
+"""
 
 import re
 from abc import abstractmethod
@@ -12,6 +13,10 @@ from enum import Enum
 
 
 class Descriptor:
+    """
+    Descriptor base class. A descriptor is a string to define the main parameters
+    of an adapter (ip address, port, baudrate, etc...) 
+    """
     DETECTION_PATTERN = ""
 
     def __init__(self) -> None:
@@ -20,15 +25,22 @@ class Descriptor:
     @staticmethod
     @abstractmethod
     def from_string(string: str) -> "Descriptor":
-        pass
+        """
+        Create a Descriptor class from a string
+        """
 
     @abstractmethod
     def is_initialized(self) -> bool:
-        pass
+        """
+        Return True if the Descriptor class is fully defined
+        """
 
 
 @dataclass
 class SerialPortDescriptor(Descriptor):
+    """
+    SerialPort descriptor that holds location (COMx or /dev/ttyx) and baudrate
+    """
     DETECTION_PATTERN = r"(COM\d+|/dev[/\w\d]+):\d+"
     port: str
     baudrate: int | None = None
@@ -41,11 +53,18 @@ class SerialPortDescriptor(Descriptor):
         return SerialPortDescriptor(port, baudrate)
 
     def set_default_baudrate(self, baudrate: int) -> bool:
+        """
+        Set the baudrate if it has not be defined before
+
+        Parameters
+        ----------
+        baudrate : int
+        """
         if self.baudrate is not None:
             self.baudrate = baudrate
             return True
-        else:
-            return False
+
+        return False
 
     def __str__(self) -> str:
         return f"{self.port}:{self.baudrate}"
@@ -56,16 +75,29 @@ class SerialPortDescriptor(Descriptor):
 
 @dataclass
 class IPDescriptor(Descriptor):
+    """
+    IP descriptor that holds ip address and port
+    """
     class Transport(Enum):
+        """
+        IP Transport protocol
+        """
         TCP = "TCP"
         UDP = "UDP"
 
         @classmethod
-        def from_str(cls, value: str) -> "IPDescriptor":
+        def from_str(cls, transport: str) -> "IPDescriptor":
+            """
+            Create a Transport class from a string
+
+            Parameters
+            ----------
+            transport : str
+            """
             for member in cls:
-                if member.value.lower() == value.lower():
+                if member.value.lower() == transport.lower():
                     return member  # type: ignore # TODO : Check this
-            raise ValueError(f"{value} is not a valid {cls.__name__}")
+            raise ValueError(f"{transport} is not a valid {cls.__name__}")
 
     DETECTION_PATTERN = r"(\d+.\d+.\d+.\d+|[\w\.]+):\d+:(UDP|TCP)"
     address: str
@@ -90,33 +122,32 @@ class IPDescriptor(Descriptor):
 
 @dataclass
 class VisaDescriptor(Descriptor):
-    # VISA Resource Address Examples
-    # GPIB (IEEE-488)
-    # GPIB0::14::INSTR
-    # # Serial (RS-232 or USB-Serial)
-    # ASRL1::INSTR                  # Windows COM1
-    # ASRL/dev/ttyUSB0::INSTR       # Linux USB serial port
-    #
-    # # TCPIP INSTR (LXI/VXI-11/HiSLIP-compatible instruments)
-    # TCPIP0::192.168.1.100::INSTR
-    # TCPIP0::my-scope.local::inst0::INSTR
-    #
-    # # TCPIP SOCKET (Raw TCP communication)
-    # TCPIP0::192.168.1.42::5025::SOCKET
-    #
-    # # USB (USBTMC-compliant instruments)
-    # USB0::0x0957::0x1796::MY12345678::INSTR
-    #
-    # # VXI (Legacy modular instruments)
-    # VXI0::2::INSTR
-    #
-    # # PXI (Modular instrument chassis)
-    # PXI0::14::INSTR
-    DETECTION_PATTERN = r"([A-Z]+)(\d*|\/[^:]+)?::([^:]+)(?:::([^:]+))?(?:::([^:]+))?(?:::([^:]+))?::(INSTR|SOCKET)"
+    """
+    VISA descriptor
+    
+    ## Examples
+
+    - GPIB (IEEE-488) ``GPIB0::14::INSTR``
+    - Serial (RS-232 or USB-Serial)
+        - Windows COM1 : ``ASRL1::INSTR``
+        - UNIX USB 0 : ``ASRL/dev/ttyUSB0::INSTR``
+    - TCPIP INSTR (LXI/VXI-11/HiSLIP-compatible instruments)
+        - ``TCPIP0::192.168.1.100::INSTR``
+        - ``TCPIP0::my-scope.local::inst0::INSTR``
+    - TCPIP SOCKET (Raw TCP communication) ``TCPIP0::192.168.1.42::5025::SOCKET``
+    - USB (USBTMC-compliant instruments) ``USB0::0x0957::0x1796::MY12345678::INSTR``
+    - VXI (Legacy modular instruments) ``VXI0::2::INSTR``
+    - PXI (Modular instrument chassis) ``PXI0::14::INSTR``
+    """
+    DETECTION_PATTERN = r"([A-Z]+)(\d*|\/[^:]+)?::([^:]+)(?:::([^:]+))?" + \
+        "(?:::([^:]+))?(?:::([^:]+))?::(INSTR|SOCKET)"
 
     descriptor: str
 
     class Interface(Enum):
+        """
+        VISA Interface
+        """
         GPIB = "GPIB"
         SERIAL = "ASRL"
         TCP = "TCPIP"
@@ -126,10 +157,13 @@ class VisaDescriptor(Descriptor):
 
     @staticmethod
     def from_string(string: str) -> "VisaDescriptor":
+        """
+        Create a VISA interface from a string
+        """
         if re.match(VisaDescriptor.DETECTION_PATTERN, string):
             return VisaDescriptor(descriptor=string)
-        else:
-            raise ValueError(f"Could not parse descriptor : {string}")
+
+        raise ValueError(f"Could not parse descriptor : {string}")
 
     def __str__(self) -> str:
         return self.descriptor
@@ -146,6 +180,17 @@ descriptors: list[type[Descriptor]] = [
 
 
 def adapter_descriptor_by_string(string_descriptor: str) -> Descriptor:
+    """
+    Return a corresponding adapter descriptor from a string
+
+    Parameters
+    ----------
+    string_descriptor : str
+
+    Returns
+    -------
+    descriptor : Descriptor
+    """
     for descriptor in descriptors:
         if re.match(descriptor.DETECTION_PATTERN, string_descriptor):
             x = descriptor.from_string(string_descriptor)

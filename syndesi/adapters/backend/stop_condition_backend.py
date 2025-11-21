@@ -1,10 +1,11 @@
 # File : stop_condition.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# A stop-condition describes when a communication with a device should
-# be stopped based on the data received (length, contents, termination, etc...)
-# A stop-condition can also format the data if necessary (remove termination for example)
+"""
+A stop-condition describes when a communication with a device should
+be stopped based on the data received (length, contents, termination, etc...)
+A stop-condition can also format the data if necessary (remove termination for example)
+"""
 
 import time
 
@@ -25,7 +26,7 @@ def termination_in_data(termination: bytes, data: bytes) -> tuple[int | None, in
     Return the position (if it exists) and length of the termination (or part of it) inside data
     """
     p = None
-    L = len(termination)
+    l = len(termination)
     # First check if the full termination is somewhere. If that's the case, data will be split
     try:
         p = data.index(termination)
@@ -33,36 +34,55 @@ def termination_in_data(termination: bytes, data: bytes) -> tuple[int | None, in
     except ValueError:
         # If not, we'll try to find if part of the sequence is at the end, in that case
         # we'll return the length of the sequence that was found
-        L -= 1
-        while L > 0:
-            if data[-L:] == termination[:L]:
-                p = len(data) - L  # - 1
+        l -= 1
+        while l > 0:
+            if data[-l:] == termination[:l]:
+                p = len(data) - l  # - 1
                 break
-            L -= 1
+            l -= 1
 
-    return p, L
+    return p, l
 
 
 class StopConditionBackend:
+    """
+    Stop condition backend base class
+    """
     def __init__(self) -> None:
         pass
 
     def initiate_read(self) -> None:
+        """
+        Prepare the stop-condition for the next read
+        """
         raise NotImplementedError()
 
     def evaluate(
         self, raw_fragment: Fragment
     ) -> tuple[bool, Fragment, Fragment, float | None]:
+        """
+        Evaluate incoming fragment and return read information for the next fragment
+        """
         raise NotImplementedError()
 
     def type(self) -> StopConditionType:
+        """
+        Helper function to determine the which type of stop-condition generated a stop
+        """
         raise NotImplementedError()
 
     def flush_read(self) -> None:
+        """
+        Reset read operation
+        """
         raise NotImplementedError()
 
 
 class TerminationBackend(StopConditionBackend):
+    """
+    Termination stop-condition backend, detects whenever read data ends
+    with a specified termination
+    """
     def __init__(self, sequence: bytes | str) -> None:
         super().__init__()
         if isinstance(sequence, str):

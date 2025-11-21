@@ -17,7 +17,6 @@ An adapter is meant to work with bytes objects but it can accept strings.
 Strings will automatically be converted to bytes using utf-8 encoding
 """
 
-import logging
 import os
 import queue
 import subprocess
@@ -25,7 +24,7 @@ import sys
 import threading
 import time
 import weakref
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from collections.abc import Callable
 from enum import Enum
 from multiprocessing.connection import Client, Connection
@@ -543,6 +542,7 @@ class Adapter(Component[bytes]):
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
     ) -> AdapterReadPayload:
+        # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         """
         Read data from the device
 
@@ -687,12 +687,30 @@ class Adapter(Component[bytes]):
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> bytes:
+        """
+        Do a write followed by a read
+
+        Parameters
+        ----------
+        data : bytes | str
+        timeout : Timeout
+            Optional
+        stop_conditions : [StopCondition]
+            Optional
+        """
         signal = self.query_detailed(
             data=data, timeout=timeout, stop_conditions=stop_conditions
         )
         return signal.data()
 
     def set_event_callback(self, callback: Callable[[AdapterSignal], None]) -> None:
+        """
+        Register an event callback
+
+        Parameters
+        ----------
+        callback : Callable[[AdapterSignal], None]
+        """
         self.event_callback = callback
 
     def __str__(self) -> str:
