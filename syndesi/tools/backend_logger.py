@@ -9,6 +9,7 @@ import logging
 import threading
 from multiprocessing.connection import Client
 from time import sleep
+from typing import Callable
 
 from syndesi.adapters.backend.backend_tools import NamedConnection
 from syndesi.tools.errors import BackendCommunicationError
@@ -16,13 +17,27 @@ from syndesi.tools.log_settings import LoggerAlias
 
 from .backend_api import BACKEND_PORT, Action, backend_request, default_host
 
+class LogHandler(logging.Handler):
+    """
+    Log handler, receives log records and pushes them to a specified callback
+    """
+    def __init__(
+        self, callback: Callable[[logging.LogRecord], None] | None = None
+    ) -> None:
+        super().__init__()
+        self.callback = callback
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if self.callback is not None:
+            self.callback(record)
 
 class BackendLogger(threading.Thread):
-    def __init__(self) -> None:
+    def __init__(self, *, callback: Callable[[logging.LogRecord], None] | None = None) -> None:
         self._conn_description_lock = threading.Lock()
         self.conn_description = ""
         self._logger = logging.getLogger(LoggerAlias.BACKEND_LOGGER.value)
         self._logger.setLevel(logging.DEBUG)
+        self._callback = callback
         super().__init__(daemon=True)
 
     def run(self) -> None:
@@ -62,3 +77,4 @@ class BackendLogger(threading.Thread):
                     if logger_name not in loggers:
                         loggers[logger_name] = logging.getLogger(logger_name)
                     loggers[logger_name].handle(record)
+                    self._callback(record)

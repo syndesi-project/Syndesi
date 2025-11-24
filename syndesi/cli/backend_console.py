@@ -1,14 +1,15 @@
 # backend_status.py
 # 13.07.2025
 # Sébastien Deriaz
+"""
+Backend console
+"""
 
 import argparse
 import logging
 import time
-from collections.abc import Callable
 from multiprocessing.connection import Connection
 from time import sleep
-from typing import Any
 
 from rich.console import Console
 from rich.text import Text
@@ -25,22 +26,26 @@ LOGGING_COLORS = {
     logging.CRITICAL: "bold purple",
 }
 
-logging.getLogger().setLevel(logging.CRITICAL + 1)
+# class LogHandler(logging.Handler):
+#     """
+#     LogHandler, used to transmit log events to a given callback
+#     """
+#     def __init__(
+#         self, callback: Callable[[logging.LogRecord], None] | None = None
+#     ) -> None:
+#         super().__init__()
+#         self.callback = callback
+
+#     def emit(self, record: logging.LogRecord) -> None:
+#         if self.callback is not None:
+#             self.callback(record)
 
 
-class LogHandler(logging.Handler):
-    def __init__(
-        self, callback: Callable[[logging.LogRecord], None] | None = None
-    ) -> None:
-        super().__init__()
-        self.callback = callback
-
-    def emit(self, record: logging.LogRecord) -> None:
-        if self.callback is not None:
-            self.callback(record)
-
-
+#pylint: disable=too-few-public-methods, too-many-instance-attributes
 class BackendConsole:
+    """
+    Backend console
+    """
     def __init__(self, input_args: list[str]) -> None:
         self.argument_parser = argparse.ArgumentParser()
         self.argument_parser.add_argument(
@@ -64,15 +69,18 @@ class BackendConsole:
 
         self._console = Console()
 
-        self._log_handler = LogHandler()
-        self._log_handler.callback = self._add_line
+        # self._log_handler = LogHandler()
+        # self._log_handler.callback = self._add_line
+        #logging.getLogger().addHandler(self._log_handler)
 
-        logging.getLogger().addHandler(self._log_handler)
         self._start_time = time.time()
-        self.conn: Connection[Any, Any] | None = None
-        self._backend_logger = BackendLogger()
+        self.conn: Connection | None = None
+        self._backend_logger = BackendLogger(callback=self._add_line)
 
     def run(self) -> None:
+        """
+        Start the backend console
+        """
         self._backend_logger.start()
         try:
             while True:

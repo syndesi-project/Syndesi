@@ -11,8 +11,6 @@ from typing import cast
 
 import _socket
 
-from syndesi.tools.errors import AdapterConfigurationError, AdapterFailedToOpen
-
 from ...tools.backend_api import (
     DEFAULT_ADAPTER_OPEN_TIMEOUT,
     AdapterBackendStatus,
@@ -62,11 +60,10 @@ class IPBackend(AdapterBackend):
 
     def open(self) -> bool:
         output = False
-        if self._status == AdapterBackendStatus.DISCONNECTED:
-            if self.descriptor.port is None:  # TODO : Check if this is even possible
-                raise ValueError("Cannot open adapter without specifying a port")
 
+        if self._status == AdapterBackendStatus.DISCONNECTED:
             if self._socket is None:
+                # Create the socket instance
                 if self.descriptor.transport == IPDescriptor.Transport.TCP:
                     self._socket = cast(
                         _socket.socket,
@@ -80,6 +77,7 @@ class IPBackend(AdapterBackend):
                     raise ValueError(
                         f"Invalid transport protocol : {self.descriptor.transport}"
                     )
+            # Connect the socket
             try:
                 self._socket.settimeout(DEFAULT_ADAPTER_OPEN_TIMEOUT)
                 self._socket.connect((self.descriptor.address, self.descriptor.port))
@@ -91,34 +89,9 @@ class IPBackend(AdapterBackend):
                 output = True
         else:
             self._logger.warning(f"Adapter {self.descriptor} already openend")
-            return
+            output = False
 
-        if self.descriptor.port is None:
-            raise AdapterConfigurationError("Cannot open adapter without specifying a port")
-
-        if self._socket is None:
-            if self.descriptor.transport == IPDescriptor.Transport.TCP:
-                self._socket = cast(
-                    _socket.socket,
-                    socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-                )
-            elif self.descriptor.transport == IPDescriptor.Transport.UDP:
-                self._socket = cast(
-                    _socket.socket, socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                )
-            else:
-                raise AdapterConfigurationError(
-                    f"Invalid transport protocol : {self.descriptor.transport}"
-                )
-        try:
-            self._socket.settimeout(DEFAULT_ADAPTER_OPEN_TIMEOUT)
-            self._socket.connect((self.descriptor.address, self.descriptor.port))
-        except OSError as e:
-            self._logger.error(f"Failed to open adapter {self.descriptor} : {e}")
-            raise AdapterFailedToOpen(str(e)) from e
-
-        self._status = AdapterBackendStatus.CONNECTED
-        self._logger.info(f"IP Adapter {self.descriptor} opened")
+        return output
 
     def close(self) -> bool:
         super().close()

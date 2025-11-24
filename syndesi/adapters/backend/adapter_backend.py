@@ -154,7 +154,7 @@ class AdapterBackend(ABC):
         super().__init__()
 
         self._stop_conditions: list[StopConditionBackend] = [
-            ContinuationBackend(time=0.1)
+            ContinuationBackend(continuation=0.1)
         ]
         self.descriptor = descriptor
         self._thread: Thread | None = None

@@ -17,6 +17,8 @@ from collections.abc import Callable
 from multiprocessing.connection import Client, Listener
 from types import EllipsisType
 from typing import Any, TypeGuard, cast
+from contextlib import nullcontext
+from rich.console import Console
 
 from syndesi.adapters.backend.adapter_backend import Selectable
 from syndesi.adapters.backend.backend_tools import NamedConnection
@@ -464,7 +466,7 @@ def main(input_args: list[str] | None = None) -> None:
         default=None,
         help="Delay before the backend shutdowns automatically",
     )
-    #argument_parser.add_argument("-q", "--quiet", default=False, action="store_true")
+    argument_parser.add_argument("-q", "--quiet", default=False, action="store_true")
     #argument_parser.add_argument("-v", "--verbose", default=False, action="store_true")
 
     args = argument_parser.parse_args(input_args)
@@ -472,7 +474,16 @@ def main(input_args: list[str] | None = None) -> None:
     backend = Backend(
         host=args.address, port=args.port, backend_shutdown_delay=args.shutdown_delay
     )
-    backend.start()
+
+    console = Console()
+    with (
+        nullcontext() if args.quiet else
+        console.status(f"[bold green]Syndesi backend running on {args.address}", spinner="dots")
+        ):
+        try:
+            backend.start()
+        except KeyboardInterrupt:
+            pass
 
 
 if __name__ == "__main__":

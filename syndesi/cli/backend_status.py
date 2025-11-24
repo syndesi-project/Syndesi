@@ -1,12 +1,14 @@
 # backend_status.py
 # 13.07.2025
 # Sébastien Deriaz
+"""
+Backend status
+"""
 
 import argparse
 import logging
 import threading
 import time
-from collections.abc import Callable
 from multiprocessing.connection import Client, Pipe, wait
 from time import sleep
 from typing import cast
@@ -18,6 +20,7 @@ from rich.table import Table
 from rich.text import Text
 
 from syndesi.adapters.backend.backend_tools import NamedConnection
+from syndesi.tools.backend_logger import LogHandler
 from syndesi.tools.log_settings import LoggerAlias
 
 from ..tools.backend_api import (
@@ -39,22 +42,21 @@ LOGGING_COLORS = {
 logging.getLogger().setLevel(logging.CRITICAL + 1)
 
 
-class LogHandler(logging.Handler):
-    def __init__(
-        self, callback: Callable[[logging.LogRecord], None] | None = None
-    ) -> None:
-        super().__init__()
-        self.callback = callback
-
-    def emit(self, record: logging.LogRecord) -> None:
-        if self.callback is not None:
-            self.callback(record)
-
-
+#pylint: disable=too-few-public-methods, too-many-instance-attributes
 class BackendStatus:
+    """
+    Backend status, display live backend information like PID, connected clients, logs, etc...
+    """
     DEFAULT_REFRESH_RATE = 0.5
     DEFAULT_N_CONSOLE_LINES = 20  # Number of lines in the console view
     CONNECTIONS_MIN_HEIGHT = 2
+
+    # Display elements
+    _pid : str
+    _backend_status : str
+    _main_table : Table
+    _adapter_table : Table
+
 
     def __init__(self, input_args: list[str]) -> None:
         self.argument_parser = argparse.ArgumentParser()
@@ -103,131 +105,152 @@ class BackendStatus:
 
         self._new_console_line_r, self._new_console_line_w = Pipe()
 
+        self._init_display_elements()
+
+
+    def _init_main_table(self):
+        self._main_table = Table(box=None, padding=(0, 1))
+        self._main_table.add_column(justify="right")
+        self._main_table.add_column(justify="left")
+
+    def _init_display_elements(self):
+        self._init_main_table()
+        self._pid = ""
+        self._backend_status = "[red3]● Offline"
+        self._monitoring_connections = Table(
+            "",
+            box=None,
+            caption_justify="right",
+            show_header=False,
+            pad_edge=False,
+        )
+        self._adapter_table = Table("", box=None, caption_justify="right")
+
+    def _make_new_connection(self):
+        try:
+            self.conn = NamedConnection(Client((self.host, self.port)))
+        except (ConnectionRefusedError, OSError):
+            self.conn = None
+            sleep(0.1)
+        else:
+            backend_request(self.conn.conn, Action.SET_ROLE_MONITORING)
+
+    #pylint: disable=too-many-locals, too-many-branches
+    def _update_display_elements(self) -> bool:
+        self._backend_status = "[green3]● Online"
+
+        ready = wait([self.conn.conn, self._new_console_line_r])
+
+        if self._new_console_line_r in ready:
+            self._new_console_line_r.recv()
+        elif self.conn.conn in ready:
+            try:
+                event = self.conn.conn.recv()
+            except (ConnectionResetError, OSError, EOFError):
+                self.conn = None
+                return False
+
+            action: Action = Action(event[0])
+            if action == Action.ENUMERATE_ADAPTER_CONNECTIONS:
+                adapter_table = Table(
+                    "", box=None, caption_justify="right"
+                )
+                snapshot: dict[str, tuple[bool, list[str]]] = event[
+                    1
+                ]
+                unique_clients: set[str] = set()
+                for _, (_, adapter_clients) in snapshot.items():
+                    unique_clients |= set(adapter_clients)
+                for client in unique_clients:
+                    adapter_table.add_column(
+                        f"{client}", justify="center"
+                    )
+
+                for adapter, (
+                    status,
+                    adapter_clients,
+                ) in snapshot.items():
+                    status_indicator = (
+                        "[green3]●" if status else "[red3]●"
+                    )
+                    client_indicators: list[str] = []
+                    for client in unique_clients:
+                        client_indicators.append(
+                            "[green3]●[/]"
+                            if client in adapter_clients
+                            else "[red3]●[/]"
+                        )
+                    adapter_table.add_row(
+                        f"{adapter} {status_indicator}",
+                        *client_indicators,
+                    )
+            elif action == Action.ENUMERATE_MONITORING_CONNECTIONS:
+                monitoring_connections = Table(
+                    "",
+                    box=None,
+                    caption_justify="right",
+                    show_header=False,
+                    pad_edge=False,
+                )
+                # Update monitoring connections
+                monitoring_response: list[tuple[str, str]] = event[
+                    1
+                ]
+
+                for connection, desc in monitoring_response:
+                    if (
+                        connection
+                        == log_manager.backend_logger_conn_description()
+                        or connection == self.conn.local()
+                    ):
+                        style = ("grey50", "grey23")
+                    else:
+                        style = ("grey", "grey50")
+
+                    monitoring_connections.add_row(
+                        f"[{style[0]}]{connection}[/] [{style[1]}]({desc})[/]"
+                    )
+                for _ in range(
+                    self.CONNECTIONS_MIN_HEIGHT
+                    - len(monitoring_response)
+                ):
+                    monitoring_connections.add_row("")
+
+            elif action == Action.BACKEND_STATS:
+                # Update Backend stats
+                pid_response: int = cast(int, event[1])
+                self._pid = str(pid_response)
+
+        return True
+
     def run(self) -> None:
+        """
+        Main backend status loop
+        """
         self._log_handler.callback = self._add_line_status_screen
         logging.getLogger().addHandler(self._log_handler)
-        adapter_table = None
-        main_table = Table(box=None, padding=(0, 1))
-        main_table.add_column(justify="right")
-        main_table.add_column(justify="left")
+
+        self._init_display_elements()
+
         try:
             with Live(refresh_per_second=30) as live_display:
                 while True:
                     if self.conn is None:
-                        pid = ""
-                        backend_status = "[red3]● Offline"
-                        monitoring_connections = Table(
-                            "",
-                            box=None,
-                            caption_justify="right",
-                            show_header=False,
-                            pad_edge=False,
-                        )
-                        adapter_table = Table("", box=None, caption_justify="right")
-
-                    if self.conn is None:
-                        try:
-                            self.conn = NamedConnection(Client((self.host, self.port)))
-                        except (ConnectionRefusedError, OSError):
-                            self.conn = None
-                            sleep(0.1)
-                        else:
-                            backend_request(self.conn.conn, Action.SET_ROLE_MONITORING)
+                        self._init_display_elements()
+                        self._make_new_connection()
 
                     if self.conn is not None:
-                        backend_status = "[green3]● Online"
+                        self._update_display_elements()
 
-                        ready = wait([self.conn.conn, self._new_console_line_r])
-
-                        if self._new_console_line_r in ready:
-                            self._new_console_line_r.recv()
-                        elif self.conn.conn in ready:
-                            try:
-                                event = self.conn.conn.recv()
-                            except (ConnectionResetError, OSError, EOFError):
-                                self.conn = None
-                                continue
-                            else:
-                                action: Action = Action(event[0])
-                                if action == Action.ENUMERATE_ADAPTER_CONNECTIONS:
-                                    adapter_table = Table(
-                                        "", box=None, caption_justify="right"
-                                    )
-                                    snapshot: dict[str, tuple[bool, list[str]]] = event[
-                                        1
-                                    ]
-                                    unique_clients: set[str] = set()
-                                    for _, (_, adapter_clients) in snapshot.items():
-                                        unique_clients |= set(adapter_clients)
-                                    for client in unique_clients:
-                                        adapter_table.add_column(
-                                            f"{client}", justify="center"
-                                        )
-
-                                    for adapter, (
-                                        status,
-                                        adapter_clients,
-                                    ) in snapshot.items():
-                                        status_indicator = (
-                                            "[green3]●" if status else "[red3]●"
-                                        )
-                                        client_indicators: list[str] = []
-                                        for client in unique_clients:
-                                            client_indicators.append(
-                                                "[green3]●[/]"
-                                                if client in adapter_clients
-                                                else "[red3]●[/]"
-                                            )
-                                        adapter_table.add_row(
-                                            f"{adapter} {status_indicator}",
-                                            *client_indicators,
-                                        )
-                                elif action == Action.ENUMERATE_MONITORING_CONNECTIONS:
-                                    monitoring_connections = Table(
-                                        "",
-                                        box=None,
-                                        caption_justify="right",
-                                        show_header=False,
-                                        pad_edge=False,
-                                    )
-                                    # Update monitoring connections
-                                    monitoring_response: list[tuple[str, str]] = event[
-                                        1
-                                    ]
-
-                                    for connection, desc in monitoring_response:
-                                        if (
-                                            connection
-                                            == log_manager.backend_logger_conn_description()
-                                            or connection == self.conn.local()
-                                        ):
-                                            style = ("grey50", "grey23")
-                                        else:
-                                            style = ("grey", "grey50")
-
-                                        monitoring_connections.add_row(
-                                            f"[{style[0]}]{connection}[/] [{style[1]}]({desc})[/]"
-                                        )
-                                    for _ in range(
-                                        self.CONNECTIONS_MIN_HEIGHT
-                                        - len(monitoring_response)
-                                    ):
-                                        monitoring_connections.add_row("")
-
-                                elif action == Action.BACKEND_STATS:
-                                    # Update Backend stats
-                                    pid_response: int = cast(int, event[1])
-                                    pid = str(pid_response)
-
-                    main_table = Table(box=None, padding=(0, 1))
-                    main_table.add_column(justify="right")
-                    main_table.add_column(justify="left")
-                    main_table.add_row("Status :", backend_status)
-                    main_table.add_row("PID :", pid)
-                    main_table.add_row("Logger connections :", monitoring_connections)
-                    main_table.add_row(
+                    self._init_main_table()
+                    self._main_table.add_column(justify="right")
+                    self._main_table.add_column(justify="left")
+                    self._main_table.add_row("Status :", self._backend_status)
+                    self._main_table.add_row("PID :", self._pid)
+                    self._main_table.add_row("Logger connections :", self._monitoring_connections)
+                    self._main_table.add_row(
                         "Adapter connections :",
-                        (adapter_table if adapter_table is not None else Text("")),
+                        (self._adapter_table if self._adapter_table is not None else Text("")),
                     )
 
                     # Build the console panel
@@ -242,7 +265,7 @@ class BackendStatus:
                     )
 
                     # Group the main table and console panel vertically
-                    group = Group(main_table, console_panel)
+                    group = Group(self._main_table, console_panel)
                     live_display.update(group)
 
                     if self.live_delay is not None:

@@ -135,9 +135,12 @@ class TerminationBackend(StopConditionBackend):
 
 
 class LengthBackend(StopConditionBackend):
-    def __init__(self, N: int) -> None:
+    """
+    Length stop-condition backend. Data is returned when it is equal or exceeds the specified length
+    """
+    def __init__(self, n: int) -> None:
         super().__init__()
-        self._N = N
+        self._n = n
         self._counter = 0
 
     def initiate_read(self) -> None:
@@ -150,11 +153,11 @@ class LengthBackend(StopConditionBackend):
     def evaluate(
         self, raw_fragment: Fragment
     ) -> tuple[bool, Fragment, Fragment, float | None]:
-        remaining_bytes = self._N - self._counter
+        remaining_bytes = self._n - self._counter
         kept_fragment = raw_fragment[:remaining_bytes]
         deferred_fragment = raw_fragment[remaining_bytes:]
         self._counter += len(kept_fragment.data)
-        remaining_bytes = self._N - self._counter
+        remaining_bytes = self._n - self._counter
         # TODO : remaining_bytes <= 0 ? Alongside above TODO maybe
         return remaining_bytes == 0, kept_fragment, deferred_fragment, None
 
@@ -163,9 +166,12 @@ class LengthBackend(StopConditionBackend):
 
 
 class ContinuationBackend(StopConditionBackend):
-    def __init__(self, time: float) -> None:
+    """
+    Continuation stop-condition backend. Continuation starts after each received fragment
+    """
+    def __init__(self, continuation: float) -> None:
         super().__init__()
-        self._continuation = time
+        self._continuation = continuation
         self._last_fragment: float | None = None
 
     def initiate_read(self) -> None:
@@ -198,9 +204,12 @@ class ContinuationBackend(StopConditionBackend):
 
 
 class TotalBackend(StopConditionBackend):
-    def __init__(self, time: float) -> None:
+    """
+    Total stop-condition backend. Total time starts with the read call
+    """
+    def __init__(self, total: float) -> None:
         super().__init__()
-        self._total = time
+        self._total = total
         self._start_time: float | None = None
 
     def initiate_read(self) -> None:
@@ -230,13 +239,16 @@ class TotalBackend(StopConditionBackend):
 
 
 def stop_condition_to_backend(stop_condition: StopCondition) -> StopConditionBackend:
+    """
+    Convert a stop-condition to the corresponding backend
+    """
     if isinstance(stop_condition, Termination):
         return TerminationBackend(stop_condition.sequence)
-    elif isinstance(stop_condition, Length):
+    if isinstance(stop_condition, Length):
         return LengthBackend(stop_condition.n)
-    elif isinstance(stop_condition, Continuation):
+    if isinstance(stop_condition, Continuation):
         return ContinuationBackend(stop_condition.time)
-    elif isinstance(stop_condition, Total):
+    if isinstance(stop_condition, Total):
         return TotalBackend(stop_condition.time)
-    else:
-        raise RuntimeError(f"Invalid stop condition : {stop_condition}")
+
+    raise RuntimeError(f"Invalid stop condition : {stop_condition}")

@@ -1,8 +1,9 @@
 # File : visa.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# The VISA backend communicates using pyvisa
+"""
+The VISA backend communicates using pyvisa
+"""
 
 from __future__ import annotations
 
@@ -10,7 +11,6 @@ import queue
 import socket
 import threading
 import time
-from types import ModuleType
 from typing import TYPE_CHECKING
 
 from ...tools.backend_api import AdapterBackendStatus, Fragment
@@ -29,14 +29,16 @@ if TYPE_CHECKING:
 
 # --- Runtime optional import
 try:
-    import pyvisa as _pyvisa_runtime
-except Exception:
-    _pyvisa_runtime = None
-
-pyvisa: ModuleType | None = _pyvisa_runtime  # type: ignore
+    import pyvisa
+except ImportError:
+    pyvisa = None
 
 
+#pylint: disable=too-many-instance-attributes
 class VisaBackend(AdapterBackend):
+    """
+    VISA adapter backend
+    """
     def __init__(self, descriptor: VisaDescriptor):
         """
         USB VISA stack adapter
@@ -66,6 +68,8 @@ class VisaBackend(AdapterBackend):
         self._fragment_lock = threading.Lock()
         self._fragment = Fragment(b"", None)
         self._event_queue: queue.Queue[AdapterSignal] = queue.Queue()
+
+        self._inst_lock = threading.Lock()
 
     @classmethod
     def list_devices(cls: type[VisaBackend]) -> list[str]:
@@ -107,8 +111,6 @@ class VisaBackend(AdapterBackend):
             # These attributes exist on pyvisa resources
             self._inst.write_termination = ""
             self._inst.read_termination = None
-
-            self._inst_lock = threading.Lock()
             self._status = AdapterBackendStatus.CONNECTED
 
         if self._thread is None:
@@ -193,5 +195,4 @@ class VisaBackend(AdapterBackend):
     def is_opened(self) -> bool:
         if self._inst is None:
             return False
-        else:
-            return self._status == AdapterBackendStatus.CONNECTED
+        return self._status == AdapterBackendStatus.CONNECTED
