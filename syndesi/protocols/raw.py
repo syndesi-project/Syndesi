@@ -1,6 +1,9 @@
 # File : raw.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Raw protocol layer, data is returned as bytes "as-is"
+"""
 
 from collections.abc import Callable
 from types import EllipsisType
@@ -17,19 +20,19 @@ from .protocol import Protocol
 
 
 class Raw(Protocol):
+    """
+    Raw device, no presentation and application layers, data is returned as bytes directly
+
+    Parameters
+    ----------
+    adapter : IAdapter
+    """
     def __init__(
         self,
         adapter: Adapter,
         timeout: Timeout | None | EllipsisType = ...,
         event_callback: Callable[[AdapterSignal], None] | None = None,
     ) -> None:
-        """
-        Raw device, no presentation and application layers
-
-        Parameters
-        ----------
-        adapter : IAdapter
-        """
         super().__init__(
             adapter,
             timeout,
@@ -42,27 +45,59 @@ class Raw(Protocol):
     def _default_timeout(self) -> Timeout | None:
         return Timeout(response=2, action="error")
 
-    def write(self, data: bytes) -> None:
-        self._adapter.write(data)
+    def write(self, payload: bytes) -> None:
+        self._adapter.write(payload)
 
     def query(
         self,
-        data: bytes,
+        payload: bytes,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> bytes:
+        """
+        Writes then reads from the device and return the result
+
+        Parameters
+        ----------
+        payload : str
+            Data to send to the device
+        timeout : Timeout
+            Custom timeout for this query (optional)
+        decode : bool
+            Decode incoming data, True by default
+        full_output : bool
+            return metrics on read operation (False by default)
+        """
         self._adapter.flush_read()
-        self.write(data)
+        self.write(payload)
         return self.read(timeout=timeout, stop_conditions=stop_conditions)
 
     def query_detailed(
         self,
-        data: bytes,
+        payload: bytes,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> AdapterReadPayload:
+        """
+        Writes then reads from the device and return the adapter signal (AdapterReadPayload)
+
+        Parameters
+        ----------
+        payload : bytes
+            Data to send to the device
+        timeout : Timeout
+            Custom timeout for this query (optional)
+        decode : bool
+            Decode incoming data, True by default
+        full_output : bool
+            return metrics on read operation (False by default)
+
+        Returns
+        -------
+        signal : AdapterReadPayload
+        """
         self._adapter.flush_read()
-        self.write(data)
+        self.write(payload)
         return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
 
     def read(
@@ -70,17 +105,22 @@ class Raw(Protocol):
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> bytes:
+        """
+        Blocking read and return bytes data
+
+        Parameters
+        ----------
+        timeout : Timeout
+            Optional temporary timeout
+        stop_conditions : [StopCondition]
+            Optional temporary stop-conditions
+
+        Returns
+        -------
+        data : bytes
+        """
         signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
         return signal.data()
-
-    def read_detailed(
-        self,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload:
-        return self._adapter.read_detailed(
-            timeout=timeout, stop_conditions=stop_conditions
-        )
 
     def _on_data_ready_event(self, data: AdapterReadPayload) -> None:
         # TODO : Call the callback here ?

@@ -1,6 +1,9 @@
 # File : backend_api.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Backend API tools
+"""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -12,7 +15,7 @@ from syndesi.tools.errors import BackendCommunicationError, BackendError
 BACKEND_PORT = 59677
 LOCALHOST = "127.0.0.1"
 
-default_host = LOCALHOST
+DEFAULT_HOST = LOCALHOST
 # AUTHKEY = b'syndesi'
 
 # Backend protocol format
@@ -22,7 +25,8 @@ default_host = LOCALHOST
 # If the command fails, it is returned as :
 # (error, error_description)
 
-# The backend links the client with an adapter when SELECT_ADAPTER is sent along with an adapter descriptor
+# The backend links the client with an adapter when SELECT_ADAPTER is
+# sent along with an adapter descriptor
 
 EXTRA_BUFFER_RESPONSE_TIME = 1
 
@@ -31,14 +35,17 @@ DEFAULT_ADAPTER_OPEN_TIMEOUT = 0.5
 
 
 class Action(Enum):
+    """
+    Backend actions enum
+    """
     # All adapters
     SELECT_ADAPTER = "select"
     OPEN = "open"  # (descriptor,stop_condition) -> ()
     CLOSE = "close"  # (descriptor,force) -> ()
     # FORCE_CLOSE = "force_close"  # (descriptor,) -> ()
     WRITE = "write"  # (descriptor,data) -> ()
-    READ = "read"  # (descriptor,full_output,temporary_timeout,temporary_stop_condition) -> (data,metrics)
-    SET_STOP_CONDITIONs = "set_stop_condition"  # (descriptor,stop_condition)
+    READ = "read"  # (descriptor,full_output,temp_timeout,temp_stop_condition) -> (data,metrics)
+    SET_STOP_CONDITIONS = "set_stop_condition"  # (descriptor,stop_condition)
     FLUSHREAD = "flushread"
     START_READ = "start_read"  # Start a read (descriptor,response_time)
     RESPONSE_TIMEOUT = "response_timeout"
@@ -73,19 +80,23 @@ class Action(Enum):
 
 
 def is_action_error(action: Action) -> bool:
+    """
+    Return True if the action describes an error
+    """
     return action.value.startswith("error_")
 
 
 class BackendException(Exception):
+    """
+    Generic backend error
+    """
     pass
-
-
-class ValidFragment(Protocol):
-    data: bytes
-
 
 @dataclass
 class Fragment:
+    """
+    Fragment class, holds a piece of data (bytes) and the time at which it was received
+    """
     data: bytes
     timestamp: float | None
 
@@ -105,12 +116,14 @@ BackendResponse = tuple[object, ...]
 
 
 def frontend_send(conn: Connection, action: Action, *args: Any) -> bool:
+    """
+    Send an action to the frontend
+    """
     try:
         conn.send((action.value, *args))
     except (BrokenPipeError, OSError):
         return False
-    else:
-        return True
+    return True
 
 
 def backend_request(
@@ -119,49 +132,55 @@ def backend_request(
     *args: Any,
     timeout: float = EXTRA_BUFFER_RESPONSE_TIME,
 ) -> BackendResponse:
+    """
+    Send a request to the backend an expect a response with the time specified by timeout
+    """
     try:
         conn.send((action.value, *args))
     except (BrokenPipeError, OSError) as err:
         raise BackendCommunicationError("Failed to communicate with backend") from err
-    else:
-        ready = wait([conn], timeout=timeout)
-        if conn not in ready:
-            raise BackendCommunicationError(
-                "Failed to receive backend response in time"
-            )
 
-        try:
-            raw_response: object = conn.recv()
-        except (EOFError, ConnectionResetError) as err:
-            raise BackendCommunicationError(
-                f"Failed to receive backend response to {action.value}"
-            ) from err
+    ready = wait([conn], timeout=timeout)
+    if conn not in ready:
+        raise BackendCommunicationError(
+            "Failed to receive backend response in time"
+        )
 
-        # Check if the response is correctly formatted
-        if not (isinstance(raw_response, tuple) and isinstance(raw_response[0], str)):
-            raise BackendCommunicationError(
-                f"Invalid response received from backend : {raw_response}"
-            )
+    try:
+        raw_response: object = conn.recv()
+    except (EOFError, ConnectionResetError) as err:
+        raise BackendCommunicationError(
+            f"Failed to receive backend response to {action.value}"
+        ) from err
 
-        response_action: Action = Action(raw_response[0])
-        arguments: tuple[Any, ...] = raw_response[1:]
+    # Check if the response is correctly formatted
+    if not (isinstance(raw_response, tuple) and isinstance(raw_response[0], str)):
+        raise BackendCommunicationError(
+            f"Invalid response received from backend : {raw_response}"
+        )
 
-        if is_action_error(response_action):
-            if len(arguments) > 0:
-                if isinstance(arguments[0], str):
-                    error_message: str = arguments[0]
-                else:
-                    error_message = "failed to read error message"
+    response_action: Action = Action(raw_response[0])
+    arguments: tuple[Any, ...] = raw_response[1:]
+
+    if is_action_error(response_action):
+        if len(arguments) > 0:
+            if isinstance(arguments[0], str):
+                error_message: str = arguments[0]
             else:
-                error_message = "Missing error message"
-            raise BackendError(f"{response_action} : {error_message}")
-        return arguments
+                error_message = "failed to read error message"
+        else:
+            error_message = "Missing error message"
+        raise BackendError(f"{response_action} : {error_message}")
+    return arguments
 
 
 backend_send = frontend_send
 
 
 def raise_if_error(response: BackendResponse) -> None:
+    """
+    Raise error if the action is an error, ignore otherwise 
+    """
     action = Action(response[0])
     if is_action_error(action):
         if len(response) > 1:
@@ -169,14 +188,17 @@ def raise_if_error(response: BackendResponse) -> None:
         else:
             description = f"{action}"
         raise BackendException(f"{action.name}/{description}")
-    return
-
 
 class AdapterBackendStatus(Enum):
+    """
+    Adapter backend status enum
+    """
     DISCONNECTED = 0
     CONNECTED = 1
 
-
 class ClientStatus(Enum):
+    """
+    Client status enum
+    """
     DISCONNECTED = 0
     CONNECTED = 1

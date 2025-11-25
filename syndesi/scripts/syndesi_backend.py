@@ -1,6 +1,10 @@
 # File : syndesi_backend.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Main syndesi-backend CLI script
+"""
+
 
 import argparse
 from enum import StrEnum
@@ -11,13 +15,18 @@ from ..cli.backend_status import BackendStatus
 from ..adapters.backend.backend import main as backend_main
 
 class Command(StrEnum):
+    """
+    Syndesi-backend commands enum
+    """
     STATUS = 'status'
     CONSOLE = 'console'
     START = 'start'
 
 def main() -> None:
+    """
+    Main syndesi-backend entry point
+    """
     argument_parser = argparse.ArgumentParser(prog="syndesi-backend", add_help=False)
-    
 
     argument_parser.add_argument(
         "command",

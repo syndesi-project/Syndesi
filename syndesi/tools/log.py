@@ -88,10 +88,12 @@ class LogManager:
                 logger.setLevel(self._level)
 
     def backend_logger_conn_description(self) -> str:
+        """
+        Return a description of the backend logger connection
+        """
         if self._backend_logger is None:
             return ""
-        else:
-            return self._backend_logger.conn_description
+        return self._backend_logger.conn_description
 
 
 log_manager = LogManager()

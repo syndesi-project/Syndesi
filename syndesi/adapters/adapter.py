@@ -47,7 +47,7 @@ from ..tools.backend_api import (
     Action,
     BackendResponse,
     Fragment,
-    default_host,
+    DEFAULT_HOST,
     raise_if_error,
 )
 from ..tools.log_settings import LoggerAlias
@@ -230,7 +230,7 @@ class Adapter(Component[bytes]):
         self._alias = alias
 
         # Use custom backend or the default one
-        self._backend_address = default_host if backend_address is None else backend_address
+        self._backend_address = DEFAULT_HOST if backend_address is None else backend_address
         self._backend_port = BACKEND_PORT if backend_port is None else backend_port
 
         # There a two possibilities here
@@ -311,7 +311,7 @@ class Adapter(Component[bytes]):
 
         # Create the client to communicate with the backend
         try:
-            self.backend_connection = Client((default_host, BACKEND_PORT))
+            self.backend_connection = Client((DEFAULT_HOST, BACKEND_PORT))
         except ConnectionRefusedError as err:
             raise BackendCommunicationError("Failed to connect to backend") from err
         self._read_thread = threading.Thread(
@@ -442,7 +442,7 @@ class Adapter(Component[bytes]):
         elif stop_conditions is None:
             self._stop_conditions = []
 
-        self._make_backend_request(Action.SET_STOP_CONDITIONs, self._stop_conditions)
+        self._make_backend_request(Action.SET_STOP_CONDITIONS, self._stop_conditions)
 
     def set_default_stop_condition(self, stop_condition: StopCondition) -> None:
         """
@@ -574,7 +574,7 @@ class Adapter(Component[bytes]):
         if stop_conditions is not ...:
             if isinstance(stop_conditions, StopCondition):
                 stop_conditions = [stop_conditions]
-            self._make_backend_request(Action.SET_STOP_CONDITIONs, stop_conditions)
+            self._make_backend_request(Action.SET_STOP_CONDITIONS, stop_conditions)
 
         # First, we check if data is in the buffer and if the scope if set to BUFFERED
         while _scope == ReadScope.BUFFERED and self._signal_queue.has_read_payload():

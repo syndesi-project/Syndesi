@@ -343,12 +343,12 @@ class AdapterSession(threading.Thread):
                                 self._logger.error("Could not write, adapter is closed")
                         case Action.PING:
                             response_action, extra_arguments = Action.PING, ()
-                        case Action.SET_STOP_CONDITIONs:
+                        case Action.SET_STOP_CONDITIONS:
                             self._adapter.set_stop_conditions(
                                 [stop_condition_to_backend(sc) for sc in request[1]]
                             )
                             response_action, extra_arguments = (
-                                Action.SET_STOP_CONDITIONs,
+                                Action.SET_STOP_CONDITIONS,
                                 (),
                             )
                         case Action.FLUSHREAD:

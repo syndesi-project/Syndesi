@@ -1,9 +1,11 @@
 # File : modbus.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-#
-# Modbus TCP and Modbus RTU implementation
+"""
+Modbus TCP and Modbus RTU implementation
+"""
+
+#pylint: disable=too-many-lines
 
 import struct
 from enum import Enum
@@ -30,13 +32,17 @@ MAX_DISCRETE_INPUTS = (
 # This value has been checked and going up to 1976 seems to work but sticking to the
 # spec is safer
 
-# Specification says 125, but write_multiple_registers would exceed the allow number of bytes in that case
+# Specification says 125, but write_multiple_registers would exceed the allow number
+# of bytes in that case
 # MAX_NUMBER_OF_REGISTERS = 123
 
 ExceptionCodesType = dict[int, str]
 
 
 class Endian(Enum):
+    """
+    Endian enum
+    """
     BIG = "big"
     LITTLE = "little"
 
@@ -57,12 +63,22 @@ AVAILABLE_PDU_SIZE = 255 - 3
 
 
 class ModbusType(Enum):
+    """
+    Modbus type
+
+    - TCP : Modbus over TCP
+    - RTU : Modbus over serial
+    - ASCII : Modbus using text based encoding
+    """
     RTU = "RTU"
     ASCII = "ASCII"
     TCP = "TCP"
 
 
 class FunctionCode(Enum):
+    """
+    Modbus function codes enum
+    """
     # Public function codes 1 to 64
     READ_COILS = 0x01
     READ_DISCRETE_INPUTS = 0x02
@@ -90,6 +106,9 @@ class FunctionCode(Enum):
 
 
 class DiagnosticsCode(Enum):
+    """
+    Modbus Diagnostics codes enum
+    """
     RETURN_QUERY_DATA = 0x00
     RESTART_COMMUNICATIONS_OPTION = 0x01
     RETURN_DIAGNOSTIC_REGISTER = 0x02
@@ -111,11 +130,17 @@ class DiagnosticsCode(Enum):
 
 
 class EncapsulatedInterfaceTransportSubFunctionCodes(Enum):
+    """
+    Encapsulated interface transport subfunction codes enum
+    """
     CANOPEN_GENERAL_REFERENCE_REQUEST_AND_RESPONSE_PDU = 0x0D
     READ_DEVICE_IDENTIFICATION = 0x0E
 
 
 class DeviceIndentificationObjects(Enum):
+    """
+    Device identification objects enum
+    """
     VENDOR_NAME = 0x00
     PRODUCT_CODE = 0x01
     MAJOR_MINOR_REVISION = 0x02
@@ -136,20 +161,29 @@ SERIAL_LINE_ONLY_CODES = [
 
 
 def bool_list_to_bytes(lst: list[bool]) -> bytes:
+    """
+    Convert a list of bool to bytes, LSB first
+    """
     byte_count = ceil(len(lst) / 8)
-    result: bytes = sum([2**i * int(v) for i, v in enumerate(lst)]).to_bytes(
+    result: bytes = sum(2**i * int(v) for i, v in enumerate(lst)).to_bytes(
         byte_count, byteorder="little"
     )
     return result
 
 
-def bytes_to_bool_list(_bytes: bytes, N: int) -> list[bool]:
+def bytes_to_bool_list(_bytes: bytes, n: int) -> list[bool]:
+    """
+    Convert bytes to a list of bool, one per bit, LSB first
+    """
     return [
-        True if c == "1" else False for c in "".join([f"{x:08b}"[::-1] for x in _bytes])
-    ][:N]
+        c == "1" for c in "".join([f"{x:08b}"[::-1] for x in _bytes])
+    ][:n]
 
 
 class TypeCast(Enum):
+    """
+    Type of cast when storing values in modbus registers
+    """
     INT = "int"
     UINT = "uint"
     FLOAT = "float"
@@ -157,45 +191,57 @@ class TypeCast(Enum):
     ARRAY = "array"
 
     def is_number(self) -> bool:
+        """
+        Return True if the type is a number
+        """
         return self in [TypeCast.INT, TypeCast.UINT, TypeCast.FLOAT]
 
 
-def struct_format(type: TypeCast, length: int) -> str:
-    if type == TypeCast.INT:
-        if length == 1:
-            return "b"
-        elif length == 2:
-            return "h"
-        elif length == 4:
-            return "i"  # or 'l'
-        elif length == 8:
-            return "q"
-    elif type == TypeCast.UINT:
-        if length == 1:
-            return "B"
-        elif length == 2:
-            return "H"
-        elif length == 4:
-            return "I"  # or 'L'
-        elif length == 8:
-            return "Q"
-    elif type == TypeCast.FLOAT:
-        if length == 4:
-            return "f"
-        elif length == 8:
-            return "d"
-    elif type == TypeCast.STRING or type == TypeCast.ARRAY:
-        return f"{length}s"
-    else:
-        raise ValueError(f"Unknown cast type : {type}")
-    raise ValueError(f"Invalid type cast / length combination : {type} / {length}")
+def struct_format(_type: TypeCast, length: int) -> str:
+    """
+    Convert typecast+length to python struct character
+    """
+    struct_characters = {
+        (TypeCast.INT, 1) : 'b',
+        (TypeCast.INT, 2) : 'h',
+        (TypeCast.INT, 4) : 'i',
+        (TypeCast.INT, 8) : 'q',
+        (TypeCast.UINT, 1) : 'B',
+        (TypeCast.UINT, 2) : 'H',
+        (TypeCast.UINT, 4) : 'I', # or 'L'
+        (TypeCast.UINT, 8) : 'Q',
+        (TypeCast.FLOAT, 4) : 'f',
+        (TypeCast.FLOAT, 8) : 'd'
+    }
 
+    if _type in [TypeCast.STRING, TypeCast.ARRAY]:
+        return f"{length}s"
+    try:
+        return struct_characters[_type, length]
+    except KeyError:
+        pass
+    raise ValueError(f"Invalid type cast / length combination : {_type} / {length}")
 
 class ModbusException(Exception):
-    pass
+    """
+    Generic modbus exception
+    """
 
-
+#pylint: disable=too-many-public-methods
 class Modbus(Protocol):
+    """
+    Modbus protocol
+
+    Parameters
+    ----------
+    adapter : Adapter
+        SerialPort or IP
+    timeout : Timeout
+    _type : str
+        Only used with SerialPort adapter
+        'RTU' : Modbus RTU (default)
+        'ASCII' : Modbus ASCII
+    """
     _ASCII_HEADER = b":"
     _ASCII_TRAILER = b"\r\n"
 
@@ -206,19 +252,6 @@ class Modbus(Protocol):
         _type: str = ModbusType.RTU.value,
         slave_address: int | None = None,
     ) -> None:
-        """
-        Modbus protocol
-
-        Parameters
-        ----------
-        adapter : Adapter
-            SerialPort or IP
-        timeout : Timeout
-        _type : str
-            Only used with SerialPort adapter
-            'RTU' : Modbus RTU (default)
-            'ASCII' : Modbus ASCII
-        """
         super().__init__(adapter, timeout)
         self._logger.debug("Initializing Modbus protocol...")
 
@@ -281,8 +314,8 @@ class Modbus(Protocol):
         """
         Return PDU generated from bytes data
         """
-        PROTOCOL_ID = 0
-        UNIT_ID = 0
+        protocol_id = 0
+        unit_id = 0
 
         if self._modbus_type == ModbusType.TCP:
             # Return raw data
@@ -291,7 +324,7 @@ class Modbus(Protocol):
             length = len(_bytes) + 1  # unit_id is included
             output = (
                 struct.pack(
-                    ENDIAN + "HHHB", self._transaction_id, PROTOCOL_ID, length, UNIT_ID
+                    ENDIAN + "HHHB", self._transaction_id, protocol_id, length, unit_id
                 )
                 + _bytes
             )
@@ -320,8 +353,7 @@ class Modbus(Protocol):
             code = response[1]
             if code not in exception_codes:
                 raise ProtocolError(f"Unexpected modbus error code: {code}")
-            else:
-                raise ModbusException(f"{code:02X} : {exception_codes[code]}")
+            raise ModbusException(f"{code:02X} : {exception_codes[code]}")
 
     def _is_error(self, response: bytes) -> bool:
         raise NotImplementedError()
@@ -372,7 +404,7 @@ class Modbus(Protocol):
         coils : list
         """
 
-        EXCEPTIONS: ExceptionCodesType = {
+        exceptions: ExceptionCodesType = {
             1: "Function code not supported",
             2: "Invalid Start or end addresses",
             3: "Invalid quantity of outputs",
@@ -403,7 +435,7 @@ class Modbus(Protocol):
             ],  # TODO : convert to multiple stop conditions here
         )
         response = self._parse_pdu(pdu)
-        self._raise_if_error(response, exception_codes=EXCEPTIONS)
+        self._raise_if_error(response, exception_codes=exceptions)
 
         _, _, coil_bytes = struct.unpack(ENDIAN + f"BB{n_coil_bytes}s", response)
         coils = bytes_to_bool_list(coil_bytes, number_of_coils)
@@ -443,7 +475,7 @@ class Modbus(Protocol):
         List of booleans
         """
 
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid Start or end addresses",
             3: "Invalid quantity of inputs",
@@ -472,7 +504,7 @@ class Modbus(Protocol):
                 stop_conditions=Length(self._length(byte_count + 2)),
             )
         )
-        self._raise_if_error(response, exception_codes=EXCEPTIONS)
+        self._raise_if_error(response, exception_codes=exceptions)
         _, _, data = struct.unpack(ENDIAN + f"BB{byte_count}s", response)
         inputs = bytes_to_bool_list(data, number_of_inputs)
         return inputs
@@ -494,21 +526,21 @@ class Modbus(Protocol):
         -------
         registers : list
         """
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid Start or end addresses",
             3: "Invalid quantity of registers",
             4: "Couldn't read registers",
         }
         # Specification says 125, but the size would be exceeded over TCP. So 123 is safer
-        MAX_NUMBER_OF_REGISTERS = (AVAILABLE_PDU_SIZE - 2) // 2
+        max_number_of_registers = (AVAILABLE_PDU_SIZE - 2) // 2
 
         assert (
             MIN_ADDRESS <= start_address <= MAX_ADDRESS - number_of_registers + 1
         ), f"Invalid start address : {start_address}"
 
         assert (
-            1 <= number_of_registers <= MAX_NUMBER_OF_REGISTERS
+            1 <= number_of_registers <= max_number_of_registers
         ), f"Invalid number of registers : {number_of_registers}"
         query = struct.pack(
             ENDIAN + "BHH",
@@ -522,7 +554,7 @@ class Modbus(Protocol):
                 stop_conditions=Length(self._length(2 + number_of_registers * 2)),
             )
         )
-        self._raise_if_error(response, exception_codes=EXCEPTIONS)
+        self._raise_if_error(response, exception_codes=exceptions)
         _, _, registers_data = struct.unpack(
             ENDIAN + f"BB{number_of_registers * 2}s", response
         )
@@ -531,11 +563,13 @@ class Modbus(Protocol):
         )
         return registers
 
+    #pylint: disable=too-many-locals
     def read_multi_register_value(
         self,
         address: int,
         n_registers: int,
         value_type: str,
+        *,
         byte_order: str = Endian.BIG.value,
         word_order: str = Endian.BIG.value,
         encoding: str = "utf-8",
@@ -559,8 +593,10 @@ class Modbus(Protocol):
                 'array' : Bytes array
             Each type will be adapted based on the number of bytes (_bytes parameter)
         byte_order : str
-            Byte order, 'big' means the high bytes will come first, 'little' means the low bytes will come first
-            Byte order inside a register (2 bytes) is always big as per Modbus specification (4.2 Data Encoding)
+            Byte order, 'big' means the high bytes will come first, 'little' means the low bytes
+            will come first
+            Byte order inside a register (2 bytes) is always big as per
+            Modbus specification (4.2 Data Encoding)
         encoding : str
             String encoding (if used). UTF-8 by default
         padding : int | None
@@ -605,12 +641,14 @@ class Modbus(Protocol):
 
         return output
 
+    #pylint: disable=too-many-locals
     def write_multi_register_value(
         self,
         address: int,
         n_registers: int,
         value_type: str,
         value: str | bytes | int | float,
+        *,
         byte_order: str = Endian.BIG.value,
         word_order: str = Endian.BIG.value,
         encoding: str = "utf-8",
@@ -635,8 +673,10 @@ class Modbus(Protocol):
         value : any
             The value to write, can be any of the following : str, int, float, str, bytearray
         byte_order : str
-            Byte order, 'big' means the high bytes will come first, 'little' means the low bytes will come first
-            Byte order inside a register (2 bytes) is always big as per Modbus specification (4.2 Data Encoding)
+            Byte order, 'big' means the high bytes will come first, 'little' means the low
+            bytes will come first
+            Byte order inside a register (2 bytes) is always big as per
+            Modbus specification (4.2 Data Encoding)
         encoding : str
             String encoding (if used)
         padding : int
@@ -654,7 +694,7 @@ class Modbus(Protocol):
         _byte_order = Endian(byte_order)
 
         array = b""
-        if _type == TypeCast.INT or _type == TypeCast.UINT or _type == TypeCast.FLOAT:
+        if _type in [TypeCast.INT, TypeCast.UINT, TypeCast.FLOAT]:
             # Make one big array using word_order endian
             array = struct.pack(
                 endian_symbol[_word_order] + struct_format(_type, n_bytes), value
@@ -715,17 +755,17 @@ class Modbus(Protocol):
             List of integers
         """
         # Same implementation as read_holding_registers
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid Start or end addresses",
             3: "Invalid quantity of registers",
             4: "Couldn't read registers",
         }
 
-        MAX_NUMBER_OF_REGISTERS = (AVAILABLE_PDU_SIZE - 2) // 2
+        max_number_of_registers = (AVAILABLE_PDU_SIZE - 2) // 2
 
         assert (
-            1 <= number_of_registers <= MAX_NUMBER_OF_REGISTERS
+            1 <= number_of_registers <= max_number_of_registers
         ), f"Invalid number of registers : {number_of_registers}"
         query = struct.pack(
             ENDIAN + "BHH",
@@ -736,7 +776,7 @@ class Modbus(Protocol):
         response = self._parse_pdu(
             self._adapter.query(self._make_pdu(self._make_pdu(query)))
         )
-        self._raise_if_error(response, exception_codes=EXCEPTIONS)
+        self._raise_if_error(response, exception_codes=exceptions)
         _, _, registers_data = struct.unpack(
             ENDIAN + f"BB{number_of_registers * 2}", response
         )
@@ -755,9 +795,10 @@ class Modbus(Protocol):
         address : int
         enabled : bool
         """
-        ON_VALUE = 0xFF00
-        OFF_VALUE = 0x0000
-        EXCEPTIONS = {
+        on_value = 0xFF00
+        off_value = 0x0000
+
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid address",
             3: "Invalid value",
@@ -769,14 +810,14 @@ class Modbus(Protocol):
             ENDIAN + "BHH",
             FunctionCode.WRITE_SINGLE_COIL.value,
             self._dm_to_pdu_address(address),
-            ON_VALUE if enabled else OFF_VALUE,
+            on_value if enabled else off_value,
         )
         response = self._parse_pdu(
             self._adapter.query(
                 self._make_pdu(query), stop_conditions=Length(self._length(len(query)))
             )
         )
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         assert (
             query == response
         ), f"Write single coil response should match query {query!r} != {response!r}"
@@ -792,7 +833,7 @@ class Modbus(Protocol):
         value : int
             value between 0x0000 and 0xFFFF
         """
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid address",
             3: "Invalid register value",
@@ -812,7 +853,7 @@ class Modbus(Protocol):
                 self._make_pdu(query), stop_conditions=Length(self._length(len(query)))
             )
         )
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         assert (
             query == response
         ), f"Response ({response!r}) should match query ({query!r})"
@@ -840,7 +881,7 @@ class Modbus(Protocol):
         -------
         exceptions : int
         """
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             4: "Couldn't read exception status",
         }
@@ -848,7 +889,7 @@ class Modbus(Protocol):
             raise ProtocolError("read_exception_status cannot be used with Modbus TCP")
         query = struct.pack(ENDIAN + "B", FunctionCode.READ_EXCEPTION_STATUS.value)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         _, exception_status = cast(
             tuple[int, int], struct.unpack(ENDIAN + "BB", response)
         )  # TODO : Check this
@@ -878,7 +919,7 @@ class Modbus(Protocol):
         response
         """
 
-        EXCEPTIONS = {
+        exceptions = {
             1: "Unsuported function code or sub-function code",
             3: "Invalid data value",
             4: "Diagnostic error",
@@ -890,7 +931,7 @@ class Modbus(Protocol):
         )
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
 
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
 
         returned_function, returned_subfunction_integer, subfunction_returned_data = (
             cast(
@@ -987,9 +1028,9 @@ class Modbus(Protocol):
         communicating without interruption from the addressed remote device. No response is
         returned.
         When the remote device enters its Listen Only Mode, all active communication controls are
-        turned off. The Ready watchdog timer is allowed to expire, locking the controls off. While the
-        device is in this mode, any MODBUS messages addressed to it or broadcast are monitored,
-        but no actions will be taken and no responses will be sent.
+        turned off. The Ready watchdog timer is allowed to expire, locking the controls off.
+        While the device is in this mode, any MODBUS messages addressed to it or broadcast
+        are monitored, but no actions will be taken and no responses will be sent.
         The only function that will be processed after the mode is entered will be the Restart
         Communications Option function (function code 8, sub-function 1).
         """
@@ -1007,7 +1048,8 @@ class Modbus(Protocol):
 
     def diagnostics_return_bus_message_count(self) -> int:
         """
-        Return the number of messages that the remote device has detection on the communications system since its last restat, clear counters operation, or power-up
+        Return the number of messages that the remote device has detection on the communications
+        system since its last restat, clear counters operation, or power-up
 
         Returns
         -------
@@ -1021,7 +1063,8 @@ class Modbus(Protocol):
 
     def diagnostics_return_bus_communication_error_count(self) -> int:
         """
-        Return the number of messages that the remote device has detection on the communications system since its last restart, clear counters operation, or power-up
+        Return the number of messages that the remote device has detection on the communications
+        system since its last restart, clear counters operation, or power-up
 
         Returns
         -------
@@ -1035,7 +1078,8 @@ class Modbus(Protocol):
 
     def diagnostics_return_bus_exception_error_count(self) -> int:
         """
-        Return the number of Modbus exceptions responses returned by the remote device since its last restart, clear counters operation, or power-up
+        Return the number of Modbus exceptions responses returned by the remote device since
+        its last restart, clear counters operation, or power-up
 
         Returns
         -------
@@ -1049,7 +1093,8 @@ class Modbus(Protocol):
 
     def diagnostics_return_server_no_response_count(self) -> int:
         """
-        Return the number of messages addressed to the remote device for which it has returned no response since its last restart, clear counters operation, or power-up
+        Return the number of messages addressed to the remote device for which it has returned
+        no response since its last restart, clear counters operation, or power-up
 
         Returns
         -------
@@ -1063,7 +1108,9 @@ class Modbus(Protocol):
 
     def diagnostics_return_server_nak_count(self) -> int:
         """
-        Return the number of messages addressed to the remote device for which it returned a negative acnowledge (NAK) exception response since its last restart, clear counters operation, or power-up
+        Return the number of messages addressed to the remote device for which it returned
+        a negative acnowledge (NAK) exception response since its last restart, clear counters
+        operation, or power-up
 
         Returns
         -------
@@ -1077,7 +1124,9 @@ class Modbus(Protocol):
 
     def diagnostics_return_server_busy_count(self) -> int:
         """
-        Return the number of messages addressed to the remote device for which it returned a server device busy exception response since its last restart, clear counters operation, or power-up
+        Return the number of messages addressed to the remote device for which it returned a
+        server device busy exception response since its last restart, clear counters operation,
+        or power-up
 
         Returns
         -------
@@ -1091,7 +1140,9 @@ class Modbus(Protocol):
 
     def diagnostics_return_bus_character_overrun_count(self) -> int:
         """
-        Return the number of messages addressed to the remote device that it could not handle due to a character overrun condition since its last restart, clear counters operation, or power-up
+        Return the number of messages addressed to the remote device that it could not handle
+        due to a character overrun condition since its last restart, clear counters operation,
+        or power-up
 
         Returns
         -------
@@ -1121,20 +1172,21 @@ class Modbus(Protocol):
         status : int
         event_count : int
         """
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             4: "Couldn't get comm event counter",
         }
         query = struct.pack(ENDIAN + "B", FunctionCode.GET_COMM_EVENT_COUNTER.value)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         _, status, event_count = struct.unpack(ENDIAN + "BHH", response)
         return status, event_count
 
     # Get Comm Event Log - 0x0C
     def get_comm_event_log(self) -> tuple[int, int, int, bytes]:
         """
-        Retrieve status word, event count, message count and a field of event bytes from the remote device
+        Retrieve status word, event count, message count and a field of event bytes from
+        the remote device
 
         Status word and event count are identical to those returned by get_comm_event_counter()
 
@@ -1143,20 +1195,21 @@ class Modbus(Protocol):
         status : int
         event_count : int
         message_count : int
-            Number of messages processed since its last restart, clear counters operation, or power-up
+            Number of messages processed since its last restart, clear counters operation, 
+            or power-up
             Identical to diagnostics_return_bus_message_count()
         events : bytes
-            0-64 bytes, each corresponding to the status of one Modbus send or receive operation for
-            the remote device. Byte 0 is the most recent event
+            0-64 bytes, each corresponding to the status of one Modbus send or receive
+            operation for the remote device. Byte 0 is the most recent event
         """
 
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             4: "Couldn't get comm event log",
         }
         query = struct.pack(ENDIAN + "B", FunctionCode.GET_COMM_EVENT_LOG.value)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         _, byte_count, status, event_count, message_count = struct.unpack(
             "BBHHH", response
         )
@@ -1176,7 +1229,7 @@ class Modbus(Protocol):
             Bool values
         """
         # TODO : Check behavior against page 29 of the modbus spec (endianness of values)
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid start and/or end addresses",
             3: "Invalid number of outputs and/or byte count",
@@ -1205,12 +1258,13 @@ class Modbus(Protocol):
                 self._make_pdu(query), stop_conditions=Length(self._length(5))
             )
         )
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
 
         _, _, coils_written = struct.unpack(ENDIAN + "BHH", response)
         if coils_written != number_of_coils:
             raise ProtocolError(
-                f"Number of coils written ({coils_written}) doesn't match expected value : {number_of_coils}"
+                f"Number of coils written ({coils_written}) doesn't match expected "
+                "value : {number_of_coils}"
             )
 
     # Write Multiple Registers - 0x10
@@ -1225,7 +1279,7 @@ class Modbus(Protocol):
             List of integers
 
         """
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid start and/or end addresses",
             3: "Invalid number of outputs and/or byte count",
@@ -1234,12 +1288,12 @@ class Modbus(Protocol):
         byte_count = 2 * len(values)
 
         # Specs says 123, but it would exceed 255 bytes over TCP. So 121 is safer
-        MAX_NUMBER_OF_REGISTERS = (AVAILABLE_PDU_SIZE - 6) // 2
+        max_number_of_registers = (AVAILABLE_PDU_SIZE - 6) // 2
 
         assert len(values) > 0, "Empty register list"
         assert (
-            len(values) <= MAX_NUMBER_OF_REGISTERS
-        ), f"Cannot set more than {MAX_NUMBER_OF_REGISTERS} registers at a time"
+            len(values) <= max_number_of_registers
+        ), f"Cannot set more than {max_number_of_registers} registers at a time"
         assert (
             MIN_ADDRESS <= start_address <= MAX_ADDRESS - len(values) + 1
         ), f"Invalid address : {start_address}"
@@ -1257,12 +1311,13 @@ class Modbus(Protocol):
                 self._make_pdu(query), stop_conditions=Length(self._length(5))
             )
         )
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
 
         _, _, coils_written = struct.unpack(ENDIAN + "BHH", response)
         if coils_written != byte_count // 2:
             raise ProtocolError(
-                f"Number of coils written ({coils_written}) doesn't match expected value : {byte_count // 2}"
+                f"Number of coils written ({coils_written}) doesn't match expected "
+                "value : {byte_count // 2}"
             )
 
     # Report Server ID - 0x11
@@ -1270,7 +1325,8 @@ class Modbus(Protocol):
         self, server_id_length: int, additional_data_length: int
     ) -> tuple[bytes, bool, bytes]:
         """
-        Read description of the type, current status and other information specific to a remote device
+        Read description of the type, current status and other information specific to
+        a remote device
 
         Parameters
         ----------
@@ -1284,21 +1340,23 @@ class Modbus(Protocol):
         run_indicator_status : bool
         additional_data : bytes
         """
-        EXCEPTIONS = {1: "Function code not supported", 4: "Couldn't report slave ID"}
+        exceptions = {1: "Function code not supported", 4: "Couldn't report slave ID"}
         query = struct.pack(ENDIAN + "B", FunctionCode.REPORT_SERVER_ID.value)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         server_id, run_indicator_status, additional_data = struct.unpack(
             ENDIAN + f"{server_id_length}sB{additional_data_length}s", response
         )
         return server_id, run_indicator_status == 0xFF, additional_data
 
+    #pylint: disable=too-many-locals
     # Read File Record - 0x14
     def read_file_record(self, records: list[tuple[int, int, int]]) -> list[bytes]:
         """
         Perform a single or multiple file record read
 
-        Total response length cannot exceed 253 bytes, meaning the number of records and their length is limited.
+        Total response length cannot exceed 253 bytes, meaning the number of records
+        and their length is limited.
 
 
         Query equation : 2 + 7*N <= 253
@@ -1314,9 +1372,9 @@ class Modbus(Protocol):
         records_data : list
             List of bytes
         """
-        SIZE_LIMIT = 253
-        REFERENCE_TYPE = 6
-        EXCEPTIONS = {
+        size_limit = 253
+        reference_type = 6
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid parameters",
             3: "Invalid byte count",
@@ -1327,18 +1385,18 @@ class Modbus(Protocol):
 
         query_size = 2 + 7 * len(records)
         response_size = 2 + len(records) + sum(2 * r[2] for r in records)
-        if query_size > SIZE_LIMIT:
+        if query_size > size_limit:
             raise ValueError(f"Number of records is too high : {len(records)}")
-        if response_size > SIZE_LIMIT:
+        if response_size > size_limit:
             raise ValueError(
-                f"Sum of records lenghts is too high : {sum([r[2] for r in records])}"
+                f"Sum of records lenghts is too high : {sum(r[2] for r in records)}"
             )
 
         sub_req_buffer = b""
         for file_number, record_number, record_length in records:
             sub_req_buffer += struct.pack(
                 ENDIAN + "BHHH",
-                REFERENCE_TYPE,
+                reference_type,
                 file_number,
                 record_number,
                 record_length,
@@ -1353,7 +1411,7 @@ class Modbus(Protocol):
             sub_req_buffer,
         )
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         # Parse the response
         # start at position 2
         records_data = []
@@ -1365,6 +1423,7 @@ class Modbus(Protocol):
             # Read the record data
             records_data.append(response[i : i + length])
             i += length
+            # TODO : get out of here
 
         return records_data
 
@@ -1373,20 +1432,22 @@ class Modbus(Protocol):
         """
         Perform a single or multiple file record write
 
-        Total query and response length cannot exceed 253 bytes, meaning the number of records and their length is limited.
+        Total query and response length cannot exceed 253 bytes, meaning the number of
+        records and their length is limited.
 
         Query equation : 2 + 7*N + sum(Li*2) <= 253
         Response equation : identical
 
-        File number can be between 0x0001 and 0xFFFF but lots of legacy equipment will not support file number above 0x000A (10)
+        File number can be between 0x0001 and 0xFFFF but lots of legacy equipment will
+        not support file number above 0x000A (10)
 
         Parameters
         ----------
         records : list
             List of tuples : (file_number, record_number, data)
         """
-        REFERENCE_TYPE = 6
-        EXCEPTIONS = {
+        reference_type = 6
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid parameters",
             3: "Invalid byte count",
@@ -1403,7 +1464,7 @@ class Modbus(Protocol):
         for file_number, record_number, data in records:
             sub_req_buffer += struct.pack(
                 ENDIAN + f"BHHH{len(data)}s",
-                REFERENCE_TYPE,
+                reference_type,
                 file_number,
                 record_number,
                 len(data) // 2,
@@ -1417,13 +1478,14 @@ class Modbus(Protocol):
             sub_req_buffer,
         )
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         assert response == query
 
     # Mask Write Register - 0x16
     def mask_write_register(self, address: int, and_mask: int, or_mask: int) -> None:
         """
-        This function is used to modify the contents of a holding register using a combination of AND and OR masks applied to the current contents of the register.
+        This function is used to modify the contents of a holding register using a
+        combination of AND and OR masks applied to the current contents of the register.
 
         The algorithm is :
 
@@ -1438,7 +1500,7 @@ class Modbus(Protocol):
         or_mask : int
             0x0000 to 0xFFFF
         """
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid register address",
             3: "Invalid AND/OR mask",
@@ -1458,7 +1520,7 @@ class Modbus(Protocol):
                 self._make_pdu(query), stop_conditions=Length(self._length(len(query)))
             )
         )
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         assert (
             response == query
         ), f"Response ({response!r}) should match query ({query!r})"
@@ -1486,18 +1548,18 @@ class Modbus(Protocol):
         -------
         read_values : list
         """
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid read/write start/end address",
             3: "Invalid quantity of read/write and/or byte count",
             4: "Couldn't read and/or write registers",
         }
 
-        MAX_NUMBER_READ_REGISTERS = (AVAILABLE_PDU_SIZE - 2) // 2
-        MAX_NUMBER_WRITE_REGISTERS = (AVAILABLE_PDU_SIZE - 10) // 2
+        max_number_read_registers = (AVAILABLE_PDU_SIZE - 2) // 2
+        max_numbers_write_registers = (AVAILABLE_PDU_SIZE - 10) // 2
 
         assert (
-            1 <= number_of_read_registers <= MAX_NUMBER_READ_REGISTERS
+            1 <= number_of_read_registers <= max_number_read_registers
         ), f"Invalid number of read registers : {number_of_read_registers}"
         assert (
             MIN_ADDRESS
@@ -1506,11 +1568,12 @@ class Modbus(Protocol):
         ), f"Invalid read start address : {read_starting_address}"
 
         assert (
-            1 <= len(write_values) <= MAX_NUMBER_WRITE_REGISTERS
+            1 <= len(write_values) <= max_numbers_write_registers
         ), f"Invalid number of write registers  : {len(write_values)}"
         assert (
             MIN_ADDRESS <= write_starting_address <= MAX_ADDRESS - len(write_values) + 1
-        ), f"Invalid write start address (writing {len(write_values)} registers) : {write_starting_address}"
+        ), f"Invalid write start address (writing {len(write_values)} registers) " \
+            ": {write_starting_address}"
 
         query = struct.pack(
             ENDIAN + f"BHHHHB{len(write_values)}H",
@@ -1528,7 +1591,7 @@ class Modbus(Protocol):
                 stop_conditions=Length(self._length(2 + number_of_read_registers * 2)),
             )
         )
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         # Parse response
         output = struct.unpack(ENDIAN + f"BB{number_of_read_registers}H", response)
         # _, _, read_values
@@ -1548,7 +1611,7 @@ class Modbus(Protocol):
         -------
         registers : list
         """
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
             2: "Invalid FIFO address",
             3: "Invalid FIFO count (>31)",
@@ -1556,7 +1619,7 @@ class Modbus(Protocol):
         }
         query = struct.pack(ENDIAN + "BH", FunctionCode.READ_FIFO_QUEUE, fifo_address)
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         byte_count = int(struct.unpack(ENDIAN + "xH", response)[0])
         register_count = byte_count // 2 - 1
 
@@ -1574,7 +1637,8 @@ class Modbus(Protocol):
         extra_exceptions: dict[int, str] | None = None,
     ) -> bytes:
         """
-        The MODBUS Encapsulated Interface (MEI) Transport is a mechanism for tunneling service requests and method invocations
+        The MODBUS Encapsulated Interface (MEI) Transport is a mechanism for tunneling
+        service requests and method invocations
 
         Parameters
         ----------
@@ -1585,11 +1649,11 @@ class Modbus(Protocol):
         -------
         returned_mei_data : bytes
         """
-        EXCEPTIONS = {
+        exceptions = {
             1: "Function code not supported",
         }
         if extra_exceptions is not None:
-            EXCEPTIONS.update(extra_exceptions)
+            exceptions.update(extra_exceptions)
 
         query = struct.pack(
             ENDIAN + f"BB{len(mei_data)}s",
@@ -1598,5 +1662,5 @@ class Modbus(Protocol):
             mei_data,
         )
         response = self._parse_pdu(self._adapter.query(self._make_pdu(query)))
-        self._raise_if_error(response, EXCEPTIONS)
+        self._raise_if_error(response, exceptions)
         return response[2:]

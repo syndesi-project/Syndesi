@@ -1,6 +1,10 @@
 # File : delimited.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Delimited protocol, formats data when communicating with devices expecting
+command-like formats with specified delimiters (like \\n, \\r, \\r\\n, etc...)
+"""
 
 from collections.abc import Callable
 from types import EllipsisType
@@ -13,36 +17,37 @@ from .protocol import Protocol
 
 
 class Delimited(Protocol):
+    """
+    Protocol with delimiter, like LF, CR, etc... LF is used by default
+
+    No presentation or application layers
+
+    Parameters
+    ----------
+    adapter : Adapter
+    termination : bytes
+        Command termination, '\\n' by default
+    format_response : bool
+        Apply formatting to the response (i.e removing the termination), True by default
+    encoding : str or None
+        If None, delimited will not encode/decode
+    timeout : Timeout
+        None by default (default timeout)
+    receive_termination : bytes
+        Termination when receiving only, optional
+        if not set, the value of termination is used
+    """
     def __init__(
         self,
         adapter: Adapter,
         termination: str = "\n",
+        *,
         format_response: bool = True,
         encoding: str = "utf-8",
         timeout: Timeout | None | EllipsisType = ...,
         event_callback: Callable[[AdapterSignal], None] | None = None,
         receive_termination: str | None = None,
     ) -> None:
-        """
-        Protocol with delimiter, like LF, CR, etc... LF is used by default
-
-        No presentation or application layers
-
-        Parameters
-        ----------
-        adapter : Adapter
-        termination : bytes
-            Command termination, '\\n' by default
-        format_response : bool
-            Apply formatting to the response (i.e removing the termination), True by default
-        encoding : str or None
-            If None, delimited will not encode/decode
-        timeout : Timeout
-            None by default (default timeout)
-        receive_termination : bytes
-            Termination when receiving only, optional
-            if not set, the value of termination is used
-        """
         if not isinstance(termination, str) or isinstance(termination, bytes):
             raise ValueError(
                 f"end argument must be of type str or bytes, not {type(termination)}"
@@ -68,8 +73,8 @@ class Delimited(Protocol):
     def __str__(self) -> str:
         if self._receive_termination == self._termination:
             return f"Delimited({self._adapter},{repr(self._termination)})"
-        else:
-            return f"Delimited({self._adapter},{repr(self._termination)}/{repr(self._receive_termination)})"
+        return f"Delimited({self._adapter},{repr(self._termination)}"\
+            "/{repr(self._receive_termination)})"
 
     def _default_timeout(self) -> Timeout | None:
         return Timeout(response=2, action="error")
@@ -80,10 +85,9 @@ class Delimited(Protocol):
     def _to_bytes(self, command: str | bytes) -> bytes:
         if isinstance(command, str):
             return command.encode("ASCII")
-        elif isinstance(command, bytes):
+        if isinstance(command, bytes):
             return command
-        else:
-            raise ValueError(f"Invalid command type : {type(command)}")
+        raise ValueError(f"Invalid command type : {type(command)}")
 
     def _from_bytes(self, payload: bytes) -> str:
         assert isinstance(payload, bytes)
@@ -103,17 +107,28 @@ class Delimited(Protocol):
         # return output
         pass
 
-    def write(self, command: str) -> None:
-        command = self._format_command(command)
-        self._adapter.write(self._to_bytes(command))
+    def write(self, payload: str) -> None:
+        """
+        Write data to the device
 
-    def query(self, data: str, timeout: Timeout | None | EllipsisType = ...) -> str:
+        Parameters
+        ----------
+        payload : str
+        """
+        payload = self._format_command(payload)
+        self._adapter.write(self._to_bytes(payload))
+
+    def query(self,
+              payload: str,
+              timeout: Timeout | None | EllipsisType = ...,
+              stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+              ) -> str:
         """
         Writes then reads from the device and return the result
 
         Parameters
         ----------
-        data : str
+        payload : str
             Data to send to the device
         timeout : Timeout
             Custom timeout for this query (optional)
@@ -123,8 +138,36 @@ class Delimited(Protocol):
             return metrics on read operation (False by default)
         """
         self._adapter.flush_read()
-        self.write(data)
-        return self.read(timeout=timeout)
+        self.write(payload)
+        return self.read(timeout=timeout, stop_conditions=stop_conditions)
+
+    def query_detailed(
+        self,
+        payload: str,
+        timeout: Timeout | None | EllipsisType = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> AdapterReadPayload:
+        """
+        Writes then reads from the device and return the adapter signal (AdapterReadPayload)
+
+        Parameters
+        ----------
+        payload : str
+            Data to send to the device
+        timeout : Timeout
+            Custom timeout for this query (optional)
+        decode : bool
+            Decode incoming data, True by default
+        full_output : bool
+            return metrics on read operation (False by default)
+
+        Returns
+        -------
+        signal : AdapterReadPayload
+        """
+        self._adapter.flush_read()
+        self.write(payload)
+        return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
 
     def read_raw(
         self,
@@ -150,21 +193,26 @@ class Delimited(Protocol):
         )
         return signal.data()
 
-    def read_detailed(
-        self,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload:
-        signal = self._adapter.read_detailed(
-            timeout=timeout, stop_conditions=stop_conditions
-        )
-        return signal
-
     def read(
         self,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> str:
+        """
+        Blocking read and return string data
+
+        Parameters
+        ----------
+        timeout : Timeout
+            Optional temporary timeout
+        stop_conditions : [StopCondition]
+            Optional temporary stop-conditions
+
+        Returns
+        -------
+        data : str
+        """
+
         signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
         return self._decode(signal.data())
 
@@ -175,9 +223,9 @@ class Delimited(Protocol):
             raise ValueError(
                 f"Failed to decode {data!r} to {self._encoding} ({err})"
             ) from err
-        else:
-            if not self._response_formatting:
-                # Add the termination back in since it was removed by the adapter
-                data_string += self._receive_termination
+
+        if not self._response_formatting:
+            # Add the termination back in since it was removed by the adapter
+            data_string += self._receive_termination
 
         return data_string

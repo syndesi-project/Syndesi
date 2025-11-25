@@ -1,6 +1,9 @@
 # File : adapter_shell.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Syndesi shell, used to communicate with adapters, protocols and drivers directly
+"""
 
 
 from argparse import ArgumentParser
@@ -26,6 +29,9 @@ HISTORY_FILE_NAME = "syndesi"
 
 
 class Format(Enum):
+    """
+    Display format
+    """
     TEXT = "text"
     HEX = "hex"
     BYTES = "bytes"
@@ -39,12 +45,18 @@ FORMAT_DESCRIPTION = {
 
 
 class AdapterType(Enum):
+    """
+    Adapter type enum
+    """
     IP = "ip"
     SERIAL = "serial"
     VISA = "visa"
 
 
 class SpecialLineEnding(Enum):
+    """
+    Line ending enum
+    """
     CR = "cr"
     LF = "lf"
     CRLF = "crlf"
@@ -58,6 +70,12 @@ LINE_ENDING_CHARS = {
 
 
 def hex2array(raw: str) -> bytes:
+    """
+    Convert hex to bytes
+
+    00 01 0A FF -> b'\x00\x01\x0A\xFF'
+    00010AFF -> b'\x00\x01\x0A\xFF'
+    """
     s = raw.replace(" ", "")
     if len(s) % 2 != 0:
         s = "0" + s
@@ -69,10 +87,17 @@ def hex2array(raw: str) -> bytes:
 
 
 def array2hex(array: bytes) -> str:
+    """
+    Convert bytes to hex string
+    b'\x00\x01\x0A\xFF' -> 00 01 0A FF
+    """
     return " ".join([f"{x:02X}" for x in array])
 
 
 def parse_end_argument(arg: str | None) -> str | None:
+    """
+    Convert line end argument to a real \\n or \\r character
+    """
     if arg is None:
         return None
     # Return a special line end char if it corresponds
@@ -84,6 +109,9 @@ def parse_end_argument(arg: str | None) -> str | None:
 
 
 class AdapterShell:
+    """
+    Adapter shell, allows direct communication with an adapter
+    """
     DEFAULT_TERMINATION = "\n"
 
     def __init__(self, kind: AdapterType, input_arguments: list[str]) -> None:
@@ -103,13 +131,15 @@ class AdapterShell:
             "--end",
             required=False,
             default=SpecialLineEnding.LF.value,
-            help="Termination, cr, lf, crlf, none or a custom string. Only used with text format. Custom receive end can be set with --receive-end",
+            help="Termination, cr, lf, crlf, none or a custom string. "
+                "Only used with text format. Custom receive end can be set with --receive-end",
         )
         self._parser.add_argument(
             "--receive-end",
             required=False,
             default=None,
-            help="Reception termination, same as --end but for reception only. If not set, the value of --end will be used",
+            help="Reception termination, same as --end but for"
+                "reception only. If not set, the value of --end will be used",
         )
         self._parser.add_argument(
             "-f",
@@ -203,7 +233,9 @@ class AdapterShell:
         )
 
     def run(self) -> None:
-        # try:
+        """
+        Main adapter loop
+        """
         self.adapter.open()
         self.shell.print(
             f"Opened adapter {self.adapter.descriptor}", style=Shell.Style.NOTE
@@ -211,9 +243,15 @@ class AdapterShell:
         self.shell.run()
 
     def on_command(self, command: str) -> None:
+        """
+        Action to perform when a command is received
+        """
         self._protocol.write(command)
 
     def event(self, signal: AdapterSignal) -> None:
+        """
+        Method called when a signal is recevied from the adapter
+        """
         if isinstance(signal, AdapterDisconnectedSignal):
 
             def f(answer: str) -> None:

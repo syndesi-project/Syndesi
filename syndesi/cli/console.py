@@ -1,6 +1,9 @@
 # File : console.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Live console with history, styling, clear, hinting
+"""
 
 import asyncio
 import os
@@ -23,16 +26,23 @@ from prompt_toolkit.keys import Keys
 from ..version import AUTHOR, NAME
 
 
+#pylint: disable=too-many-instance-attributes
 class Shell:
+    """
+    Live shell with history, styling, clear and hinting
+    """
     class Style(Enum):
+        """
+        Style enum
+        """
         DEFAULT = ""
         HIGHLIGHT = "highlight"
         NOTE = "note"
         WARNING = "warning"
-        _PROMPT = "prompt-marker"
-        _REVERSE_SEARCH_SELECTION = "rss"
-        _REVERSE_SEARCH = "rs"
-        _REVERSE_SEARCH_LINE = "rs-line"
+        PROMPT = "prompt-marker"
+        REVERSE_SEARCH_SELECTION = "rss"
+        REVERSE_SEARCH = "rs"
+        REVERSE_SEARCH_LINE = "rs-line"
         ERROR = "error"
 
     HISTORY_SIZE = 10
@@ -42,7 +52,7 @@ class Shell:
         "prompt-marker": "bold #146DA8",  # bright green marker
         "rss": "bold bg:#505050",
         "rs": "",
-        Style._REVERSE_SEARCH_LINE.value: "bold bg:#505050 #ff5010",
+        Style.REVERSE_SEARCH_LINE.value: "bold bg:#505050 #ff5010",
         Style.DEFAULT.value: "",
         Style.NOTE.value: "#A0A0A0",
         Style.WARNING.value: "#ba9109",
@@ -54,7 +64,7 @@ class Shell:
     RS_CAPTURE_KEY = ["<any>", "up", "down", "enter"]
 
     DEFAULT_PROMPT = prompt_toolkit.formatted_text.FormattedText(
-        [("class:" + Style._PROMPT.value, "❯ ")]
+        [("class:" + Style.PROMPT.value, "❯ ")]
     )
 
     def __init__(
@@ -94,7 +104,7 @@ class Shell:
         # Find a way to have access to those variables in the event nicely
 
         @self.kb.add("c-r")
-        def _(event: KeyPressEvent) -> None:
+        def _(_: KeyPressEvent) -> None:
             self.update_reverse_search_entries()
             self.update_reverse_search()
             self.reverse_search_mode[0] = True
@@ -104,6 +114,9 @@ class Shell:
         self.update_reverse_search_entries()
 
     def update_reverse_search_entries(self) -> None:
+        """
+        Update the list containing reverse search entries
+        """
         self._reverse_search_entries = []
         for _, x in zip(
             range(self.HISTORY_SIZE), self._history.load_history_strings(), strict=False
@@ -114,6 +127,9 @@ class Shell:
         self.reverse_search_selection = len(self._reverse_search_entries) - 1
 
     def update_reverse_search(self) -> None:
+        """
+        Display a list of previous entries
+        """
         entries = []
         for i, command in enumerate(self._reverse_search_entries):
             selected = i == self.reverse_search_selection
@@ -127,6 +143,9 @@ class Shell:
         self.prompt = prompt_toolkit.formatted_text.FormattedText(entries)
 
     def exit_reverse_search(self) -> None:
+        """
+        Exit reverse search and reset the console to standard prompt
+        """
         for c in self.RS_CAPTURE_KEY:
             self.kb.remove(c)
         get_app().current_buffer.document = prompt_toolkit.document.Document(
@@ -138,8 +157,11 @@ class Shell:
     def reverse_search_capture(
         self, event: prompt_toolkit.key_binding.KeyPressEvent
     ) -> None:
+        """
+        Catch user inputs while in reverse search entry mode
+        """
         key = event.key_sequence[0].key
-        exit = False
+        _exit = False
         if key == Keys.Up and self.reverse_search_selection > 0:
             self.reverse_search_selection -= 1
         elif (
@@ -148,9 +170,9 @@ class Shell:
         ):
             self.reverse_search_selection += 1
         elif key == Keys.Enter:
-            exit = True
+            _exit = True
 
-        if exit:
+        if _exit:
             self.exit_reverse_search()
         else:
             self.update_reverse_search()
@@ -164,9 +186,15 @@ class Shell:
         return output
 
     def stop(self) -> None:
+        """
+        Stop the console
+        """
         self._stop = True
 
     def run(self) -> None:
+        """
+        Main shell loop
+        """
         with prompt_toolkit.patch_stdout.patch_stdout():
             while not self._stop:
                 try:
@@ -189,11 +217,7 @@ class Shell:
                         continue
 
                     if command in ["clear", "cls"]:
-                        if (
-                            sys.platform == "linux"
-                            or sys.platform == "linux2"
-                            or sys.platform == "darwin"
-                        ):
+                        if sys.platform in ["linux", "linux2", "darwin"]:
                             # linux
                             os.system("clear")
                         elif sys.platform == "win32":
@@ -210,6 +234,9 @@ class Shell:
                     break
 
     def reprompt(self, text: str | None = None) -> None:
+        """
+        Reprint the prompt
+        """
         if self.session.app.is_running:
             if text is not None:
                 self.temporary_prompt = FormattedText(
@@ -218,11 +245,17 @@ class Shell:
             self.session.app.invalidate()
 
     def print(self, text: str, style: Style = Style.DEFAULT) -> None:
+        """
+        Print a message in the shell
+        """
         prompt_toolkit.shortcuts.print_formatted_text(
             FormattedText([(f"class:{style.value}", text)]), style=self._toolkit_styles
         )
 
     def ask(self, question: str, callback: Callable[[str], None]) -> None:
+        """
+        Print a text and wait for user input. The input is returned with a callback
+        """
         self.ask_event.set()
         self.ask_callback = callback
         self.reprompt(question)

@@ -3,12 +3,12 @@
 # License : GPL
 
 
-class TerminalCompatible:
-    name = "..."
-    description = "..."
-    help = "..."
-    aliases = "..."
-    # prompt settings ? color ?
+# class TerminalCompatible:
+#     name = "..."
+#     description = "..."
+#     help = "..."
+#     aliases = "..."
+#     # prompt settings ? color ?
 
-    def handle_input(self, user_input: str | bytes) -> None:
-        pass
+#     def handle_input(self, user_input: str | bytes) -> None:
+#         pass

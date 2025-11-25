@@ -1,9 +1,10 @@
 # File : backend_logger.py
 # Author : Sébastien Deriaz
 # License : GPL
-#
-# This class starts a thread to grab log records from the backend and emit them here
-# in their respective loggers
+"""
+This class starts a thread to grab log records from the backend and emit them here
+in their respective loggers
+"""
 
 import logging
 import threading
@@ -15,7 +16,7 @@ from syndesi.adapters.backend.backend_tools import NamedConnection
 from syndesi.tools.errors import BackendCommunicationError
 from syndesi.tools.log_settings import LoggerAlias
 
-from .backend_api import BACKEND_PORT, Action, backend_request, default_host
+from .backend_api import BACKEND_PORT, Action, backend_request, DEFAULT_HOST
 
 class LogHandler(logging.Handler):
     """
@@ -32,6 +33,9 @@ class LogHandler(logging.Handler):
             self.callback(record)
 
 class BackendLogger(threading.Thread):
+    """
+    BackendLogger, listens for log records coming from the backend and re-emit them under the backend logger alias
+    """
     def __init__(self, *, callback: Callable[[logging.LogRecord], None] | None = None) -> None:
         self._conn_description_lock = threading.Lock()
         self.conn_description = ""
@@ -46,7 +50,7 @@ class BackendLogger(threading.Thread):
         while True:
             if conn is None:
                 try:
-                    conn = NamedConnection(Client((default_host, BACKEND_PORT)))
+                    conn = NamedConnection(Client((DEFAULT_HOST, BACKEND_PORT)))
                 except ConnectionRefusedError:
                     conn = None
                     sleep(0.1)
@@ -67,7 +71,7 @@ class BackendLogger(threading.Thread):
             else:
                 try:
                     record: logging.LogRecord = conn.conn.recv()
-                except (EOFError, OSError, Exception):
+                except (EOFError, OSError):
                     self._logger.info("Backend disconnected")
                     sleep(0.1)
                     conn.conn.close()

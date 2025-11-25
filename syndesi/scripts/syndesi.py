@@ -1,6 +1,9 @@
 # File : syndesi.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Main syndesi CLI script
+"""
 
 import argparse
 from enum import Enum
@@ -11,6 +14,9 @@ from ..version import __version__
 
 
 class SyndesiCommands(Enum):
+    """
+    Syndesi script commands enum
+    """
     SERIAL = "serial"
     IP = "ip"
     MODBUS = "modbus"
@@ -18,6 +24,9 @@ class SyndesiCommands(Enum):
 
 
 def main() -> None:
+    """
+    Main syndesi entry point
+    """
     parser = argparse.ArgumentParser(
         prog="syndesi", description="Syndesi command line tool", epilog=""
     )

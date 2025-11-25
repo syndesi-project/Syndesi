@@ -1,6 +1,9 @@
 # File : errors.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Syndesi errors
+"""
 
 from pathlib import Path
 
@@ -40,6 +43,9 @@ class ProtocolError(SyndesiError):
 
 
 class AdapterTimeoutError(AdapterError):
+    """
+    Adapter timeout error
+    """
     def __init__(self, timeout: NumberLike) -> None:
         self.timeout = timeout
         super().__init__(
@@ -48,6 +54,9 @@ class AdapterTimeoutError(AdapterError):
 
 
 def make_error_description(e: Exception) -> str:
+    """
+    Generate a description of the error and include the file and line number
+    """
     tb = e.__traceback__
     if tb is None:
         error_message = ""
