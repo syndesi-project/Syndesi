@@ -15,8 +15,9 @@ from enum import Enum
 class Descriptor:
     """
     Descriptor base class. A descriptor is a string to define the main parameters
-    of an adapter (ip address, port, baudrate, etc...) 
+    of an adapter (ip address, port, baudrate, etc...)
     """
+
     DETECTION_PATTERN = ""
 
     def __init__(self) -> None:
@@ -41,6 +42,7 @@ class SerialPortDescriptor(Descriptor):
     """
     SerialPort descriptor that holds location (COMx or /dev/ttyx) and baudrate
     """
+
     DETECTION_PATTERN = r"(COM\d+|/dev[/\w\d]+):\d+"
     port: str
     baudrate: int | None = None
@@ -78,10 +80,12 @@ class IPDescriptor(Descriptor):
     """
     IP descriptor that holds ip address and port
     """
+
     class Transport(Enum):
         """
         IP Transport protocol
         """
+
         TCP = "TCP"
         UDP = "UDP"
 
@@ -124,7 +128,7 @@ class IPDescriptor(Descriptor):
 class VisaDescriptor(Descriptor):
     """
     VISA descriptor
-    
+
     ## Examples
 
     - GPIB (IEEE-488) ``GPIB0::14::INSTR``
@@ -139,8 +143,11 @@ class VisaDescriptor(Descriptor):
     - VXI (Legacy modular instruments) ``VXI0::2::INSTR``
     - PXI (Modular instrument chassis) ``PXI0::14::INSTR``
     """
-    DETECTION_PATTERN = r"([A-Z]+)(\d*|\/[^:]+)?::([^:]+)(?:::([^:]+))?" + \
-        "(?:::([^:]+))?(?:::([^:]+))?::(INSTR|SOCKET)"
+
+    DETECTION_PATTERN = (
+        r"([A-Z]+)(\d*|\/[^:]+)?::([^:]+)(?:::([^:]+))?"
+        + "(?:::([^:]+))?(?:::([^:]+))?::(INSTR|SOCKET)"
+    )
 
     descriptor: str
 
@@ -148,6 +155,7 @@ class VisaDescriptor(Descriptor):
         """
         VISA Interface
         """
+
         GPIB = "GPIB"
         SERIAL = "ASRL"
         TCP = "TCPIP"

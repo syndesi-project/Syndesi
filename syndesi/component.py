@@ -5,30 +5,32 @@
 Component is the base of the main syndesi classes : Adapters, Protocols and Drivers
 """
 
-from abc import ABC, abstractmethod
 import logging
-from typing import TypeVar, Generic
+from abc import ABC, abstractmethod
+from typing import Generic, TypeVar
 
 from syndesi.tools.errors import AdapterFailedToOpen
 
 from .tools.log_settings import LoggerAlias
 
-T  = TypeVar("T")
+T = TypeVar("T")
+
 
 class Component(ABC, Generic[T]):
     """Syndesi Component
-    
+
     A Component is the elementary class of Syndesi. It is the base
     of all classes the user will be using
     """
-    def __init__(self, logger_alias : LoggerAlias) -> None:
+
+    def __init__(self, logger_alias: LoggerAlias) -> None:
         super().__init__()
         self._logger = logging.getLogger(logger_alias.value)
 
     @abstractmethod
     def open(self) -> None:
         """
-        Open communication with the device    
+        Open communication with the device
         """
 
     @abstractmethod
@@ -56,7 +58,7 @@ class Component(ABC, Generic[T]):
     def read(self) -> T:
         """
         Read data from the device
-        
+
         Returns
         -------
         data : T

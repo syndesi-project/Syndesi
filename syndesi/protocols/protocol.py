@@ -7,10 +7,10 @@ of incoming data
 """
 
 import logging
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from types import EllipsisType
-from typing import TypeVar, Generic
+from typing import Generic, TypeVar
 
 from syndesi.adapters.stop_condition import StopCondition
 
@@ -24,10 +24,12 @@ from ..tools.log_settings import LoggerAlias
 
 T = TypeVar("T")
 
+
 class Protocol(ABC, Generic[T]):
     """
-    Protocol base class    
+    Protocol base class
     """
+
     def __init__(
         self,
         adapter: Adapter,
@@ -67,7 +69,6 @@ class Protocol(ABC, Generic[T]):
         """
         self._adapter.flush_read()
 
-
     def open(self) -> None:
         """
         Open the adapter
@@ -99,9 +100,11 @@ class Protocol(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def read(self,
-             timeout : Timeout | None | EllipsisType,
-             stop_conditions : StopCondition | EllipsisType | list[StopCondition]) -> T:
+    def read(
+        self,
+        timeout: Timeout | None | EllipsisType,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition],
+    ) -> T:
         """
         Blocking read
         """
@@ -134,11 +137,13 @@ class QueryProtocol(Protocol, Generic[T]):
     """
     Subclass of Protocol that implements query functions
     """
-    def query_detailed(self,
-                    payload : T,
-                    timeout : Timeout | None | EllipsisType,
-                    stop_conditions : StopCondition | EllipsisType | list[StopCondition]
-                    ) -> AdapterReadPayload:
+
+    def query_detailed(
+        self,
+        payload: T,
+        timeout: Timeout | None | EllipsisType,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition],
+    ) -> AdapterReadPayload:
         """
         Blocking query (write + read) and return adapter signal
         """
@@ -150,7 +155,7 @@ class QueryProtocol(Protocol, Generic[T]):
         self,
         payload: T,
         timeout: Timeout | None | EllipsisType,
-        stop_conditions : StopCondition | EllipsisType | list[StopCondition]
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition],
     ) -> T:
         """
         Writes then reads from the device and return the result

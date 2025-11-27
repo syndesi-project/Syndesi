@@ -27,8 +27,10 @@ class BackendError(SyndesiError):
 class AdapterError(SyndesiError):
     """Adapter error"""
 
+
 class AdapterConfigurationError(AdapterError):
     """Adapter configuration error"""
+
 
 class AdapterFailedToOpen(AdapterError):
     """Adapter failed to open"""
@@ -46,6 +48,7 @@ class AdapterTimeoutError(AdapterError):
     """
     Adapter timeout error
     """
+
     def __init__(self, timeout: NumberLike) -> None:
         self.timeout = timeout
         super().__init__(

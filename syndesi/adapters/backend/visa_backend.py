@@ -34,11 +34,12 @@ except ImportError:
     pyvisa = None
 
 
-#pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-instance-attributes
 class VisaBackend(AdapterBackend):
     """
     VISA adapter backend
     """
+
     def __init__(self, descriptor: VisaDescriptor):
         """
         USB VISA stack adapter

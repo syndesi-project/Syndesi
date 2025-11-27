@@ -37,7 +37,6 @@ from .descriptors import (
 )
 from .ip_backend import IPBackend
 from .serialport_backend import SerialPortBackend
-
 from .visa_backend import VisaBackend
 
 
@@ -45,6 +44,7 @@ class TimeoutEvent(Enum):
     """
     Timeout event enum
     """
+
     MONITORING = 0
     ADAPTER = 1
 
@@ -72,12 +72,14 @@ def get_adapter(descriptor: Descriptor) -> AdapterBackend:
         return VisaBackend(descriptor=descriptor)
     raise ValueError(f"Unsupported descriptor : {descriptor}")
 
-#pylint: disable=too-many-instance-attributes
+
+# pylint: disable=too-many-instance-attributes
 class AdapterSession(threading.Thread):
     """
     The AdapterSession is responsible for all the frontend-backend communication
     regarding a specific adapter, it receives actions from the frontend and executes them
     """
+
     MONITORING_DELAY = 0.5
     daemon = True
     _shutdown_counter_top: int | None
@@ -165,7 +167,7 @@ class AdapterSession(threading.Thread):
                 stop = self.loop()
                 if stop:
                     break
-            except Exception as e: #pylint: disable=broad-exception-caught
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 error_message = make_error_description(e)
 
                 self._logger.critical(
@@ -179,7 +181,7 @@ class AdapterSession(threading.Thread):
 
         self._logger.info("Exit {%s} session loop", self._adapter.descriptor)
 
-    #pylint: disable=too-many-branches
+    # pylint: disable=too-many-branches
     def loop(self) -> bool:
         """
         Main adapter session loop, return True if the session should be stopped
@@ -268,7 +270,7 @@ class AdapterSession(threading.Thread):
                         self._logger.info(
                             "No clients on adapter %s for %.1fs, closing",
                             self._adapter.descriptor,
-                            self._shutdown_delay
+                            self._shutdown_delay,
                         )
                         self._adapter.close()
                         stop = True
@@ -279,7 +281,7 @@ class AdapterSession(threading.Thread):
 
         return stop
 
-    #pylint: disable=too-many-branches, too-many-statements
+    # pylint: disable=too-many-branches, too-many-statements
     def manage_conn(self, conn: NamedConnection) -> None:
         """
         Manage client connection
@@ -374,7 +376,7 @@ class AdapterSession(threading.Thread):
                                 Action.ERROR_UNKNOWN_ACTION,
                                 (f"{action}",),
                             )
-                except Exception as e: # pylint: disable=broad-exception-caught
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     error_message = make_error_description(e)
 
                     response_action, extra_arguments = (

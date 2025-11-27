@@ -23,7 +23,7 @@ from .timeout import Timeout
 class SerialPort(Adapter):
     """
     Serial communication adapter
-    
+
     Parameters
     ----------
     port : str
@@ -31,6 +31,7 @@ class SerialPort(Adapter):
     baudrate : int
         Baudrate
     """
+
     def __init__(
         self,
         port: str,

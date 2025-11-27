@@ -30,6 +30,7 @@ class SCPI(Delimited):
     timeout : Timeout/float/tuple
         Set device timeout
     """
+
     DEFAULT_PORT = 5025
 
     def __init__(
@@ -67,9 +68,7 @@ class SCPI(Delimited):
     def _default_timeout(self) -> Timeout | None:
         return Timeout(response=5, action=TimeoutAction.ERROR.value)
 
-    def write_raw(self,
-                  data: bytes,
-                  termination: bool = False) -> None:
+    def write_raw(self, data: bytes, termination: bool = False) -> None:
         """
         Write raw data to the device
 
@@ -80,8 +79,7 @@ class SCPI(Delimited):
             Add termination to the data, False by default
         """
         self._adapter.write(
-            data
-            + (self._termination.encode(self._encoding) if termination else b"")
+            data + (self._termination.encode(self._encoding) if termination else b"")
         )
 
     def read_raw(

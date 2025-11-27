@@ -21,6 +21,7 @@ class SerialPortBackend(AdapterBackend):
     """
     SerialPort backend implementation using pyserial
     """
+
     def __init__(self, descriptor: SerialPortDescriptor):
         """
         Serial communication adapter
@@ -80,7 +81,9 @@ class SerialPortBackend(AdapterBackend):
 
     def open(self) -> None:
         if self.descriptor.baudrate is None:
-            raise AdapterConfigurationError("Baudrate must be set, please use set_baudrate")
+            raise AdapterConfigurationError(
+                "Baudrate must be set, please use set_baudrate"
+            )
 
         if self._port is None:
             try:
@@ -90,11 +93,11 @@ class SerialPortBackend(AdapterBackend):
                     rtscts=self._rts_cts,
                 )
             except SerialException as e:
-                if 'No such file' in str(e):
+                if "No such file" in str(e):
                     raise AdapterFailedToOpen(
                         f"No such file or directory '{self.descriptor.port}'"
-                        ) from e
-                raise AdapterFailedToOpen('Unknown error') from e
+                    ) from e
+                raise AdapterFailedToOpen("Unknown error") from e
 
         elif not self._port.isOpen():  # type: ignore
             self._port.open()
@@ -105,7 +108,7 @@ class SerialPortBackend(AdapterBackend):
         else:
             self._logger.error(f"Failed to open adapter {self.descriptor}")
             self._status = AdapterBackendStatus.DISCONNECTED
-            raise AdapterFailedToOpen('Unknown error')
+            raise AdapterFailedToOpen("Unknown error")
 
     def close(self) -> bool:
         super().close()

@@ -37,10 +37,12 @@ def get_conn_addresses(conn: Connection) -> tuple[tuple[str, int], tuple[str, in
     sock_address = sock.getsockname()
     return sock_address, peer_address
 
+
 class ConnectionDescriptor:
     """
     String description of a multiprocessing Connection
     """
+
     def __init__(self, conn: Connection) -> None:
         local, remote = get_conn_addresses(conn)
         self._remote_address = remote[0]
@@ -92,6 +94,7 @@ class NamedConnection(ConnectionDescriptor):
     """
     Helper class to hold a connection with a name
     """
+
     def __init__(self, conn: Connection) -> None:
         super().__init__(conn)
         self.conn = conn

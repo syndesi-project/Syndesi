@@ -5,11 +5,11 @@
 Backend API tools
 """
 
+import argparse
 from dataclasses import dataclass
 from enum import Enum
 from multiprocessing.connection import Connection, wait
 from typing import Any
-import argparse
 
 from syndesi.tools.errors import BackendCommunicationError, BackendError
 
@@ -34,7 +34,10 @@ EXTRA_BUFFER_RESPONSE_TIME = 1
 # Delay to let the adapter connect
 DEFAULT_ADAPTER_OPEN_TIMEOUT = 0.5
 
-def add_backend_address_port_arguments(parser : argparse.ArgumentParser, client_side : bool):
+
+def add_backend_address_port_arguments(
+    parser: argparse.ArgumentParser, client_side: bool
+) -> None:
     """
     Add -a/--address and -p/--port to a given ArgumentParser. The description of -a/--address
     is different based on the value of client_side
@@ -42,25 +45,21 @@ def add_backend_address_port_arguments(parser : argparse.ArgumentParser, client_
     if client_side:
         address_help = "Address of the backend"
     else:
-        address_help = "Backend listening address, set it to the host address used by clients"
-
+        address_help = (
+            "Backend listening address, set it to the host address used by clients"
+        )
 
     parser.add_argument(
-        "-a",
-        "--address",
-        type=str,
-        default=LOCALHOST,
-        help=address_help
+        "-a", "--address", type=str, default=LOCALHOST, help=address_help
     )
-    parser.add_argument(
-        "-p", "--port", type=int, default=BACKEND_PORT
-    )
+    parser.add_argument("-p", "--port", type=int, default=BACKEND_PORT)
 
 
 class Action(Enum):
     """
     Backend actions enum
     """
+
     # All adapters
     SELECT_ADAPTER = "select"
     OPEN = "open"  # (descriptor,stop_condition) -> ()
@@ -114,11 +113,13 @@ class BackendException(Exception):
     Generic backend error
     """
 
+
 @dataclass
 class Fragment:
     """
     Fragment class, holds a piece of data (bytes) and the time at which it was received
     """
+
     data: bytes
     timestamp: float | None
 
@@ -164,9 +165,7 @@ def backend_request(
 
     ready = wait([conn], timeout=timeout)
     if conn not in ready:
-        raise BackendCommunicationError(
-            "Failed to receive backend response in time"
-        )
+        raise BackendCommunicationError("Failed to receive backend response in time")
 
     try:
         raw_response: object = conn.recv()
@@ -201,7 +200,7 @@ backend_send = frontend_send
 
 def raise_if_error(response: BackendResponse) -> None:
     """
-    Raise error if the action is an error, ignore otherwise 
+    Raise error if the action is an error, ignore otherwise
     """
     action = Action(response[0])
     if is_action_error(action):
@@ -211,16 +210,20 @@ def raise_if_error(response: BackendResponse) -> None:
             description = f"{action}"
         raise BackendException(f"{action.name}/{description}")
 
+
 class AdapterBackendStatus(Enum):
     """
     Adapter backend status enum
     """
+
     DISCONNECTED = 0
     CONNECTED = 1
+
 
 class ClientStatus(Enum):
     """
     Client status enum
     """
+
     DISCONNECTED = 0
     CONNECTED = 1

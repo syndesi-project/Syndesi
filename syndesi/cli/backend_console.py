@@ -16,13 +16,15 @@ from rich.text import Text
 
 from ..tools.backend_api import add_backend_address_port_arguments
 from ..tools.backend_logger import BackendLogger
-from ..tools.log_settings import LoggerAlias, LOGGING_COLORS
+from ..tools.log_settings import LOGGING_COLORS, LoggerAlias
 
-#pylint: disable=too-few-public-methods, too-many-instance-attributes
+
+# pylint: disable=too-few-public-methods, too-many-instance-attributes
 class BackendConsole:
     """
     Backend console
     """
+
     def __init__(self, input_args: list[str]) -> None:
         self.argument_parser = argparse.ArgumentParser()
         add_backend_address_port_arguments(self.argument_parser, True)

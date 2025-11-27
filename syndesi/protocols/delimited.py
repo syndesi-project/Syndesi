@@ -13,10 +13,10 @@ from ..adapters.adapter import Adapter
 from ..adapters.backend.adapter_backend import AdapterReadPayload, AdapterSignal
 from ..adapters.stop_condition import StopCondition, Termination
 from ..adapters.timeout import Timeout
-from .protocol import Protocol
+from .protocol import QueryProtocol
 
 
-class Delimited(Protocol[bytes]):
+class Delimited(QueryProtocol[bytes]):
     """
     Protocol with delimiter, like LF, CR, etc... LF is used by default
 
@@ -37,6 +37,7 @@ class Delimited(Protocol[bytes]):
         Termination when receiving only, optional
         if not set, the value of termination is used
     """
+
     def __init__(
         self,
         adapter: Adapter,
@@ -73,8 +74,10 @@ class Delimited(Protocol[bytes]):
     def __str__(self) -> str:
         if self._receive_termination == self._termination:
             return f"Delimited({self._adapter},{repr(self._termination)})"
-        return f"Delimited({self._adapter},{repr(self._termination)}"\
+        return (
+            f"Delimited({self._adapter},{repr(self._termination)}"
             "/{repr(self._receive_termination)})"
+        )
 
     def _default_timeout(self) -> Timeout | None:
         return Timeout(response=2, action="error")

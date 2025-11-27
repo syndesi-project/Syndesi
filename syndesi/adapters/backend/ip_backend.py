@@ -24,6 +24,7 @@ class IPBackend(AdapterBackend):
     """
     IP Backend, allows communication with IP devices through the socket interface
     """
+
     BUFFER_SIZE = 65507
     DEFAULT_STOP_CONDITION = None
 

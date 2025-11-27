@@ -32,6 +32,7 @@ class Format(Enum):
     """
     Display format
     """
+
     TEXT = "text"
     HEX = "hex"
     BYTES = "bytes"
@@ -48,6 +49,7 @@ class AdapterType(Enum):
     """
     Adapter type enum
     """
+
     IP = "ip"
     SERIAL = "serial"
     VISA = "visa"
@@ -57,6 +59,7 @@ class SpecialLineEnding(Enum):
     """
     Line ending enum
     """
+
     CR = "cr"
     LF = "lf"
     CRLF = "crlf"
@@ -73,8 +76,8 @@ def hex2array(raw: str) -> bytes:
     """
     Convert hex to bytes
 
-    00 01 0A FF -> b'\x00\x01\x0A\xFF'
-    00010AFF -> b'\x00\x01\x0A\xFF'
+    00 01 0A FF -> b'\x00\x01\x0a\xff'
+    00010AFF -> b'\x00\x01\x0a\xff'
     """
     s = raw.replace(" ", "")
     if len(s) % 2 != 0:
@@ -89,7 +92,7 @@ def hex2array(raw: str) -> bytes:
 def array2hex(array: bytes) -> str:
     """
     Convert bytes to hex string
-    b'\x00\x01\x0A\xFF' -> 00 01 0A FF
+    b'\x00\x01\x0a\xff' -> 00 01 0A FF
     """
     return " ".join([f"{x:02X}" for x in array])
 
@@ -112,6 +115,7 @@ class AdapterShell:
     """
     Adapter shell, allows direct communication with an adapter
     """
+
     DEFAULT_TERMINATION = "\n"
 
     def __init__(self, kind: AdapterType, input_arguments: list[str]) -> None:
@@ -132,14 +136,14 @@ class AdapterShell:
             required=False,
             default=SpecialLineEnding.LF.value,
             help="Termination, cr, lf, crlf, none or a custom string. "
-                "Only used with text format. Custom receive end can be set with --receive-end",
+            "Only used with text format. Custom receive end can be set with --receive-end",
         )
         self._parser.add_argument(
             "--receive-end",
             required=False,
             default=None,
             help="Reception termination, same as --end but for"
-                "reception only. If not set, the value of --end will be used",
+            "reception only. If not set, the value of --end will be used",
         )
         self._parser.add_argument(
             "-f",

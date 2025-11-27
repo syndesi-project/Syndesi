@@ -21,7 +21,7 @@ from rich.text import Text
 
 from syndesi.adapters.backend.backend_tools import NamedConnection
 from syndesi.tools.backend_logger import LogHandler
-from syndesi.tools.log_settings import LoggerAlias, LOGGING_COLORS
+from syndesi.tools.log_settings import LOGGING_COLORS, LoggerAlias
 
 from ..tools.backend_api import (
     Action,
@@ -33,21 +33,21 @@ from ..tools.logmanager import log_manager
 logging.getLogger().setLevel(logging.CRITICAL + 1)
 
 
-#pylint: disable=too-few-public-methods, too-many-instance-attributes
+# pylint: disable=too-few-public-methods, too-many-instance-attributes
 class BackendStatus:
     """
     Backend status, display live backend information like PID, connected clients, logs, etc...
     """
+
     DEFAULT_REFRESH_RATE = 0.5
     DEFAULT_N_CONSOLE_LINES = 20  # Number of lines in the console view
     CONNECTIONS_MIN_HEIGHT = 2
 
     # Display elements
-    _pid : str
-    _backend_status : str
-    _main_table : Table
-    _adapter_table : Table
-
+    _pid: str
+    _backend_status: str
+    _main_table: Table
+    _adapter_table: Table
 
     def __init__(self, input_args: list[str]) -> None:
         self.argument_parser = argparse.ArgumentParser()
@@ -89,13 +89,12 @@ class BackendStatus:
 
         self._init_display_elements()
 
-
-    def _init_main_table(self):
+    def _init_main_table(self) -> None:
         self._main_table = Table(box=None, padding=(0, 1))
         self._main_table.add_column(justify="right")
         self._main_table.add_column(justify="left")
 
-    def _init_display_elements(self):
+    def _init_display_elements(self) -> None:
         self._init_main_table()
         self._pid = ""
         self._backend_status = "[red3]● Offline"
@@ -108,7 +107,7 @@ class BackendStatus:
         )
         self._adapter_table = Table("", box=None, caption_justify="right")
 
-    def _make_new_connection(self):
+    def _make_new_connection(self) -> None:
         try:
             self.conn = NamedConnection(Client((self.host, self.port)))
         except (ConnectionRefusedError, OSError):
@@ -117,7 +116,7 @@ class BackendStatus:
         else:
             backend_request(self.conn.conn, Action.SET_ROLE_MONITORING)
 
-    #pylint: disable=too-many-locals, too-many-branches
+    # pylint: disable=too-many-locals, too-many-branches
     def _update_display_elements(self) -> bool:
         self._backend_status = "[green3]● Online"
 
@@ -134,27 +133,19 @@ class BackendStatus:
 
             action: Action = Action(event[0])
             if action == Action.ENUMERATE_ADAPTER_CONNECTIONS:
-                adapter_table = Table(
-                    "", box=None, caption_justify="right"
-                )
-                snapshot: dict[str, tuple[bool, list[str]]] = event[
-                    1
-                ]
+                adapter_table = Table("", box=None, caption_justify="right")
+                snapshot: dict[str, tuple[bool, list[str]]] = event[1]
                 unique_clients: set[str] = set()
                 for _, (_, adapter_clients) in snapshot.items():
                     unique_clients |= set(adapter_clients)
                 for client in unique_clients:
-                    adapter_table.add_column(
-                        f"{client}", justify="center"
-                    )
+                    adapter_table.add_column(f"{client}", justify="center")
 
                 for adapter, (
                     status,
                     adapter_clients,
                 ) in snapshot.items():
-                    status_indicator = (
-                        "[green3]●" if status else "[red3]●"
-                    )
+                    status_indicator = "[green3]●" if status else "[red3]●"
                     client_indicators: list[str] = []
                     for client in unique_clients:
                         client_indicators.append(
@@ -175,14 +166,11 @@ class BackendStatus:
                     pad_edge=False,
                 )
                 # Update monitoring connections
-                monitoring_response: list[tuple[str, str]] = event[
-                    1
-                ]
+                monitoring_response: list[tuple[str, str]] = event[1]
 
                 for connection, desc in monitoring_response:
                     if (
-                        connection
-                        == log_manager.backend_logger_conn_description()
+                        connection == log_manager.backend_logger_conn_description()
                         or connection == self.conn.local()
                     ):
                         style = ("grey50", "grey23")
@@ -192,10 +180,7 @@ class BackendStatus:
                     monitoring_connections.add_row(
                         f"[{style[0]}]{connection}[/] [{style[1]}]({desc})[/]"
                     )
-                for _ in range(
-                    self.CONNECTIONS_MIN_HEIGHT
-                    - len(monitoring_response)
-                ):
+                for _ in range(self.CONNECTIONS_MIN_HEIGHT - len(monitoring_response)):
                     monitoring_connections.add_row("")
 
             elif action == Action.BACKEND_STATS:
@@ -229,10 +214,16 @@ class BackendStatus:
                     self._main_table.add_column(justify="left")
                     self._main_table.add_row("Status :", self._backend_status)
                     self._main_table.add_row("PID :", self._pid)
-                    self._main_table.add_row("Logger connections :", self._monitoring_connections)
+                    self._main_table.add_row(
+                        "Logger connections :", self._monitoring_connections
+                    )
                     self._main_table.add_row(
                         "Adapter connections :",
-                        (self._adapter_table if self._adapter_table is not None else Text("")),
+                        (
+                            self._adapter_table
+                            if self._adapter_table is not None
+                            else Text("")
+                        ),
                     )
 
                     # Build the console panel

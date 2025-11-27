@@ -1,10 +1,10 @@
 # File : ip.py
 # Author : Sébastien Deriaz
 # License : GPL
-
 """
 IP adapter, communicates with TCP or UDP
 """
+
 from collections.abc import Callable
 from types import EllipsisType
 
@@ -25,7 +25,7 @@ from .timeout import Timeout
 class IP(Adapter):
     """
     IP Adapter, allows for communication with IP devices through UDP or TCP
-    
+
     Parameters
     ----------
     address : str
@@ -42,9 +42,8 @@ class IP(Adapter):
         Automatically open the adapter
     socket : socket.socket
         Specify a custom socket, this is reserved for server application
-    
-    
     """
+
     DEFAULT_PROTOCOL = IPDescriptor.Transport.TCP
 
     def __init__(

@@ -17,6 +17,7 @@ class LogManager:
     Log manager, responsible for logging configuration, backend logging and
     printing to console and/or to a file
     """
+
     _lock = threading.Lock()
 
     DEFAULT_FORMATTER = logging.Formatter(

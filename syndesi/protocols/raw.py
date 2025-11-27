@@ -13,13 +13,13 @@ from syndesi.adapters.stop_condition import StopCondition
 
 from ..adapters.adapter import Adapter
 from ..adapters.timeout import Timeout
-from .protocol import Protocol
+from .protocol import QueryProtocol
 
 # Raw protocols provide the user with the binary data directly,
 # without converting it to string first
 
 
-class Raw(Protocol[bytes]):
+class Raw(QueryProtocol[bytes]):
     """
     Raw device, no presentation and application layers, data is returned as bytes directly
 
@@ -27,6 +27,7 @@ class Raw(Protocol[bytes]):
     ----------
     adapter : IAdapter
     """
+
     def __init__(
         self,
         adapter: Adapter,

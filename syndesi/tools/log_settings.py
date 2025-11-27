@@ -8,10 +8,12 @@ Set log level, destination, etc...
 import logging
 from enum import Enum
 
+
 class LoggerAlias(Enum):
     """
     Name of the Syndesi loggers inside the logging module
     """
+
     ADAPTER = "syndesi.adapter"
     PROTOCOL = "syndesi.protocol"
     CLI = "syndesi.cli"

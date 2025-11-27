@@ -20,9 +20,9 @@ from .timeout import Timeout
 class Visa(Adapter):
     """
     VISA Adapter, allows for communication with VISA-compatible devices.
-    It uses pyvisa under the hood 
-    
+    It uses pyvisa under the hood
     """
+
     def __init__(
         self,
         descriptor: str,

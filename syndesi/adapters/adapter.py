@@ -32,25 +32,24 @@ from types import EllipsisType
 from typing import Any
 
 from ..component import Component
+from ..tools.backend_api import (
+    BACKEND_PORT,
+    DEFAULT_ADAPTER_OPEN_TIMEOUT,
+    DEFAULT_HOST,
+    EXTRA_BUFFER_RESPONSE_TIME,
+    Action,
+    BackendResponse,
+    Fragment,
+    raise_if_error,
+)
 from ..tools.errors import (
     AdapterDisconnected,
     AdapterFailedToOpen,
     AdapterTimeoutError,
     BackendCommunicationError,
 )
-from ..tools.types import NumberLike, is_number
-
-from ..tools.backend_api import (
-    BACKEND_PORT,
-    DEFAULT_ADAPTER_OPEN_TIMEOUT,
-    EXTRA_BUFFER_RESPONSE_TIME,
-    Action,
-    BackendResponse,
-    Fragment,
-    DEFAULT_HOST,
-    raise_if_error,
-)
 from ..tools.log_settings import LoggerAlias
+from ..tools.types import NumberLike, is_number
 from .backend.adapter_backend import (
     AdapterDisconnectedSignal,
     AdapterReadPayload,
@@ -76,6 +75,7 @@ class SignalQueue(queue.Queue[AdapterSignal]):
     """
     A smart queue to hold adapter signals
     """
+
     def __init__(self) -> None:
         self._read_payload_counter = 0
         super().__init__(0)
@@ -89,7 +89,7 @@ class SignalQueue(queue.Queue[AdapterSignal]):
     def put(self, signal: AdapterSignal) -> None:
         """
         Put a signal in the queue
-        
+
         Parameters
         ----------
         signal : AdapterSignal
@@ -107,6 +107,7 @@ class SignalQueue(queue.Queue[AdapterSignal]):
             self._read_payload_counter -= 1
         return signal
 
+
 def is_backend_running(address: str, port: int) -> bool:
     """
     Return True if the backend is running
@@ -117,6 +118,7 @@ def is_backend_running(address: str, port: int) -> bool:
         return False
     conn.close()
     return True
+
 
 def start_backend(port: int | None = None) -> None:
     """
@@ -144,7 +146,7 @@ def start_backend(port: int | None = None) -> None:
     stderr = subprocess.DEVNULL
 
     if os.name == "posix":
-        subprocess.Popen( #pylint: disable=consider-using-with
+        subprocess.Popen(  # pylint: disable=consider-using-with
             arguments,
             stdin=stdin,
             stdout=stdout,
@@ -162,7 +164,7 @@ def start_backend(port: int | None = None) -> None:
 
         creationflags = create_new_process_group | detached_process | create_no_window
 
-        subprocess.Popen( #pylint: disable=consider-using-with
+        subprocess.Popen(  # pylint: disable=consider-using-with
             arguments,
             stdin=stdin,
             stdout=stdout,
@@ -179,6 +181,7 @@ class ReadScope(Enum):
     NEXT : Only read data after the start of the read() call
     BUFFERED : Return any data that was present before the read() call
     """
+
     NEXT = "next"
     BUFFERED = "buffered"
 
@@ -190,7 +193,8 @@ class Adapter(Component[bytes]):
     An adapter permits communication with a hardware device.
     The adapter is the user interface of the backend adapter
     """
-    #pylint: disable=too-many-instance-attributes
+
+    # pylint: disable=too-many-instance-attributes
     def __init__(
         self,
         *,
@@ -230,7 +234,9 @@ class Adapter(Component[bytes]):
         self._alias = alias
 
         # Use custom backend or the default one
-        self._backend_address = DEFAULT_HOST if backend_address is None else backend_address
+        self._backend_address = (
+            DEFAULT_HOST if backend_address is None else backend_address
+        )
         self._backend_port = BACKEND_PORT if backend_port is None else backend_port
 
         # There a two possibilities here
@@ -366,7 +372,7 @@ class Adapter(Component[bytes]):
     ) -> None:
         """
         Main adapter thread, it constantly listens for data coming from the backend
-        
+
         - signal -> put only the signal in the signal queue
         - otherwise -> put the whole request in the request queue
         """

@@ -26,7 +26,7 @@ def termination_in_data(termination: bytes, data: bytes) -> tuple[int | None, in
     Return the position (if it exists) and length of the termination (or part of it) inside data
     """
     p = None
-    l = len(termination)
+    length = len(termination)
     # First check if the full termination is somewhere. If that's the case, data will be split
     try:
         p = data.index(termination)
@@ -34,20 +34,21 @@ def termination_in_data(termination: bytes, data: bytes) -> tuple[int | None, in
     except ValueError:
         # If not, we'll try to find if part of the sequence is at the end, in that case
         # we'll return the length of the sequence that was found
-        l -= 1
-        while l > 0:
-            if data[-l:] == termination[:l]:
-                p = len(data) - l  # - 1
+        length -= 1
+        while length > 0:
+            if data[-length:] == termination[:length]:
+                p = len(data) - length  # - 1
                 break
-            l -= 1
+            length -= 1
 
-    return p, l
+    return p, length
 
 
 class StopConditionBackend:
     """
     Stop condition backend base class
     """
+
     def __init__(self) -> None:
         pass
 
@@ -83,10 +84,11 @@ class TerminationBackend(StopConditionBackend):
     Termination stop-condition backend, detects whenever read data ends
     with a specified termination
     """
+
     def __init__(self, sequence: bytes | str) -> None:
         super().__init__()
         if isinstance(sequence, str):
-            self._sequence = sequence.encode('utf-8')
+            self._sequence = sequence.encode("utf-8")
         else:
             self._sequence = sequence
         self._sequence_found_length = 0
@@ -138,6 +140,7 @@ class LengthBackend(StopConditionBackend):
     """
     Length stop-condition backend. Data is returned when it is equal or exceeds the specified length
     """
+
     def __init__(self, n: int) -> None:
         super().__init__()
         self._n = n
@@ -169,6 +172,7 @@ class ContinuationBackend(StopConditionBackend):
     """
     Continuation stop-condition backend. Continuation starts after each received fragment
     """
+
     def __init__(self, continuation: float) -> None:
         super().__init__()
         self._continuation = continuation
@@ -207,6 +211,7 @@ class TotalBackend(StopConditionBackend):
     """
     Total stop-condition backend. Total time starts with the read call
     """
+
     def __init__(self, total: float) -> None:
         super().__init__()
         self._total = total

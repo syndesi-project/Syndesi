@@ -26,15 +26,17 @@ from prompt_toolkit.keys import Keys
 from ..version import AUTHOR, NAME
 
 
-#pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-instance-attributes
 class Shell:
     """
     Live shell with history, styling, clear and hinting
     """
+
     class Style(Enum):
         """
         Style enum
         """
+
         DEFAULT = ""
         HIGHLIGHT = "highlight"
         NOTE = "note"

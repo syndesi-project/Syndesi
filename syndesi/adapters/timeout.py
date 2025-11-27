@@ -17,8 +17,10 @@ class TimeoutAction(Enum):
     """
     Action on timeout expiration
     """
+
     ERROR = "error"
     RETURN_EMPTY = "return_empty"
+
 
 class Timeout:
     """
@@ -31,6 +33,7 @@ class Timeout:
     action : str
         Action performed when a timeout occurs. 'error' : raise an error, 'return' : return b''
     """
+
     DEFAULT_ACTION = TimeoutAction.ERROR
 
     def __init__(

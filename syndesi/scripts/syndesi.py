@@ -17,6 +17,7 @@ class SyndesiCommands(Enum):
     """
     Syndesi script commands enum
     """
+
     SERIAL = "serial"
     IP = "ip"
     MODBUS = "modbus"

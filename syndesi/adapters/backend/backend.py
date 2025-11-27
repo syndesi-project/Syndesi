@@ -14,10 +14,11 @@ import select
 import threading
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from multiprocessing.connection import Client, Listener
 from types import EllipsisType
 from typing import Any, TypeGuard, cast
-from contextlib import nullcontext
+
 from rich.console import Console
 
 from syndesi.adapters.backend.adapter_backend import Selectable
@@ -45,8 +46,9 @@ class LogRelayHandler(logging.Handler):
     """
     The log relay handler catches all logging events from the backend and sends them
     to all connected clients (logger client)
-    
+
     """
+
     def __init__(self, history_size: int = 100):
         super().__init__()
         self.connections: set[NamedConnection] = (
@@ -65,7 +67,7 @@ class LogRelayHandler(logging.Handler):
 
         the delete_callback is used if and when an error happens when sending
         data back to the client (connection)
-        
+
         """
         # Send log history to the new connection
         with self.log_history_lock:
@@ -117,12 +119,13 @@ def is_request(x: object) -> TypeGuard[tuple[str, object]]:
     return True
 
 
-#pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-instance-attributes
 class Backend:
     """
     Backend class, the backend manages incoming frontend clients and creates
     adapter sessions accordingly
     """
+
     MONITORING_DELAY = 0.5
     NEW_CLIENT_REQUEST_TIMEOUT = 0.5
 
@@ -201,7 +204,7 @@ class Backend:
     def manage_monitoring_clients(self, conn: NamedConnection) -> None:
         """
         Manage monitoring client requests
-        
+
         """
         try:
             raw: object = conn.conn.recv()
@@ -443,7 +446,7 @@ def main(input_args: list[str] | None = None) -> None:
 
     Arguments
     ---------
-    -a, --address : backend address, localhost by default. Set it to the network that will be used 
+    -a, --address : backend address, localhost by default. Set it to the network that will be used
     -p, --port : backend port
     -s, --shutdown-delay : Delay before the backend shutdowns automatically,
         automatic shutdown is disabled by default
@@ -460,7 +463,7 @@ def main(input_args: list[str] | None = None) -> None:
         help="Delay before the backend shutdowns automatically",
     )
     argument_parser.add_argument("-q", "--quiet", default=False, action="store_true")
-    #argument_parser.add_argument("-v", "--verbose", default=False, action="store_true")
+    # argument_parser.add_argument("-v", "--verbose", default=False, action="store_true")
 
     args = argument_parser.parse_args(input_args)
 
@@ -470,9 +473,12 @@ def main(input_args: list[str] | None = None) -> None:
 
     console = Console()
     with (
-        nullcontext() if args.quiet else
-        console.status(f"[bold green]Syndesi backend running on {args.address}", spinner="dots")
-        ):
+        nullcontext()
+        if args.quiet
+        else console.status(
+            f"[bold green]Syndesi backend running on {args.address}", spinner="dots"
+        )
+    ):
         try:
             backend.start()
         except KeyboardInterrupt:

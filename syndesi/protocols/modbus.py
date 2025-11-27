@@ -5,7 +5,7 @@
 Modbus TCP and Modbus RTU implementation
 """
 
-#pylint: disable=too-many-lines
+# pylint: disable=too-many-lines
 
 import struct
 from enum import Enum
@@ -43,6 +43,7 @@ class Endian(Enum):
     """
     Endian enum
     """
+
     BIG = "big"
     LITTLE = "little"
 
@@ -70,6 +71,7 @@ class ModbusType(Enum):
     - RTU : Modbus over serial
     - ASCII : Modbus using text based encoding
     """
+
     RTU = "RTU"
     ASCII = "ASCII"
     TCP = "TCP"
@@ -79,6 +81,7 @@ class FunctionCode(Enum):
     """
     Modbus function codes enum
     """
+
     # Public function codes 1 to 64
     READ_COILS = 0x01
     READ_DISCRETE_INPUTS = 0x02
@@ -109,6 +112,7 @@ class DiagnosticsCode(Enum):
     """
     Modbus Diagnostics codes enum
     """
+
     RETURN_QUERY_DATA = 0x00
     RESTART_COMMUNICATIONS_OPTION = 0x01
     RETURN_DIAGNOSTIC_REGISTER = 0x02
@@ -133,6 +137,7 @@ class EncapsulatedInterfaceTransportSubFunctionCodes(Enum):
     """
     Encapsulated interface transport subfunction codes enum
     """
+
     CANOPEN_GENERAL_REFERENCE_REQUEST_AND_RESPONSE_PDU = 0x0D
     READ_DEVICE_IDENTIFICATION = 0x0E
 
@@ -141,6 +146,7 @@ class DeviceIndentificationObjects(Enum):
     """
     Device identification objects enum
     """
+
     VENDOR_NAME = 0x00
     PRODUCT_CODE = 0x01
     MAJOR_MINOR_REVISION = 0x02
@@ -175,15 +181,14 @@ def bytes_to_bool_list(_bytes: bytes, n: int) -> list[bool]:
     """
     Convert bytes to a list of bool, one per bit, LSB first
     """
-    return [
-        c == "1" for c in "".join([f"{x:08b}"[::-1] for x in _bytes])
-    ][:n]
+    return [c == "1" for c in "".join([f"{x:08b}"[::-1] for x in _bytes])][:n]
 
 
 class TypeCast(Enum):
     """
     Type of cast when storing values in modbus registers
     """
+
     INT = "int"
     UINT = "uint"
     FLOAT = "float"
@@ -202,16 +207,16 @@ def struct_format(_type: TypeCast, length: int) -> str:
     Convert typecast+length to python struct character
     """
     struct_characters = {
-        (TypeCast.INT, 1) : 'b',
-        (TypeCast.INT, 2) : 'h',
-        (TypeCast.INT, 4) : 'i',
-        (TypeCast.INT, 8) : 'q',
-        (TypeCast.UINT, 1) : 'B',
-        (TypeCast.UINT, 2) : 'H',
-        (TypeCast.UINT, 4) : 'I', # or 'L'
-        (TypeCast.UINT, 8) : 'Q',
-        (TypeCast.FLOAT, 4) : 'f',
-        (TypeCast.FLOAT, 8) : 'd'
+        (TypeCast.INT, 1): "b",
+        (TypeCast.INT, 2): "h",
+        (TypeCast.INT, 4): "i",
+        (TypeCast.INT, 8): "q",
+        (TypeCast.UINT, 1): "B",
+        (TypeCast.UINT, 2): "H",
+        (TypeCast.UINT, 4): "I",  # or 'L'
+        (TypeCast.UINT, 8): "Q",
+        (TypeCast.FLOAT, 4): "f",
+        (TypeCast.FLOAT, 8): "d",
     }
 
     if _type in [TypeCast.STRING, TypeCast.ARRAY]:
@@ -222,12 +227,14 @@ def struct_format(_type: TypeCast, length: int) -> str:
         pass
     raise ValueError(f"Invalid type cast / length combination : {_type} / {length}")
 
+
 class ModbusException(Exception):
     """
     Generic modbus exception
     """
 
-#pylint: disable=too-many-public-methods
+
+# pylint: disable=too-many-public-methods
 class Modbus(Protocol):
     """
     Modbus protocol
@@ -242,6 +249,7 @@ class Modbus(Protocol):
         'RTU' : Modbus RTU (default)
         'ASCII' : Modbus ASCII
     """
+
     _ASCII_HEADER = b":"
     _ASCII_TRAILER = b"\r\n"
 
@@ -563,7 +571,7 @@ class Modbus(Protocol):
         )
         return registers
 
-    #pylint: disable=too-many-locals
+    # pylint: disable=too-many-locals
     def read_multi_register_value(
         self,
         address: int,
@@ -641,7 +649,7 @@ class Modbus(Protocol):
 
         return output
 
-    #pylint: disable=too-many-locals
+    # pylint: disable=too-many-locals
     def write_multi_register_value(
         self,
         address: int,
@@ -1195,7 +1203,7 @@ class Modbus(Protocol):
         status : int
         event_count : int
         message_count : int
-            Number of messages processed since its last restart, clear counters operation, 
+            Number of messages processed since its last restart, clear counters operation,
             or power-up
             Identical to diagnostics_return_bus_message_count()
         events : bytes
@@ -1349,7 +1357,7 @@ class Modbus(Protocol):
         )
         return server_id, run_indicator_status == 0xFF, additional_data
 
-    #pylint: disable=too-many-locals
+    # pylint: disable=too-many-locals
     # Read File Record - 0x14
     def read_file_record(self, records: list[tuple[int, int, int]]) -> list[bytes]:
         """
@@ -1572,8 +1580,10 @@ class Modbus(Protocol):
         ), f"Invalid number of write registers  : {len(write_values)}"
         assert (
             MIN_ADDRESS <= write_starting_address <= MAX_ADDRESS - len(write_values) + 1
-        ), f"Invalid write start address (writing {len(write_values)} registers) " \
+        ), (
+            f"Invalid write start address (writing {len(write_values)} registers) "
             ": {write_starting_address}"
+        )
 
         query = struct.pack(
             ENDIAN + f"BHHHHB{len(write_values)}H",
