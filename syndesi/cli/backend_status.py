@@ -21,23 +21,14 @@ from rich.text import Text
 
 from syndesi.adapters.backend.backend_tools import NamedConnection
 from syndesi.tools.backend_logger import LogHandler
-from syndesi.tools.log_settings import LoggerAlias
+from syndesi.tools.log_settings import LoggerAlias, LOGGING_COLORS
 
 from ..tools.backend_api import (
-    BACKEND_PORT,
-    LOCALHOST,
     Action,
+    add_backend_address_port_arguments,
     backend_request,
 )
-from ..tools.log import log_manager
-
-LOGGING_COLORS = {
-    logging.DEBUG: "grey66",
-    logging.INFO: "green",
-    logging.WARNING: "yellow",
-    logging.ERROR: "red",
-    logging.CRITICAL: "bold purple",
-}
+from ..tools.logmanager import log_manager
 
 logging.getLogger().setLevel(logging.CRITICAL + 1)
 
@@ -73,16 +64,7 @@ class BackendStatus:
             default=self.DEFAULT_N_CONSOLE_LINES,
             help="Number of log lines to display",
         )
-        self.argument_parser.add_argument(
-            "-a",
-            "--address",
-            type=str,
-            default=LOCALHOST,
-            help="Listening address, set it to the interface that will be used by the client",
-        )
-        self.argument_parser.add_argument(
-            "-p", "--port", type=int, default=BACKEND_PORT
-        )
+        add_backend_address_port_arguments(self.argument_parser, True)
         self.argument_parser.add_argument(
             "--log-level", type=str, choices=list(logging._nameToLevel.keys())
         )  # pyright: ignore[reportPrivateUsage]
@@ -276,8 +258,8 @@ class BackendStatus:
             pass
 
     def _format_record(self, record: logging.LogRecord) -> str:
-        color = LOGGING_COLORS.get(record.levelno)
         relative_time = record.created - self._start_time
+        color = LOGGING_COLORS.get(record.levelno)
 
         line = f"[{color}]{relative_time:7.3f} {record.levelname:<8} {record.msg}[/]"
         if record.name == LoggerAlias.BACKEND.value:

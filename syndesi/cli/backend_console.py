@@ -14,32 +14,9 @@ from time import sleep
 from rich.console import Console
 from rich.text import Text
 
-from ..tools.backend_api import BACKEND_PORT, LOCALHOST
+from ..tools.backend_api import add_backend_address_port_arguments
 from ..tools.backend_logger import BackendLogger
-from ..tools.log_settings import LoggerAlias
-
-LOGGING_COLORS = {
-    logging.DEBUG: "grey66",
-    logging.INFO: "green",
-    logging.WARNING: "yellow",
-    logging.ERROR: "red",
-    logging.CRITICAL: "bold purple",
-}
-
-# class LogHandler(logging.Handler):
-#     """
-#     LogHandler, used to transmit log events to a given callback
-#     """
-#     def __init__(
-#         self, callback: Callable[[logging.LogRecord], None] | None = None
-#     ) -> None:
-#         super().__init__()
-#         self.callback = callback
-
-#     def emit(self, record: logging.LogRecord) -> None:
-#         if self.callback is not None:
-#             self.callback(record)
-
+from ..tools.log_settings import LoggerAlias, LOGGING_COLORS
 
 #pylint: disable=too-few-public-methods, too-many-instance-attributes
 class BackendConsole:
@@ -48,16 +25,7 @@ class BackendConsole:
     """
     def __init__(self, input_args: list[str]) -> None:
         self.argument_parser = argparse.ArgumentParser()
-        self.argument_parser.add_argument(
-            "-a",
-            "--address",
-            type=str,
-            default=LOCALHOST,
-            help="Listening address, set it to the interface that will be used by the client",
-        )
-        self.argument_parser.add_argument(
-            "-p", "--port", type=int, default=BACKEND_PORT
-        )
+        add_backend_address_port_arguments(self.argument_parser, True)
         self.argument_parser.add_argument(
             "-l", "--log-level", type=str, choices=list(logging._nameToLevel.keys())
         )  # pyright: ignore[reportPrivateUsage]
@@ -68,10 +36,6 @@ class BackendConsole:
         self.port = args.port
 
         self._console = Console()
-
-        # self._log_handler = LogHandler()
-        # self._log_handler.callback = self._add_line
-        #logging.getLogger().addHandler(self._log_handler)
 
         self._start_time = time.time()
         self.conn: Connection | None = None

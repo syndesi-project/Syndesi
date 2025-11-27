@@ -19,7 +19,7 @@ from .protocol import Protocol
 # without converting it to string first
 
 
-class Raw(Protocol):
+class Raw(Protocol[bytes]):
     """
     Raw device, no presentation and application layers, data is returned as bytes directly
 
@@ -47,58 +47,6 @@ class Raw(Protocol):
 
     def write(self, payload: bytes) -> None:
         self._adapter.write(payload)
-
-    def query(
-        self,
-        payload: bytes,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes:
-        """
-        Writes then reads from the device and return the result
-
-        Parameters
-        ----------
-        payload : str
-            Data to send to the device
-        timeout : Timeout
-            Custom timeout for this query (optional)
-        decode : bool
-            Decode incoming data, True by default
-        full_output : bool
-            return metrics on read operation (False by default)
-        """
-        self._adapter.flush_read()
-        self.write(payload)
-        return self.read(timeout=timeout, stop_conditions=stop_conditions)
-
-    def query_detailed(
-        self,
-        payload: bytes,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload:
-        """
-        Writes then reads from the device and return the adapter signal (AdapterReadPayload)
-
-        Parameters
-        ----------
-        payload : bytes
-            Data to send to the device
-        timeout : Timeout
-            Custom timeout for this query (optional)
-        decode : bool
-            Decode incoming data, True by default
-        full_output : bool
-            return metrics on read operation (False by default)
-
-        Returns
-        -------
-        signal : AdapterReadPayload
-        """
-        self._adapter.flush_read()
-        self.write(payload)
-        return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
 
     def read(
         self,

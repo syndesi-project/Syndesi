@@ -34,7 +34,8 @@ class LogHandler(logging.Handler):
 
 class BackendLogger(threading.Thread):
     """
-    BackendLogger, listens for log records coming from the backend and re-emit them under the backend logger alias
+    BackendLogger, listens for log records coming from the backend and re-emit
+    them under the backend logger alias
     """
     def __init__(self, *, callback: Callable[[logging.LogRecord], None] | None = None) -> None:
         self._conn_description_lock = threading.Lock()

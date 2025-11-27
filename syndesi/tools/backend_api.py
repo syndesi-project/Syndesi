@@ -8,7 +8,8 @@ Backend API tools
 from dataclasses import dataclass
 from enum import Enum
 from multiprocessing.connection import Connection, wait
-from typing import Any, Protocol
+from typing import Any
+import argparse
 
 from syndesi.tools.errors import BackendCommunicationError, BackendError
 
@@ -32,6 +33,28 @@ EXTRA_BUFFER_RESPONSE_TIME = 1
 
 # Delay to let the adapter connect
 DEFAULT_ADAPTER_OPEN_TIMEOUT = 0.5
+
+def add_backend_address_port_arguments(parser : argparse.ArgumentParser, client_side : bool):
+    """
+    Add -a/--address and -p/--port to a given ArgumentParser. The description of -a/--address
+    is different based on the value of client_side
+    """
+    if client_side:
+        address_help = "Address of the backend"
+    else:
+        address_help = "Backend listening address, set it to the host address used by clients"
+
+
+    parser.add_argument(
+        "-a",
+        "--address",
+        type=str,
+        default=LOCALHOST,
+        help=address_help
+    )
+    parser.add_argument(
+        "-p", "--port", type=int, default=BACKEND_PORT
+    )
 
 
 class Action(Enum):
@@ -90,7 +113,6 @@ class BackendException(Exception):
     """
     Generic backend error
     """
-    pass
 
 @dataclass
 class Fragment:

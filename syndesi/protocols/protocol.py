@@ -7,10 +7,10 @@ of incoming data
 """
 
 import logging
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from collections.abc import Callable
 from types import EllipsisType
-from typing import Any
+from typing import TypeVar, Generic
 
 from syndesi.adapters.stop_condition import StopCondition
 
@@ -22,8 +22,9 @@ from ..adapters.backend.adapter_backend import AdapterReadPayload, AdapterSignal
 from ..adapters.timeout import Timeout
 from ..tools.log_settings import LoggerAlias
 
+T = TypeVar("T")
 
-class Protocol:
+class Protocol(ABC, Generic[T]):
     """
     Protocol base class    
     """
@@ -66,11 +67,6 @@ class Protocol:
         """
         self._adapter.flush_read()
 
-    @abstractmethod
-    def write(self, payload: Any) -> None:
-        """
-        Write payload to the device
-        """
 
     def open(self) -> None:
         """
@@ -97,31 +93,17 @@ class Protocol:
         self._adapter.close()
 
     @abstractmethod
-    def query(
-        self,
-        payload: Any,
-        timeout: Timeout | None | EllipsisType,
-        stop_conditions : StopCondition | EllipsisType | list[StopCondition]
-    ) -> Any:
+    def write(self, payload: T) -> None:
         """
-        Blocking query (write + read) and return payload
+        Write payload to the device
         """
 
     @abstractmethod
     def read(self,
              timeout : Timeout | None | EllipsisType,
-             stop_conditions : StopCondition | EllipsisType | list[StopCondition]) -> Any:
+             stop_conditions : StopCondition | EllipsisType | list[StopCondition]) -> T:
         """
         Blocking read
-        """
-
-    @abstractmethod
-    def query_detailed(self,
-                    payload : Any,
-                    timeout : Timeout | None | EllipsisType,
-                    stop_conditions : StopCondition | EllipsisType | list[StopCondition]) -> Any:
-        """
-        Blocking query (write + read) and return adapter signal
         """
 
     def read_detailed(
@@ -146,3 +128,48 @@ class Protocol:
         return self._adapter.read_detailed(
             timeout=timeout, stop_conditions=stop_conditions
         )
+
+
+class QueryProtocol(Protocol, Generic[T]):
+    """
+    Subclass of Protocol that implements query functions
+    """
+    def query_detailed(self,
+                    payload : T,
+                    timeout : Timeout | None | EllipsisType,
+                    stop_conditions : StopCondition | EllipsisType | list[StopCondition]
+                    ) -> AdapterReadPayload:
+        """
+        Blocking query (write + read) and return adapter signal
+        """
+        self.flush_read()
+        self.write(payload)
+        return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
+
+    def query(
+        self,
+        payload: T,
+        timeout: Timeout | None | EllipsisType,
+        stop_conditions : StopCondition | EllipsisType | list[StopCondition]
+    ) -> T:
+        """
+        Writes then reads from the device and return the result
+
+        Parameters
+        ----------
+        payload : T
+            Payload to send to the device
+        timeout : Timeout
+            Custom timeout for this query (optional)
+        decode : bool
+            Decode incoming data, True by default
+        full_output : bool
+            return metrics on read operation (False by default)
+
+        Returns
+        -------
+        data : T
+        """
+        self.flush_read()
+        self.write(payload)
+        return self.read(timeout=timeout, stop_conditions=stop_conditions)

@@ -9,7 +9,7 @@ import argparse
 from enum import Enum
 
 from ..cli.shell import AdapterShell, AdapterType
-from ..tools.log import log
+from ..tools.logmanager import log
 from ..version import __version__
 
 

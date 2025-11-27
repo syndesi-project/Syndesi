@@ -25,10 +25,10 @@ from syndesi.adapters.backend.backend_tools import NamedConnection
 from syndesi.tools.types import NumberLike
 
 from ...tools.backend_api import (
-    BACKEND_PORT,
     LOCALHOST,
     Action,
     BackendResponse,
+    add_backend_address_port_arguments,
     frontend_send,
 )
 from ...tools.log_settings import LoggerAlias
@@ -451,14 +451,7 @@ def main(input_args: list[str] | None = None) -> None:
 
     argument_parser = argparse.ArgumentParser()
 
-    argument_parser.add_argument(
-        "-a",
-        "--address",
-        type=str,
-        default=LOCALHOST,
-        help="Listening address, set it to the interface that will be used by the client",
-    )
-    argument_parser.add_argument("-p", "--port", type=int, default=BACKEND_PORT)
+    add_backend_address_port_arguments(argument_parser, False)
     argument_parser.add_argument(
         "-s",
         "--shutdown-delay",

@@ -10,7 +10,7 @@ from .protocols.delimited import Delimited
 from .protocols.modbus import Modbus
 from .protocols.raw import Raw
 from .protocols.scpi import SCPI
-from .tools.log import log
+from .tools.logmanager import log
 
 __all__ = [
     "IP",

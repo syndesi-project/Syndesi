@@ -1,7 +1,9 @@
 # File : logmanager.py
 # Author : Sébastien Deriaz
 # License : GPL
-
+"""
+Log manager implementation
+"""
 import logging
 import threading
 from typing import TextIO
@@ -11,6 +13,10 @@ from .log_settings import LoggerAlias
 
 
 class LogManager:
+    """
+    Log manager, responsible for logging configuration, backend logging and
+    printing to console and/or to a file
+    """
     _lock = threading.Lock()
 
     DEFAULT_FORMATTER = logging.Formatter(
@@ -27,10 +33,16 @@ class LogManager:
         self._backend_logger: BackendLogger | None = None
 
     def enable_backend_logging(self) -> None:
+        """
+        Run to start backend logging
+        """
         self._backend_logger = BackendLogger()
         self._backend_logger.start()
 
     def set_log_level(self, level: str | int) -> None:
+        """
+        Set log level
+        """
         if isinstance(level, str):
             if not hasattr(logging, level.upper()):
                 raise ValueError(f"Invalid log level: {level}")
@@ -44,6 +56,9 @@ class LogManager:
         self.update_loggers()
 
     def set_console_log(self, enabled: bool) -> None:
+        """
+        Enable or disable console logging
+        """
         if enabled:
             self._stream_handler = logging.StreamHandler()
             self._stream_handler.setFormatter(self.DEFAULT_FORMATTER)
@@ -51,6 +66,9 @@ class LogManager:
             self._stream_handler = None
 
     def set_log_file(self, file: str | None) -> None:
+        """
+        Define a file for loggers output
+        """
         if file is not None:
             self._file_handler = logging.FileHandler(file)
             self._file_handler.setFormatter(self.DEFAULT_FORMATTER)
@@ -60,6 +78,9 @@ class LogManager:
             self._file_handler = None
 
     def set_logger_filter(self, loggers: list[str] | str) -> None:
+        """
+        Select loggers
+        """
         self._all_loggers = False
         self._loggers = []
         if isinstance(loggers, list):
@@ -73,6 +94,9 @@ class LogManager:
             raise ValueError("Invalid argument loggers")
 
     def update_loggers(self) -> None:
+        """
+        Update configuration of each logger
+        """
         # 1) Remove everything
         for alias in LoggerAlias:
             logger = logging.getLogger(alias.value)

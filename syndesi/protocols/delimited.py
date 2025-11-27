@@ -16,7 +16,7 @@ from ..adapters.timeout import Timeout
 from .protocol import Protocol
 
 
-class Delimited(Protocol):
+class Delimited(Protocol[bytes]):
     """
     Protocol with delimiter, like LF, CR, etc... LF is used by default
 
@@ -117,57 +117,6 @@ class Delimited(Protocol):
         """
         payload = self._format_command(payload)
         self._adapter.write(self._to_bytes(payload))
-
-    def query(self,
-              payload: str,
-              timeout: Timeout | None | EllipsisType = ...,
-              stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-              ) -> str:
-        """
-        Writes then reads from the device and return the result
-
-        Parameters
-        ----------
-        payload : str
-            Data to send to the device
-        timeout : Timeout
-            Custom timeout for this query (optional)
-        decode : bool
-            Decode incoming data, True by default
-        full_output : bool
-            return metrics on read operation (False by default)
-        """
-        self._adapter.flush_read()
-        self.write(payload)
-        return self.read(timeout=timeout, stop_conditions=stop_conditions)
-
-    def query_detailed(
-        self,
-        payload: str,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload:
-        """
-        Writes then reads from the device and return the adapter signal (AdapterReadPayload)
-
-        Parameters
-        ----------
-        payload : str
-            Data to send to the device
-        timeout : Timeout
-            Custom timeout for this query (optional)
-        decode : bool
-            Decode incoming data, True by default
-        full_output : bool
-            return metrics on read operation (False by default)
-
-        Returns
-        -------
-        signal : AdapterReadPayload
-        """
-        self._adapter.flush_read()
-        self.write(payload)
-        return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
 
     def read_raw(
         self,

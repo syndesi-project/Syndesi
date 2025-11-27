@@ -1,6 +1,9 @@
 # File : types.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Type tools
+"""
 
 from typing import TYPE_CHECKING, Any, TypeGuard
 
@@ -17,7 +20,7 @@ else:
     NumberLike = int | float | np.number  # runtime will resolve string
 
 
-def is_number(X: Any) -> TypeGuard[NumberLike]:
+def is_number(x: Any) -> TypeGuard[NumberLike]:
     """
     Check if the given X is an instance of int or float
 
@@ -30,9 +33,8 @@ def is_number(X: Any) -> TypeGuard[NumberLike]:
     result : bool
     """
     if np is None:
-        return isinstance(X, int | float)
-    else:
-        return isinstance(X, int | float | np.number)
+        return isinstance(x, int | float)
+    return isinstance(x, int | float | np.number)
 
 
 def assert_number(*args: Any) -> None:
@@ -58,7 +60,6 @@ def to_bytes(data: str | bytes) -> bytes:
     """
     if isinstance(data, bytes):
         return data
-    elif isinstance(data, str):
+    if isinstance(data, str):
         return data.encode("utf-8")
-    else:
-        raise ValueError(f"Invalid data type : {type(data)}")
+    raise ValueError(f"Invalid data type : {type(data)}")
