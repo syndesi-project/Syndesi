@@ -9,14 +9,35 @@ command-like formats with specified delimiters (like \\n, \\r, \\r\\n, etc...)
 from collections.abc import Callable
 from types import EllipsisType
 
+from syndesi.adapters.adapter_worker import (
+    AdapterDisconnectedEvent,
+    AdapterEvent,
+    AdapterFrameEvent,
+)
+
 from ..adapters.adapter import Adapter
-from ..adapters.backend.adapter_backend import AdapterReadPayload, AdapterSignal
-from ..adapters.stop_condition import StopCondition, Termination
+from ..adapters.stop_conditions import StopCondition, Termination
 from ..adapters.timeout import Timeout
-from .protocol import QueryProtocol
+from ..component import AdapterFrame, ReadScope
+from .protocol import (
+    Protocol,
+    ProtocolDisconnectedEvent,
+    ProtocolEvent,
+    ProtocolFrame,
+    ProtocolFrameEvent,
+)
 
 
-class Delimited(QueryProtocol[bytes]):
+class DelimitedFrame(ProtocolFrame[str]):
+    """Delimited frame"""
+
+    payload: str
+
+    def __str__(self) -> str:
+        return f"DelimitedFrame({self.payload})"
+
+
+class Delimited(Protocol[str]):
     """
     Protocol with delimiter, like LF, CR, etc... LF is used by default
 
@@ -46,7 +67,7 @@ class Delimited(QueryProtocol[bytes]):
         format_response: bool = True,
         encoding: str = "utf-8",
         timeout: Timeout | None | EllipsisType = ...,
-        event_callback: Callable[[AdapterSignal], None] | None = None,
+        event_callback: Callable[[ProtocolEvent], None] | None = None,
         receive_termination: str | None = None,
     ) -> None:
         if not isinstance(termination, str) or isinstance(termination, bytes):
@@ -66,8 +87,7 @@ class Delimited(QueryProtocol[bytes]):
         )
         super().__init__(adapter, timeout=timeout, event_callback=event_callback)
 
-        # Connect the adapter if it wasn't done already
-        self._adapter.connect()
+        self._adapter.set_event_callback(self._on_event)
 
         # TODO : Disable encoding/decoding when encoding==None
 
@@ -79,52 +99,40 @@ class Delimited(QueryProtocol[bytes]):
             "/{repr(self._receive_termination)})"
         )
 
-    def _default_timeout(self) -> Timeout | None:
-        return Timeout(response=2, action="error")
-
     def __repr__(self) -> str:
         return self.__str__()
 
-    def _to_bytes(self, command: str | bytes) -> bytes:
-        if isinstance(command, str):
-            return command.encode("ASCII")
-        if isinstance(command, bytes):
-            return command
-        raise ValueError(f"Invalid command type : {type(command)}")
+    def _default_timeout(self) -> Timeout | None:
+        return Timeout(response=2, action="error")
 
-    def _from_bytes(self, payload: bytes) -> str:
-        assert isinstance(payload, bytes)
-        return payload.decode("ASCII")  # TODO : encoding ?
+    # ┌────────────┐
+    # │ Public API │
+    # └────────────┘
 
-    def _format_command(self, command: str) -> str:
-        return command + self._termination
+    # ==== read_detailed ====
 
-    def _format_response(self, response: str) -> str:
-        if response.endswith(self._receive_termination):
-            response = response[: -len(self._receive_termination)]
-        return response
+    def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> DelimitedFrame:
+        data = adapter_frame.get_payload().decode(self._encoding)
+        if data.endswith(self._receive_termination):
+            data = data[: -len(self._receive_termination)]
 
-    def _on_data_ready_event(self, data: AdapterReadPayload) -> None:
-        # TODO : Call the callback here ?
-        # output = self._format_read(data.data(), decode=True)
-        # return output
-        pass
+        return DelimitedFrame(
+            payload=data,
+            stop_timestamp=adapter_frame.stop_timestamp,
+            stop_condition_type=adapter_frame.stop_condition_type,
+            previous_read_buffer_used=adapter_frame.previous_read_buffer_used,
+            response_delay=adapter_frame.response_delay,
+        )
 
-    def write(self, payload: str) -> None:
-        """
-        Write data to the device
-
-        Parameters
-        ----------
-        payload : str
-        """
-        payload = self._format_command(payload)
-        self._adapter.write(self._to_bytes(payload))
+    def _protocol_to_adapter(self, protocol_payload: str) -> bytes:
+        terminated_payload = protocol_payload + self._termination
+        return terminated_payload.encode(self._encoding)
 
     def read_raw(
         self,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        scope: str = ReadScope.BUFFERED.value,
     ) -> bytes:
         """
         Reads command and formats it as a str
@@ -140,44 +148,21 @@ class Delimited(QueryProtocol[bytes]):
         """
 
         # Send up to the termination
-        signal = self._adapter.read_detailed(
-            timeout=timeout, stop_conditions=stop_conditions
+        frame = self._adapter.read_detailed(
+            timeout=timeout, stop_conditions=stop_conditions, scope=scope
         )
-        return signal.data()
+        return frame.get_payload()
 
-    def read(
-        self,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> str:
-        """
-        Blocking read and return string data
+    def _on_event(self, event: AdapterEvent) -> None:
 
-        Parameters
-        ----------
-        timeout : Timeout
-            Optional temporary timeout
-        stop_conditions : [StopCondition]
-            Optional temporary stop-conditions
+        if self._event_callback is not None:
+            output_event: ProtocolEvent | None = None
+            if isinstance(event, AdapterDisconnectedEvent):
+                output_event = ProtocolDisconnectedEvent()
+            if isinstance(event, AdapterFrameEvent):
+                output_event = ProtocolFrameEvent(
+                    frame=self._adapter_to_protocol(event.frame)
+                )
 
-        Returns
-        -------
-        data : str
-        """
-
-        signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-        return self._decode(signal.data())
-
-    def _decode(self, data: bytes) -> str:
-        try:
-            data_string = data.decode(self._encoding)
-        except UnicodeDecodeError as err:
-            raise ValueError(
-                f"Failed to decode {data!r} to {self._encoding} ({err})"
-            ) from err
-
-        if not self._response_formatting:
-            # Add the termination back in since it was removed by the adapter
-            data_string += self._receive_termination
-
-        return data_string
+            if output_event is not None:
+                self._event_callback(output_event)

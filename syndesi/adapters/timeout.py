@@ -20,6 +20,7 @@ class TimeoutAction(Enum):
 
     ERROR = "error"
     RETURN_EMPTY = "return_empty"
+    RETURN_NONE = "return_none"
 
 
 class Timeout:
@@ -31,7 +32,10 @@ class Timeout:
     response : float
         Time before the device responds
     action : str
-        Action performed when a timeout occurs. 'error' : raise an error, 'return' : return b''
+        Action performed when a timeout occurs
+        * ``error`` : raise a AdapterTimeoutError
+        * ``return_empty`` : return b''
+        * ``return_none`` : return None
     """
 
     DEFAULT_ACTION = TimeoutAction.ERROR

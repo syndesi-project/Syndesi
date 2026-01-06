@@ -11,7 +11,6 @@ from types import EllipsisType
 
 from ..adapters.adapter import Adapter
 from ..adapters.ip import IP
-from ..adapters.stop_condition import StopCondition
 from ..adapters.timeout import Timeout, TimeoutAction
 from .delimited import Delimited
 
@@ -44,7 +43,7 @@ class SCPI(Delimited):
     ) -> None:
 
         # Configure the adapter for stop-condition mode (timeouts will raise errors)
-        if not adapter._default_stop_condition:
+        if not adapter._is_default_stop_condition:
             raise ValueError(
                 "No stop-conditions can be set for an adapter used by SCPI protocol"
             )
@@ -74,7 +73,7 @@ class SCPI(Delimited):
 
         Parameters
         ----------
-        payload : bytes
+        data : bytes
         termination : bool
             Add termination to the data, False by default
         """
@@ -82,27 +81,27 @@ class SCPI(Delimited):
             data + (self._termination.encode(self._encoding) if termination else b"")
         )
 
-    def read_raw(
-        self,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes:
-        """
-        Blocking read and return bytes data
+    # def read_raw(
+    #     self,
+    #     timeout: Timeout | None | EllipsisType = ...,
+    #     stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    # ) -> bytes:
+    #     """
+    #     Blocking read and return bytes data
 
-        Parameters
-        ----------
-        timeout : Timeout
-            Optional temporary timeout
-        stop_conditions : [StopCondition]
-            Optional temporary stop-conditions
+    #     Parameters
+    #     ----------
+    #     timeout : Timeout
+    #         Optional temporary timeout
+    #     stop_conditions : [StopCondition]
+    #         Optional temporary stop-conditions
 
-        Returns
-        -------
-        data : bytes
-        """
-        signal = self.read_detailed(
-            timeout=timeout,
-            stop_conditions=stop_conditions,
-        )
-        return signal.data()
+    #     Returns
+    #     -------
+    #     data : bytes
+    #     """
+    #     signal = self.read_detailed(
+    #         timeout=timeout,
+    #         stop_conditions=stop_conditions,
+    #     )
+    #     return signal.data()

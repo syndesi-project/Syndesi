@@ -8,7 +8,6 @@ import logging
 import threading
 from typing import TextIO
 
-from .backend_logger import BackendLogger
 from .log_settings import LoggerAlias
 
 
@@ -31,14 +30,6 @@ class LogManager:
         self._loggers: list[str] = []
         self._level = self.DEFAULT_LOG_LEVEL
         self._stream_handler: logging.StreamHandler[TextIO] | None = None
-        self._backend_logger: BackendLogger | None = None
-
-    def enable_backend_logging(self) -> None:
-        """
-        Run to start backend logging
-        """
-        self._backend_logger = BackendLogger()
-        self._backend_logger.start()
 
     def set_log_level(self, level: str | int) -> None:
         """
@@ -111,14 +102,6 @@ class LogManager:
                 if self._stream_handler is not None:
                     logger.addHandler(self._stream_handler)
                 logger.setLevel(self._level)
-
-    def backend_logger_conn_description(self) -> str:
-        """
-        Return a description of the backend logger connection
-        """
-        if self._backend_logger is None:
-            return ""
-        return self._backend_logger.conn_description
 
 
 log_manager = LogManager()

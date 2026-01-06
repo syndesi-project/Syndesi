@@ -1,726 +1,468 @@
-# File : adapters.py
+# File : adapter.py
 # Author : Sébastien Deriaz
 # License : GPL
 
 """
 Adapters provide a common abstraction for the media layers (physical + data link + network)
-The following classes are provided, which all are derived from the main Adapter class
-  - IP
-  - Serial
-  - VISA
 
-Note that technically VISA is not part of the media layer, only USB is.
-This is a limitation as it is to this day not possible to communicate "raw"
-with a device through USB yet
+The user calls methods of the Adapter class synchronously.
 
 An adapter is meant to work with bytes objects but it can accept strings.
 Strings will automatically be converted to bytes using utf-8 encoding
+
+Each adapter contains a worker thread that monitors the low-level communication layers.
+This approach allows for precise time management (when each fragment is sent/received) and allows
+for asynchronous events (fragment received).
+
+Async facade:
+- aopen/awrite/aread/aread_detailed simply await the SAME underlying worker-thread commands
+  using asyncio.wrap_future (no extra threads are spawned).
 """
 
-import os
-import queue
-import subprocess
-import sys
+# NOTE:
+# This version removes the "worker publishes events into a queue that read_detailed consumes".
+# Instead:
+# - The worker continuously assembles AdapterFrame from fragments (as before).
+# - A read_detailed command registers a "pending read" inside the worker.
+# - When a frame completes, the worker either:
+#     * completes the pending read future, OR
+#     * buffers the frame for later buffered reads, and optionally calls the callback.
+#
+# This avoids having a sync queue AND an async queue, and makes async wrappers trivial.
+
+import asyncio
+from enum import Enum
 import threading
-import time
 import weakref
 from abc import abstractmethod
 from collections.abc import Callable
-from enum import Enum
-from multiprocessing.connection import Client, Connection
 from types import EllipsisType
-from typing import Any
 
-from ..component import Component
-from ..tools.backend_api import (
-    BACKEND_PORT,
-    DEFAULT_ADAPTER_OPEN_TIMEOUT,
-    DEFAULT_HOST,
-    EXTRA_BUFFER_RESPONSE_TIME,
-    Action,
-    BackendResponse,
-    Fragment,
-    raise_if_error,
-)
-from ..tools.errors import (
-    AdapterDisconnected,
-    AdapterFailedToOpen,
-    AdapterTimeoutError,
-    BackendCommunicationError,
-)
+from syndesi.tools.errors import AdapterError
+
+from ..component import AdapterFrame, Component, Descriptor, ReadScope
 from ..tools.log_settings import LoggerAlias
 from ..tools.types import NumberLike, is_number
-from .backend.adapter_backend import (
-    AdapterDisconnectedSignal,
-    AdapterReadPayload,
-    AdapterResponseTimeout,
-    AdapterSignal,
+from .adapter_worker import (
+    AdapterEvent,
+    AdapterWorker,
+    CloseCommand,
+    FlushReadCommand,
+    IsOpenCommand,
+    OpenCommand,
+    ReadCommand,
+    SetDescriptorCommand,
+    SetEventCallbackCommand,
+    SetStopConditionsCommand,
+    SetTimeoutCommand,
+    StopThreadCommand,
+    WriteCommand,
 )
-from .backend.backend_tools import BACKEND_REQUEST_DEFAULT_TIMEOUT
-from .backend.descriptors import Descriptor
-from .stop_condition import Continuation, StopCondition, StopConditionType
+from .stop_conditions import Fragment, StopCondition
 from .timeout import Timeout, TimeoutAction, any_to_timeout
 
-DEFAULT_STOP_CONDITION = Continuation(time=0.1)
+fragments: list[Fragment]
 
-DEFAULT_TIMEOUT = Timeout(response=5, action="error")
-
-# Maximum time to let the backend start
-START_TIMEOUT = 2
-# Time to shutdown the backend
-SHUTDOWN_DELAY = 2
-
-
-class SignalQueue(queue.Queue[AdapterSignal]):
-    """
-    A smart queue to hold adapter signals
-    """
-
-    def __init__(self) -> None:
-        self._read_payload_counter = 0
-        super().__init__(0)
-
-    def has_read_payload(self) -> bool:
-        """
-        Return True if the queue contains a read payload
-        """
-        return self._read_payload_counter > 0
-
-    def put(self, signal: AdapterSignal) -> None:
-        """
-        Put a signal in the queue
-
-        Parameters
-        ----------
-        signal : AdapterSignal
-        """
-        if isinstance(signal, AdapterReadPayload):
-            self._read_payload_counter += 1
-        return super().put(signal)
-
-    def get(self, block: bool = True, timeout: float | None = None) -> AdapterSignal:
-        """
-        Get an AdapterSignal from the queue
-        """
-        signal = super().get(block, timeout)
-        if isinstance(signal, AdapterReadPayload):
-            self._read_payload_counter -= 1
-        return signal
-
-
-def is_backend_running(address: str, port: int) -> bool:
-    """
-    Return True if the backend is running
-    """
-    try:
-        conn = Client((address, port))
-    except ConnectionRefusedError:
-        return False
-    conn.close()
-    return True
-
-
-def start_backend(port: int | None = None) -> None:
-    """
-    Start the backend in a separate process
-
-    A custom port can be specified
-
-    Parameters
-    ----------
-    port : int
-    """
-    arguments = [
-        sys.executable,
-        "-m",
-        "syndesi.adapters.backend.backend",
-        "-s",
-        str(SHUTDOWN_DELAY),
-        "-q",
-        "-p",
-        str(BACKEND_PORT if port is None else port),
-    ]
-
-    stdin = subprocess.DEVNULL
-    stdout = subprocess.DEVNULL
-    stderr = subprocess.DEVNULL
-
-    if os.name == "posix":
-        subprocess.Popen(  # pylint: disable=consider-using-with
-            arguments,
-            stdin=stdin,
-            stdout=stdout,
-            stderr=stderr,
-            start_new_session=True,
-            close_fds=True,
-        )
-
-    else:
-        # Windows: detach from the parent's console so keyboard Ctrl+C won't propagate.
-        create_new_process_group = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore
-        detached_process = 0x00000008  # not exposed by subprocess on all Pythons
-        # Optional: CREATE_NO_WINDOW (no window even for console apps)
-        create_no_window = 0x08000000
-
-        creationflags = create_new_process_group | detached_process | create_no_window
-
-        subprocess.Popen(  # pylint: disable=consider-using-with
-            arguments,
-            stdin=stdin,
-            stdout=stdout,
-            stderr=stderr,
-            creationflags=creationflags,
-            close_fds=True,
-        )
-
-
-class ReadScope(Enum):
-    """
-    Read scope
-
-    NEXT : Only read data after the start of the read() call
-    BUFFERED : Return any data that was present before the read() call
-    """
-
-    NEXT = "next"
-    BUFFERED = "buffered"
-
-
-class Adapter(Component[bytes]):
+# pylint: disable=too-many-public-methods, too-many-instance-attributes
+class Adapter(Component[bytes], AdapterWorker):
     """
     Adapter class
 
-    An adapter permits communication with a hardware device.
-    The adapter is the user interface of the backend adapter
+    An adapter manages communication with a hardware device.
     """
 
-    # pylint: disable=too-many-instance-attributes
+    class WorkerTimeout(Enum):
+        """Timeout value for each worker command scenario"""
+        OPEN = 2
+        STOP = 1
+        IMMEDIATE_COMMAND = 0.2
+        CLOSE = 0.5
+        WRITE = 0.5
+        READ = None
+
     def __init__(
         self,
         *,
         descriptor: Descriptor,
-        alias: str = "",
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-        timeout: Timeout | EllipsisType | NumberLike | None = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition],
+        timeout: Timeout | EllipsisType | NumberLike | None,
+        alias: str,
         encoding: str = "utf-8",
-        event_callback: Callable[[AdapterSignal], None] | None = None,
-        auto_open: bool = True,
-        backend_address: str | None = None,
-        backend_port: int | None = None,
+        event_callback: Callable[[AdapterEvent], None] | None = None,
+        auto_open: bool = True
     ) -> None:
-        """
-        Adapter instance
-
-        Parameters
-        ----------
-        alias : str
-            The alias is used to identify the class in the logs
-        timeout : float or Timeout instance
-            Default timeout is
-        stop_condition : StopCondition or None
-            Default to None
-        encoding : str
-            Which encoding to use if str has to be encoded into bytes
-        """
         super().__init__(LoggerAlias.ADAPTER)
         self.encoding = encoding
-        self._signal_queue: SignalQueue = SignalQueue()
-        self.event_callback: Callable[[AdapterSignal], None] | None = event_callback
-        self.backend_connection: Connection | None = None
-        self._backend_connection_lock = threading.Lock()
-        self._make_backend_request_queue: queue.Queue[BackendResponse] = queue.Queue()
-        self._make_backend_request_flag = threading.Event()
-        self._opened = False
         self._alias = alias
-
-        # Use custom backend or the default one
-        self._backend_address = (
-            DEFAULT_HOST if backend_address is None else backend_address
-        )
-        self._backend_port = BACKEND_PORT if backend_port is None else backend_port
-
-        # There a two possibilities here
-        # A) The descriptor is fully initialized
-        #    -> The adapter can be connected directly
-        # B) The descriptor is not fully initialized
-        #    -> Wait for the protocol to set defaults and then connect the adapter
 
         self.descriptor = descriptor
         self.auto_open = auto_open
 
-        # Set the stop-condition
-        self._stop_conditions: list[StopCondition]
+        self._initial_event_callback = event_callback
+
+        # Default stop conditions
+        self._initial_stop_conditions: list[StopCondition]
         if stop_conditions is ...:
-            self._default_stop_condition = True
-            self._stop_conditions = [DEFAULT_STOP_CONDITION]
+            self._is_default_stop_condition = True
+            self._initial_stop_conditions = self._default_stop_conditions()
         else:
-            self._default_stop_condition = False
+            self._is_default_stop_condition = False
             if isinstance(stop_conditions, StopCondition):
-                self._stop_conditions = [stop_conditions]
+                self._initial_stop_conditions = [stop_conditions]
             elif isinstance(stop_conditions, list):
-                self._stop_conditions = stop_conditions
+                self._initial_stop_conditions = stop_conditions
             else:
                 raise ValueError("Invalid stop_conditions")
 
-        # Set the timeout
-        self.is_default_timeout = False
-        self._timeout: Timeout | None
+        # Default timeout
+        self.is_default_timeout = timeout is Ellipsis
+
         if timeout is Ellipsis:
-            # Not set
-            self.is_default_timeout = True
-            self._timeout = DEFAULT_TIMEOUT
+            self._initial_timeout = self._default_timeout()
         elif isinstance(timeout, Timeout):
-            self._timeout = timeout
+            self._initial_timeout = timeout
         elif is_number(timeout):
-            self._timeout = Timeout(timeout, action=TimeoutAction.ERROR)
+            self._initial_timeout = Timeout(timeout, action=TimeoutAction.ERROR)
         elif timeout is None:
-            self._timeout = timeout
+            self._initial_timeout = Timeout(None)
+        else:
+            raise ValueError(f"Invalid timeout : {timeout}")
 
-        # Buffer for data that has been pulled from the queue but
-        # not used because of termination or length stop condition
-        self._previous_buffer = b""
+        # Worker thread
+        self._worker_thread = threading.Thread(
+            target=self._worker_thread_method, daemon=True
+        )
+        self._worker_thread.start()
 
-        if self.descriptor.is_initialized():
-            self.connect()
+        # Serialize read/write/query ordering for sync callers.
+        self._sync_io_lock = threading.Lock()
+        # Serialize read/write/query ordering for async callers.
+        self._async_io_lock = asyncio.Lock()
+
+        self._logger.info(f"Setting up {self.descriptor} adapter ")
+        self._update_descriptor()
+        self.set_stop_conditions(self._initial_stop_conditions)
+        self.set_timeout(self._initial_timeout)
+        self.set_event_callback(self._initial_event_callback)
+
+        if self.descriptor.is_initialized() and auto_open:
+            self.open()
 
         weakref.finalize(self, self._cleanup)
 
-        # We can auto-open only if auto_open is enabled and if
-        # connection with the backend has been made (descriptor initialized)
-        if self.auto_open and self.backend_connection is not None:
-            self.open()
+    # ┌──────────────────────────┐
+    # │ Defaults / configuration │
+    # └──────────────────────────┘
 
-    def connect(self) -> None:
-        """
-        Connect to the backend
-        """
-        if self.backend_connection is not None:
-            # No need to connect, everything has been done already
-            return
-        if not self.descriptor.is_initialized():
-            raise RuntimeError("Descriptor wasn't initialized fully")
-
-        if is_backend_running(self._backend_address, self._backend_port):
-            self._logger.info("Backend already running")
-        else:
-            self._logger.info("Starting backend...")
-            start_backend(self._backend_port)
-            start = time.time()
-            while time.time() < (start + START_TIMEOUT):
-                if is_backend_running(self._backend_address, self._backend_port):
-                    self._logger.info("Backend started")
-                    break
-                time.sleep(0.1)
-            else:
-                # Backend could not start
-                self._logger.error("Could not start backend")
-
-        # Create the client to communicate with the backend
+    def _stop(self) -> None:
+        cmd = StopThreadCommand()
+        self._worker_send_command(cmd)
         try:
-            self.backend_connection = Client((DEFAULT_HOST, BACKEND_PORT))
-        except ConnectionRefusedError as err:
-            raise BackendCommunicationError("Failed to connect to backend") from err
-        self._read_thread = threading.Thread(
-            target=self.read_thread,
-            args=(self._signal_queue, self._make_backend_request_queue),
-            daemon=True,
-        )
-        self._read_thread.start()
+            cmd.result(self.WorkerTimeout.STOP.value)
+        except AdapterError:
+            pass
 
-        # Identify ourselves
-        self._make_backend_request(Action.SET_ROLE_ADAPTER)
-
-        # Set the adapter
-        self._make_backend_request(Action.SELECT_ADAPTER, str(self.descriptor))
-
-        if self.auto_open:
-            self.open()
-
-    def _make_backend_request(
-        self,
-        action: Action,
-        *args: Any,
-        timeout: float = BACKEND_REQUEST_DEFAULT_TIMEOUT,
-    ) -> BackendResponse:
-        """
-        Send a request to the backend and return the arguments
-        """
-
-        with self._backend_connection_lock:
-            if self.backend_connection is not None:
-                self.backend_connection.send((action.value, *args))
-
-        self._make_backend_request_flag.set()
-        try:
-            response = self._make_backend_request_queue.get(timeout=timeout)
-        except queue.Empty as err:
-            raise BackendCommunicationError(
-                f"Failed to receive response from backend to {action}"
-            ) from err
-
-        assert (
-            isinstance(response, tuple) and len(response) > 0
-        ), f"Invalid response received from backend : {response}"
-        raise_if_error(response)
-
-        return response[1:]
-
-    def read_thread(
-        self,
-        signal_queue: SignalQueue,
-        request_queue: queue.Queue[BackendResponse],
-    ) -> None:
-        """
-        Main adapter thread, it constantly listens for data coming from the backend
-
-        - signal -> put only the signal in the signal queue
-        - otherwise -> put the whole request in the request queue
-        """
-        while True:
-            try:
-                if self.backend_connection is None:
-                    raise RuntimeError("Backend connection wasn't initialized")
-                response: tuple[Any, ...] = self.backend_connection.recv()
-            except (EOFError, TypeError, OSError):
-                signal_queue.put(AdapterDisconnectedSignal())
-                request_queue.put((Action.ERROR_BACKEND_DISCONNECTED,))
-                break
-            else:
-                if not isinstance(response, tuple):
-                    raise BackendCommunicationError(
-                        f"Invalid response from backend : {response}"
-                    )
-                action = Action(response[0])
-
-                if action == Action.ADAPTER_SIGNAL:
-                    if len(response) <= 1:
-                        raise BackendCommunicationError(
-                            f"Invalid event response : {response}"
-                        )
-                    signal: AdapterSignal = response[1]
-                    if self.event_callback is not None:
-                        self.event_callback(signal)
-                    signal_queue.put(signal)
-                else:
-                    request_queue.put(response)
+    def _update_descriptor(self) -> None:
+        cmd = SetDescriptorCommand(self.descriptor)
+        self._worker_send_command(cmd)
+        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
 
     @abstractmethod
     def _default_timeout(self) -> Timeout:
-        pass
+        raise NotImplementedError
 
-    def set_timeout(self, timeout: Timeout | None) -> None:
-        """
-        Overwrite timeout
-
-        Parameters
-        ----------
-        timeout : Timeout
-        """
-        self._timeout = timeout
-
-    def set_default_timeout(self, default_timeout: Timeout | None) -> None:
-        """
-        Set the default timeout for this adapter. If a previous
-        timeout has been set, it will be fused
-
-        Parameters
-        ----------
-        default_timeout : Timeout or tuple or float
-        """
-        if self.is_default_timeout:
-            self._logger.debug(f"Setting default timeout to {default_timeout}")
-            self._timeout = default_timeout
-
-    def set_stop_conditions(
-        self, stop_conditions: StopCondition | None | list[StopCondition]
-    ) -> None:
-        """
-        Overwrite the stop-condition
-
-        Parameters
-        ----------
-        stop_condition : StopCondition
-        """
-        if isinstance(stop_conditions, list):
-            self._stop_conditions = stop_conditions
-        elif isinstance(stop_conditions, StopCondition):
-            self._stop_conditions = [stop_conditions]
-        elif stop_conditions is None:
-            self._stop_conditions = []
-
-        self._make_backend_request(Action.SET_STOP_CONDITIONS, self._stop_conditions)
-
-    def set_default_stop_condition(self, stop_condition: StopCondition) -> None:
-        """
-        Set the default stop condition for this adapter.
-
-        Parameters
-        ----------
-        stop_condition : StopCondition
-        """
-        if self._default_stop_condition:
-            self.set_stop_conditions(stop_condition)
-
-    def flush_read(self) -> None:
-        """
-        Flush the input buffer
-        """
-        self._make_backend_request(
-            Action.FLUSHREAD,
-        )
-        while True:
-            try:
-                self._signal_queue.get(block=False)
-            except queue.Empty:
-                break
-
-    def previous_read_buffer_empty(self) -> bool:
-        """
-        Check whether the previous read buffer is empty
-
-        Returns
-        -------
-        empty : bool
-        """
-        return self._previous_buffer == b""
-
-    def open(self) -> None:
-        """
-        Start communication with the device
-        """
-        self._make_backend_request(
-            Action.OPEN,
-            self._stop_conditions,
-            timeout=BACKEND_REQUEST_DEFAULT_TIMEOUT + DEFAULT_ADAPTER_OPEN_TIMEOUT,
-        )
-        self._logger.info("Adapter opened")
-        self._opened = True
-
-    def try_open(self) -> bool:
-        try:
-            self.open()
-        except AdapterFailedToOpen:
-            return False
-        return True
-
-    def close(self, force: bool = False) -> None:
-        """
-        Stop communication with the device
-        """
-        if force:
-            self._logger.debug("Closing adapter frontend")
-        else:
-            self._logger.debug("Force closing adapter backend")
-        self._make_backend_request(Action.CLOSE, force)
-
-        with self._backend_connection_lock:
-            if self.backend_connection is not None:
-                self.backend_connection.close()
-
-        self._opened = False
-
-    def is_opened(self) -> bool:
-        """
-        Return True if the adapter is opened and False otherwise
-
-        Returns
-        -------
-        opened : bool
-        """
-        return self._opened
-
-    def write(self, data: bytes) -> None:
-        """
-        Send data to the device
-
-        Parameters
-        ----------
-        data : bytes or str
-        """
-
-        if isinstance(data, str):
-            data = data.encode(self.encoding)
-        self._make_backend_request(Action.WRITE, data)
-
-    def read_detailed(
-        self,
-        timeout: Timeout | EllipsisType | None = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-        scope: str = ReadScope.BUFFERED.value,
-    ) -> AdapterReadPayload:
-        # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-        """
-        Read data from the device
-
-        Parameters
-        ----------
-        timeout : tuple, Timeout
-            Temporary timeout
-        stop_condition : StopCondition
-            Temporary stop condition
-        scope : str
-            Return previous data ('buffered') or only future data ('next')
-        Returns
-        -------
-        data : bytes
-        signal : AdapterReadPayload
-        """
-        _scope = ReadScope(scope)
-        output_signal = None
-        read_timeout = None
-
-        if timeout is ...:
-            read_timeout = self._timeout
-        else:
-            read_timeout = any_to_timeout(timeout)
-
-        if read_timeout is None:
-            raise RuntimeError("Cannot read without setting a timeout")
-
-        if stop_conditions is not ...:
-            if isinstance(stop_conditions, StopCondition):
-                stop_conditions = [stop_conditions]
-            self._make_backend_request(Action.SET_STOP_CONDITIONS, stop_conditions)
-
-        # First, we check if data is in the buffer and if the scope if set to BUFFERED
-        while _scope == ReadScope.BUFFERED and self._signal_queue.has_read_payload():
-            signal = self._signal_queue.get()
-            if isinstance(signal, AdapterReadPayload):
-                output_signal = signal
-                break
-            # TODO : Implement disconnect ?
-        else:
-            # Nothing was found, ask the backend with a START_READ request. The backend will
-            # respond at most after the response_time with either data or a RESPONSE_TIMEOUT
-
-            if not read_timeout.is_initialized():
-                raise RuntimeError("Timeout needs to be initialized")
-
-            _response = read_timeout.response()
-
-            read_init_time = time.time()
-            start_read_id = self._make_backend_request(Action.START_READ, _response)[0]
-
-            if _response is None:
-                # Wait indefinitely
-                read_stop_timestamp = None
-            else:
-                # Wait for the response time + a bit more
-                read_stop_timestamp = read_init_time + _response
-
-            while True:
-                try:
-                    if read_stop_timestamp is None:
-                        queue_timeout = None
-                    else:
-                        queue_timeout = max(
-                            0,
-                            read_stop_timestamp
-                            - time.time()
-                            + EXTRA_BUFFER_RESPONSE_TIME,
-                        )
-
-                    signal = self._signal_queue.get(timeout=queue_timeout)
-                except queue.Empty as e:
-                    raise BackendCommunicationError(
-                        "Failed to receive response from backend"
-                    ) from e
-                if isinstance(signal, AdapterReadPayload):
-                    output_signal = signal
-                    break
-                if isinstance(signal, AdapterDisconnectedSignal):
-                    raise AdapterDisconnected()
-                if isinstance(signal, AdapterResponseTimeout):
-                    if start_read_id == signal.identifier:
-                        output_signal = None
-                        break
-                    # Otherwise ignore it
-
-        if output_signal is None:
-            match read_timeout.action:
-                case TimeoutAction.RETURN_EMPTY:
-                    t = time.time()
-                    return AdapterReadPayload(
-                        fragments=[Fragment(b"", t)],
-                        stop_timestamp=t,
-                        stop_condition_type=StopConditionType.TIMEOUT,
-                        previous_read_buffer_used=False,
-                        response_timestamp=None,
-                        response_delay=None,
-                    )
-                case TimeoutAction.ERROR:
-                    timeout_value = read_timeout.response()
-                    raise AdapterTimeoutError(
-                        float("nan") if timeout_value is None else timeout_value
-                    )
-                case _:
-                    raise NotImplementedError()
-
-        else:
-            return output_signal
-
-    def read(
-        self,
-        timeout: Timeout | EllipsisType | None = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes:
-        signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-        return signal.data()
-
-    def _cleanup(self) -> None:
-        if self._opened:
-            self.close()
-
-    def query_detailed(
-        self,
-        data: bytes | str,
-        timeout: Timeout | EllipsisType | None = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload:
-        """
-        Shortcut function that combines
-        - flush_read
-        - write
-        - read
-        """
-        self.flush_read()
-        self.write(data)
-        return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-
-    def query(
-        self,
-        data: bytes | str,
-        timeout: Timeout | EllipsisType | None = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes:
-        """
-        Do a write followed by a read
-
-        Parameters
-        ----------
-        data : bytes | str
-        timeout : Timeout
-            Optional
-        stop_conditions : [StopCondition]
-            Optional
-        """
-        signal = self.query_detailed(
-            data=data, timeout=timeout, stop_conditions=stop_conditions
-        )
-        return signal.data()
-
-    def set_event_callback(self, callback: Callable[[AdapterSignal], None]) -> None:
-        """
-        Register an event callback
-
-        Parameters
-        ----------
-        callback : Callable[[AdapterSignal], None]
-        """
-        self.event_callback = callback
+    @abstractmethod
+    def _default_stop_conditions(self) -> list[StopCondition]:
+        raise NotImplementedError
 
     def __str__(self) -> str:
         return str(self.descriptor)
 
     def __repr__(self) -> str:
         return self.__str__()
+
+    def _cleanup(self) -> None:
+        # Be defensive: finalizers can run at interpreter shutdown.
+        try:
+            if self.is_open():
+                self.close()
+        except AdapterError:
+            pass
+
+        self._stop()
+
+        try:
+            self._command_queue_r.close()
+            self._command_queue_w.close()
+        except AdapterError:
+            pass
+
+    # ┌────────────┐
+    # │ Public API │
+    # └────────────┘
+
+    def set_timeout(self, timeout: Timeout | None | float) -> None:
+        """
+        Set adapter timeout
+
+        Parameters
+        ----------
+        timeout : Timeout, float or None
+        """
+        # This is read by the worker when ReadCommand.timeout is ...
+        timeout_instance = any_to_timeout(timeout)
+        cmd = SetTimeoutCommand(timeout_instance)
+        self._worker_send_command(cmd)
+        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+
+    def set_default_timeout(self, default_timeout: Timeout | None) -> None:
+        """
+        Configure adapter default timeout. Timeout will only be set if none
+        has been configured before
+
+        Parameters
+        ----------
+        default_timeout : Timeout or None
+        """
+        if self.is_default_timeout:
+            new_timeout = any_to_timeout(default_timeout)
+            self._logger.debug(f"Setting default timeout to {new_timeout}")
+            self.set_timeout(new_timeout)
+
+    def set_stop_conditions(
+        self, stop_conditions: StopCondition | None | list[StopCondition]
+    ) -> None:
+        """
+        Set adapter stop-conditions
+
+        Parameters
+        ----------
+        stop_conditions : [StopCondition] or None
+        """
+        if isinstance(stop_conditions, list):
+            lst = stop_conditions
+        elif isinstance(stop_conditions, StopCondition):
+            lst = [stop_conditions]
+        elif stop_conditions is None:
+            lst = []
+        else:
+            raise ValueError("Invalid stop_conditions")
+
+        cmd = SetStopConditionsCommand(lst)
+        self._worker_send_command(cmd)
+        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+
+    def set_default_stop_conditions(self, stop_conditions: list[StopCondition]) -> None:
+        """
+        Configure adapter default stop-condition. Stop-condition will only be set if none
+        has been configured before
+
+        Parameters
+        ----------
+        stop_conditions : [StopCondition]
+        """
+        if self._is_default_stop_condition:
+            self.set_stop_conditions(stop_conditions)
+
+    def set_event_callback(
+        self, callback: Callable[[AdapterEvent], None] | None
+    ) -> None:
+        """
+        Configure event callback. Event callback is called as such :
+
+        callback(event : AdapterEvent)
+
+        Parameters
+        ----------
+        callback : callable
+
+        """
+        cmd = SetEventCallbackCommand(callback)
+        self._worker_send_command(cmd)
+        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+
+    # ==== open ====
+
+    def _open_future(self) -> OpenCommand:
+        cmd = OpenCommand()
+        self._worker_send_command(cmd)
+        return cmd
+
+    def open(self) -> None:
+        """
+        Open adapter communication with the target (blocking)
+        """
+        return self._open_future().result(self.WorkerTimeout.OPEN.value)
+
+    async def aopen(self) -> None:
+        """
+        Open adapter communication with the target (async)
+        """
+        await asyncio.wrap_future(self._open_future())
+
+    # ==== close ====
+
+    def _close_future(self) -> CloseCommand:
+        cmd = CloseCommand()
+        self._worker_send_command(cmd)
+        return cmd
+
+    def close(self) -> None:
+        """
+        Close adapter communication with the target (blocking)
+        """
+        self._close_future().result(self.WorkerTimeout.CLOSE.value)
+
+    async def aclose(self) -> None:
+        """
+        Close adapter communication with the target (async)
+        """
+        await asyncio.wrap_future(self._close_future())
+
+    # ==== read_detailed ====
+
+    def _read_detailed_future(
+        self,
+        timeout: Timeout | EllipsisType | None,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition],
+        scope: str,
+    ) -> ReadCommand:
+        cmd = ReadCommand(
+            timeout=timeout,
+            stop_conditions=stop_conditions,
+            scope=ReadScope(scope),
+        )
+        self._worker_send_command(cmd)
+        return cmd
+
+    def read_detailed(
+        self,
+        timeout: Timeout | EllipsisType | None = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        scope: str = ReadScope.BUFFERED.value,
+    ) -> AdapterFrame:
+        with self._sync_io_lock:
+            return self._read_detailed_future(
+                timeout=timeout, stop_conditions=stop_conditions, scope=scope
+            ).result(self.WorkerTimeout.READ.value)
+
+    async def aread_detailed(
+        self,
+        timeout: Timeout | EllipsisType | None = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        scope: str = ReadScope.BUFFERED.value,
+    ) -> AdapterFrame:
+        async with self._async_io_lock:
+            return await asyncio.wrap_future(
+                self._read_detailed_future(
+                    timeout=timeout, stop_conditions=stop_conditions, scope=scope
+                )
+            )
+
+    # ==== read ====
+
+    def read(
+        self,
+        timeout: Timeout | EllipsisType | None = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        scope: str = ReadScope.BUFFERED.value,
+    ) -> bytes:
+        frame = self.read_detailed(
+            timeout=timeout, stop_conditions=stop_conditions, scope=scope
+        )
+        return frame.get_payload()
+
+    async def aread(
+        self,
+        timeout: Timeout | EllipsisType | None = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        scope: str = ReadScope.BUFFERED.value,
+    ) -> bytes:
+        frame = await self.aread_detailed(
+            timeout=timeout, stop_conditions=stop_conditions, scope=scope
+        )
+        return frame.get_payload()
+
+    # ==== flush_read ====
+
+    def _flush_read_future(self) -> FlushReadCommand:
+        cmd = FlushReadCommand()
+        self._worker_send_command(cmd)
+        return cmd
+
+    async def aflush_read(self) -> None:
+        """
+        Clear buffered completed frames and reset current fragment assembly (async)
+        """
+        async with self._async_io_lock:
+            await asyncio.wrap_future(self._flush_read_future())
+
+    def flush_read(self) -> None:
+        """
+        Clear buffered completed frames and reset current fragment assembly (blocking)
+        """
+        with self._sync_io_lock:
+            self._flush_read_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+
+    # ==== write ====
+
+    def _write_future(self, data: bytes | str) -> WriteCommand:
+        if isinstance(data, str):
+            data = data.encode(self.encoding)
+        cmd = WriteCommand(data)
+        self._worker_send_command(cmd)
+        return cmd
+
+    def write(self, data: bytes | str) -> None:
+        with self._sync_io_lock:
+            self._write_future(data).result(self.WorkerTimeout.WRITE.value)
+
+    async def awrite(self, data: bytes | str) -> None:
+        async with self._async_io_lock:
+            await asyncio.wrap_future(self._write_future(data))
+
+    # ==== query ====
+
+    async def aquery_detailed(
+        self,
+        payload: bytes,
+        timeout: Timeout | None | EllipsisType = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        scope: str = ReadScope.BUFFERED.value,
+    ) -> AdapterFrame:
+        async with self._async_io_lock:
+            await self.aflush_read()
+            await self.awrite(payload)
+            return await self.aread_detailed(
+                    timeout=timeout, stop_conditions=stop_conditions, scope=scope
+                )
+
+    def query_detailed(
+        self,
+        payload: bytes,
+        timeout: Timeout | None | EllipsisType = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        scope: str = ReadScope.BUFFERED.value,
+    ) -> AdapterFrame:
+
+        with self._sync_io_lock:
+            self.flush_read()
+            self.write(payload)
+            return self.read_detailed(
+                timeout=timeout, stop_conditions=stop_conditions, scope=scope
+            )
+
+    # ==== Other ====
+
+    def _is_open_future(self) -> IsOpenCommand:
+        cmd = IsOpenCommand()
+        self._worker_send_command(cmd)
+        return cmd
+
+    def is_open(self) -> bool:
+        """Check if the adapter is open"""
+        return self._is_open_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+
+    async def ais_open(self) -> bool:
+        """Asynchronously check if the adapter is open"""
+        return await asyncio.wrap_future(self._is_open_future())

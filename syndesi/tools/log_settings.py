@@ -17,9 +17,8 @@ class LoggerAlias(Enum):
     ADAPTER = "syndesi.adapter"
     PROTOCOL = "syndesi.protocol"
     CLI = "syndesi.cli"
-    BACKEND = "syndesi.backend"
-    ADAPTER_BACKEND = "syndesi.adapter_backend"
-    BACKEND_LOGGER = "syndesi.backend_logger"
+    REMOTE = "syndesi.remote"
+    ADAPTER_WORKER = "syndesi.adapterworker"
 
 
 LOGGING_COLORS = {

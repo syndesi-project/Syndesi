@@ -4,6 +4,7 @@ Syndesi module
 
 from .adapters.ip import IP
 from .adapters.serialport import SerialPort
+from .adapters.stop_conditions import Continuation, Length, Termination, Total
 from .adapters.timeout import Timeout
 from .adapters.visa import Visa
 from .protocols.delimited import Delimited
@@ -22,4 +23,8 @@ __all__ = [
     "SCPI",
     "log",
     "Timeout",
+    "Continuation",
+    "Length",
+    "Termination",
+    "Total",
 ]

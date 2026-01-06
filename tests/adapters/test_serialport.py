@@ -4,7 +4,7 @@ from time import sleep, time
 from serial_delayer import SerialDelayer
 
 from syndesi import SerialPort
-from syndesi.adapters.stop_condition import Length, Termination, Continuation
+from syndesi.adapters.stop_conditions import Length, Termination, Continuation
 from syndesi.adapters.timeout import Timeout
 from syndesi.tools.errors import AdapterTimeoutError
 
@@ -223,7 +223,6 @@ def test_length_short_timeout():
     client.write(encode_sequences([(sequence, delay)]))
     try:
         data = client.read()
-        print(f'Data : {data}')
     except AdapterTimeoutError:
         pass  # This is what we expect
     else:
