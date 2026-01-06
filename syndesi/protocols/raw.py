@@ -1,90 +1,73 @@
 # File : raw.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Raw protocol layer, data is returned as bytes "as-is"
+"""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from types import EllipsisType
 
-from syndesi.adapters.backend.adapter_backend import AdapterReadPayload, AdapterSignal
-from syndesi.adapters.stop_condition import StopCondition
-
 from ..adapters.adapter import Adapter
+from ..adapters.adapter_worker import AdapterEvent
 from ..adapters.timeout import Timeout
-from .protocol import Protocol
+from ..component import AdapterFrame
+from .protocol import Protocol, ProtocolEvent, ProtocolFrame
 
 # Raw protocols provide the user with the binary data directly,
 # without converting it to string first
 
 
-class Raw(Protocol):
+@dataclass
+class RawFrame(ProtocolFrame[bytes]):
+    """
+    Adapter signal containing received data
+    """
+
+    payload: bytes
+
+    def __str__(self) -> str:
+        return f"ProtocolFrame({self.payload!r})"
+
+
+class Raw(Protocol[bytes]):
+    """
+    Raw device, no presentation and application layers, data is returned as bytes directly
+
+    Parameters
+    ----------
+    adapter : IAdapter
+    """
+
     def __init__(
         self,
         adapter: Adapter,
         timeout: Timeout | None | EllipsisType = ...,
-        event_callback: Callable[[AdapterSignal], None] | None = None,
+        event_callback: Callable[[ProtocolEvent], None] | None = None,
     ) -> None:
-        """
-        Raw device, no presentation and application layers
-
-        Parameters
-        ----------
-        adapter : IAdapter
-        """
-        super().__init__(
-            adapter,
-            timeout,
-            event_callback,
-        )
-
-        # Connect the adapter if it wasn't done already
-        self._adapter.connect()
+        super().__init__(adapter, timeout)
 
     def _default_timeout(self) -> Timeout | None:
         return Timeout(response=2, action="error")
 
-    def write(self, data: bytes) -> None:
-        self._adapter.write(data)
-
-    def query(
-        self,
-        data: bytes,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes:
-        self._adapter.flush_read()
-        self.write(data)
-        return self.read(timeout=timeout, stop_conditions=stop_conditions)
-
-    def query_detailed(
-        self,
-        data: bytes,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload:
-        self._adapter.flush_read()
-        self.write(data)
-        return self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-
-    def read(
-        self,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> bytes:
-        signal = self.read_detailed(timeout=timeout, stop_conditions=stop_conditions)
-        return signal.data()
-
-    def read_detailed(
-        self,
-        timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> AdapterReadPayload:
-        return self._adapter.read_detailed(
-            timeout=timeout, stop_conditions=stop_conditions
-        )
-
-    def _on_data_ready_event(self, data: AdapterReadPayload) -> None:
-        # TODO : Call the callback here ?
-        pass
-
     def __str__(self) -> str:
         return f"Raw({self._adapter})"
+
+    def _on_event(self, event: AdapterEvent) -> None:
+        ...
+        # TODO : implement
+
+    def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> RawFrame:
+        payload = adapter_frame.get_payload()
+
+        return RawFrame(
+            payload=payload,
+            stop_timestamp=adapter_frame.stop_timestamp,
+            stop_condition_type=adapter_frame.stop_condition_type,
+            previous_read_buffer_used=adapter_frame.previous_read_buffer_used,
+            response_delay=adapter_frame.response_delay,
+        )
+
+    def _protocol_to_adapter(self, protocol_payload: bytes) -> bytes:
+        return protocol_payload

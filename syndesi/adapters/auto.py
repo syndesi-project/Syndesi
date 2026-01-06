@@ -16,16 +16,39 @@ Same with /dev/ttyACM0:115200
 """
 
 
+import re
+
+from syndesi.component import Descriptor
+
 from .adapter import Adapter
-from .backend.descriptors import (
-    IPDescriptor,
+from .ip import IP, IPDescriptor
+from .serialport import SerialPort, SerialPortDescriptor
+from .visa import Visa, VisaDescriptor
+
+descriptors: list[type[Descriptor]] = [
     SerialPortDescriptor,
+    IPDescriptor,
     VisaDescriptor,
-    adapter_descriptor_by_string,
-)
-from .ip import IP
-from .serialport import SerialPort
-from .visa import Visa
+]
+
+
+def adapter_descriptor_by_string(string_descriptor: str) -> Descriptor:
+    """
+    Return a corresponding adapter descriptor from a string
+
+    Parameters
+    ----------
+    string_descriptor : str
+
+    Returns
+    -------
+    descriptor : Descriptor
+    """
+    for descriptor in descriptors:
+        if re.match(descriptor.DETECTION_PATTERN, string_descriptor):
+            x = descriptor.from_string(string_descriptor)
+            return x
+    raise ValueError(f"Could not parse descriptor string : {string_descriptor}")
 
 
 def auto_adapter(adapter_or_string: Adapter | str) -> Adapter:
@@ -42,7 +65,7 @@ def auto_adapter(adapter_or_string: Adapter | str) -> Adapter:
         # Simply return it
         return adapter_or_string
 
-    elif isinstance(adapter_or_string, str):
+    if isinstance(adapter_or_string, str):
         descriptor = adapter_descriptor_by_string(adapter_or_string)
         if isinstance(descriptor, IPDescriptor):
             return IP(
@@ -57,5 +80,4 @@ def auto_adapter(adapter_or_string: Adapter | str) -> Adapter:
 
         raise RuntimeError(f"Invalid descriptor : {descriptor}")
 
-    else:
-        raise ValueError(f"Invalid adapter : {adapter_or_string}")
+    raise ValueError(f"Invalid adapter : {adapter_or_string}")

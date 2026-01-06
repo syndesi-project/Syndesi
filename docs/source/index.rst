@@ -14,3 +14,4 @@ Contents:
    protocols
    error_handling
    api_reference
+   component
