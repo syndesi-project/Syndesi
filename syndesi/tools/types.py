@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 else:
     NumberLike = int | float | np.number  # runtime will resolve string
 
+
 def is_number(x: Any) -> TypeGuard[NumberLike]:
     """
     Check if the given X is an instance of int or float

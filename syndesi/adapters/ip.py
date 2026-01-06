@@ -154,9 +154,7 @@ class IP(Adapter):
             auto_open=auto_open,
         )
         self._descriptor: IPDescriptor
-        self._worker_descriptor : IPDescriptor
-
-
+        self._worker_descriptor: IPDescriptor
 
     def set_default_port(self, port: int) -> None:
         """
@@ -169,7 +167,6 @@ class IP(Adapter):
         if self._descriptor.port is None:
             self._descriptor.port = port
             self._update_descriptor()
-
 
     def _worker_read(self, fragment_timestamp: float) -> Fragment:
         if self._socket is None:
@@ -192,7 +189,7 @@ class IP(Adapter):
         if self._socket is not None:
             if self._socket.send(data) != len(data):
                 raise AdapterWriteError(
-                    f"Adapter {self._worker_descriptor} couldn't write" \
+                    f"Adapter {self._worker_descriptor} couldn't write"
                     " all of the data to the socket"
                 )
 
@@ -214,7 +211,9 @@ class IP(Adapter):
 
         try:
             self._socket.settimeout(self.WorkerTimeout.OPEN.value)
-            self._socket.connect((self._worker_descriptor.address, self._worker_descriptor.port))
+            self._socket.connect(
+                (self._worker_descriptor.address, self._worker_descriptor.port)
+            )
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:
             self._opened = False
             msg = f"Failed to open adapter {self._worker_descriptor} : {e}"

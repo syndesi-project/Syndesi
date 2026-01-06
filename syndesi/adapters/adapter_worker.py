@@ -99,6 +99,7 @@ class FirstFragmentEvent(AdapterEvent):
 # │ Worker commands (composition) │
 # └───────────────────────────────┘
 
+
 class OpenCommand(ThreadCommand[None]):
     """Open the adapter"""
 
@@ -122,12 +123,14 @@ class SetEventCallbackCommand(ThreadCommand[None]):
         super().__init__()
         self.event_callback = callback
 
+
 class WriteCommand(ThreadCommand[None]):
     """Write data to the adapter"""
 
     def __init__(self, data: bytes) -> None:
         super().__init__()
         self.data = data
+
 
 class SetStopConditionsCommand(ThreadCommand[None]):
     """Configure adapter stop conditions"""
@@ -136,6 +139,7 @@ class SetStopConditionsCommand(ThreadCommand[None]):
         super().__init__()
         self.stop_conditions = stop_conditions
 
+
 class SetTimeoutCommand(ThreadCommand[None]):
     """Configure adapter timeout"""
 
@@ -143,8 +147,10 @@ class SetTimeoutCommand(ThreadCommand[None]):
         super().__init__()
         self.timeout = timeout
 
+
 class IsOpenCommand(ThreadCommand[bool]):
     """Return True if the adapter is opened"""
+
 
 class ReadCommand(ThreadCommand[AdapterFrame]):
     """
@@ -172,11 +178,13 @@ class ReadCommand(ThreadCommand[AdapterFrame]):
         self.stop_conditions = stop_conditions
         self.scope = scope
 
+
 class SetDescriptorCommand(ThreadCommand[None]):
     """
     Command to configure the worker descriptor (sync with the adapter subclass descriptor)
     """
-    def __init__(self, descriptor : Descriptor) -> None:
+
+    def __init__(self, descriptor: Descriptor) -> None:
         super().__init__()
         self.descriptor = descriptor
 
@@ -238,11 +246,9 @@ class AdapterWorker:
 
         self._command_queue: queue.Queue[ThreadCommand[Any]] = queue.Queue()
 
-        self._frame_buffer: deque[AdapterFrame] = deque(
-            maxlen=self._FRAME_BUFFER_MAX
-        )
+        self._frame_buffer: deque[AdapterFrame] = deque(maxlen=self._FRAME_BUFFER_MAX)
 
-        self._worker_descriptor : Descriptor | None = None
+        self._worker_descriptor: Descriptor | None = None
 
         self._pending_read: _PendingRead | None = None
 
@@ -267,8 +273,6 @@ class AdapterWorker:
         self._timeout_origin: StopConditionType | None = None
         self._next_stop_condition_timeout_timestamp: float | None = None
         self._read_start_timestamp: float | None = None
-
-
 
         self._event_callback: Callable[[AdapterEvent], None] | None = None
 
@@ -298,7 +302,10 @@ class AdapterWorker:
                 return
 
     def _worker_check_descriptor(self) -> None:
-        if self._worker_descriptor is None or not self._worker_descriptor.is_initialized():
+        if (
+            self._worker_descriptor is None
+            or not self._worker_descriptor.is_initialized()
+        ):
             raise AdapterOpenError("Descriptor not initialized")
 
     # Abstract worker methods, to be implemented in the adapter subclasses
@@ -318,8 +325,7 @@ class AdapterWorker:
                 raise AdapterWriteError("Adapter not opened")
 
     @abstractmethod
-    def _worker_open(self) -> None:
-        ...
+    def _worker_open(self) -> None: ...
 
     @abstractmethod
     def _worker_close(self) -> None: ...
@@ -466,9 +472,7 @@ class AdapterWorker:
 
         pr = self._pending_read
         if pr is not None:
-            first_ts = (
-                frame.fragments[0].timestamp if frame.fragments else float("nan")
-            )
+            first_ts = frame.fragments[0].timestamp if frame.fragments else float("nan")
             qualifies = (first_ts > pr.start_time) or (pr.scope == ReadScope.BUFFERED)
             if qualifies:
                 # Restore stop conditions if we had applied an override
@@ -732,7 +736,7 @@ class AdapterWorker:
     # │ Worker: main loop │
     # └───────────────────┘
 
-    #pylint: disable=too-many-branches
+    # pylint: disable=too-many-branches
     def _worker_thread_method(self) -> None:
         """
         Main worker thread loop (select-based reactor)

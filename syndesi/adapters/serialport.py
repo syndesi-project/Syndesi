@@ -100,7 +100,7 @@ class SerialPort(Adapter):
             auto_open=auto_open,
         )
         self._descriptor: SerialPortDescriptor
-        self._worker_descriptor : SerialPortDescriptor
+        self._worker_descriptor: SerialPortDescriptor
 
         self._logger.info(
             f"Setting up SerialPort adapter {self._descriptor}, \
@@ -192,7 +192,9 @@ class SerialPort(Adapter):
             data = None
 
         if data is None or data != b"":
-            raise AdapterReadError(f"Error while reading from {self._worker_descriptor}")
+            raise AdapterReadError(
+                f"Error while reading from {self._worker_descriptor}"
+            )
 
         return Fragment(data, fragment_timestamp)
 

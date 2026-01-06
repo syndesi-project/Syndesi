@@ -54,7 +54,9 @@ class ProtocolFrameEvent(ProtocolEvent, Generic[T]):
 
     frame: ProtocolFrame[T]
 
+
 ProtocolTimeoutType = Timeout | None | EllipsisType
+
 
 class Protocol(Component[T], Generic[T]):
     """
@@ -91,9 +93,7 @@ class Protocol(Component[T], Generic[T]):
         pass
 
     @abstractmethod
-    def _adapter_to_protocol(
-        self, adapter_frame: AdapterFrame
-    ) -> ProtocolFrame[T]: ...
+    def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> ProtocolFrame[T]: ...
 
     @abstractmethod
     def _protocol_to_adapter(self, protocol_payload: T) -> bytes: ...

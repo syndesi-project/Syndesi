@@ -35,9 +35,9 @@ Modbus TCP and Modbus RTU implementation
 
 from __future__ import annotations
 
+import struct
 from abc import abstractmethod
 from dataclasses import dataclass
-import struct
 from enum import Enum
 from math import ceil
 from types import EllipsisType
@@ -70,6 +70,7 @@ MAX_DISCRETE_INPUTS = (
 
 ExceptionCodesType = dict[int, str]
 
+
 class Endian(Enum):
     """
     Endian enum
@@ -80,6 +81,7 @@ class Endian(Enum):
 
 
 endian_symbol = {Endian.BIG: ">", Endian.LITTLE: "<"}
+
 
 def _dm_to_pdu_address(dm_address: int) -> int:
     """
@@ -99,6 +101,7 @@ def _dm_to_pdu_address(dm_address: int) -> int:
 
     return dm_address - 1
 
+
 def _pdu_to_dm_address(pdu_address: int) -> int:
     """
     Convert Modbus PDU address to Modbus data model address
@@ -114,12 +117,14 @@ def _pdu_to_dm_address(pdu_address: int) -> int:
     """
     return pdu_address + 1
 
+
 def _check_discrete_input_output_count(discrete_inputs: int) -> None:
     if not 1 <= discrete_inputs <= MAX_DISCRETE_INPUTS:
         raise ValueError(
             f"Invalid number of inputs/outputs : {discrete_inputs}, it must be in "
             f"the range [1, {MAX_DISCRETE_INPUTS}]"
         )
+
 
 def _check_address(address: int, max_address: int | None = None) -> None:
     if not MIN_ADDRESS <= address <= MAX_ADDRESS:
@@ -151,6 +156,7 @@ _ASCII_HEADER = b":"
 _PROTOCO_ID = 0
 _UNIT_ID = 0
 _ASCII_TRAILER = b"\r\n"
+
 
 class ModbusType(Enum):
     """
@@ -322,12 +328,14 @@ class ModbusError(Exception):
     Generic modbus exception
     """
 
+
 def modbus_crc(_bytes: bytes) -> int:
     """Calculate modbus CRC from the given buffer"""
     # TODO : Implement
     return 0
 
-def _raise_if_error(sdu : bytes, exceptions : dict[int, str]) -> None:
+
+def _raise_if_error(sdu: bytes, exceptions: dict[int, str]) -> None:
     if sdu == b"":
         raise ModbusError("Empty response")
     if sdu[0] & 0x80:
@@ -336,6 +344,7 @@ def _raise_if_error(sdu : bytes, exceptions : dict[int, str]) -> None:
         if code not in exceptions:
             raise ModbusError(f"Unexpected modbus error code: {code}")
         raise ModbusError(f"{code:02X} : {exceptions[code]}")
+
 
 class ModbusSDU:
     """
@@ -349,7 +358,7 @@ class ModbusSDU:
         """Generate a bytes array containing the SDU"""
         raise ProtocolError("make_sdu() is not supported for this SDU")
 
-    def parse_sdu(self, sdu : bytes) -> ModbusSDU:
+    def parse_sdu(self, sdu: bytes) -> ModbusSDU:
         """Generate a ModbusSDU instance from a given sdu buffer"""
         raise ProtocolError("parse_sdu() is not supported for this SDU")
 
@@ -357,20 +366,22 @@ class ModbusSDU:
         """Return a dictionary of exceptions based on their integer code"""
         return {}
 
-    def _check_for_error(self, sdu : bytes) -> None:
+    def _check_for_error(self, sdu: bytes) -> None:
         """Check the given sdu buffer for an exception"""
         _raise_if_error(sdu, self.exceptions())
+
 
 class ModbusRequestSDU(ModbusSDU):
     """
     Base class for modbus request SDUs (Service Data Unit)
     """
+
     @abstractmethod
     def function_code(self) -> FunctionCode:
         """Return the function code of this modbus request"""
 
     @classmethod
-    def expected_length(cls, pdu_length: int, modbus_type : ModbusType) -> int:
+    def expected_length(cls, pdu_length: int, modbus_type: ModbusType) -> int:
         """
         Return the length of the modbus SDU based on the length of the PDU and modbus type
 
@@ -391,30 +402,35 @@ class ModbusRequestSDU(ModbusSDU):
     def parse_sdu(self, sdu: bytes) -> ModbusSDU:
         raise NotImplementedError()
 
+
 # class ModbusResponseSDU(ModbusSDU):
 #     def make_sdu(self) -> bytes:
 #         """Generate a bytes array containing the SDU"""
 #         raise NotImplementedError("make_sdu() not implemented for this SDU")
 
+
 class SerialLineOnlySDU(ModbusRequestSDU):
     """
     Marker class for serial line only Modbus function codes
     """
+
     @abstractmethod
-    def exceptions(self) -> dict[int, str]:
-        ...
+    def exceptions(self) -> dict[int, str]: ...
+
 
 # Read Coils - 0x01
 @dataclass
 class ReadCoilsSDU(ModbusRequestSDU):
     """Read coils request."""
-    start_address : int
-    number_of_coils : int
+
+    start_address: int
+    number_of_coils: int
 
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        coils : list[bool]
+
+        coils: list[bool]
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.READ_COILS
@@ -441,24 +457,27 @@ class ReadCoilsSDU(ModbusRequestSDU):
 
         return data
 
-    def parse_sdu(self, sdu : bytes) -> Response:
+    def parse_sdu(self, sdu: bytes) -> Response:
         super()._check_for_error(sdu)
         _, n_bytes = struct.unpack(ENDIAN + "BB", sdu[:2])
         coil_bytes = struct.unpack(ENDIAN + f"{n_bytes}s", sdu[2:])[0]
         coils = bytes_to_bool_list(coil_bytes, self.number_of_coils)
         return self.Response(coils)
 
+
 # Read discrete inputs - 0x02
 @dataclass
 class ReadDiscreteInputs(ModbusRequestSDU):
     """Read discrete inputs request."""
-    start_address : int
-    number_of_inputs : int
+
+    start_address: int
+    number_of_inputs: int
 
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        inputs : list[bool]
+
+        inputs: list[bool]
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.READ_DISCRETE_INPUTS
@@ -496,17 +515,20 @@ class ReadDiscreteInputs(ModbusRequestSDU):
 
         return self.Response(inputs)
 
+
 # Read discrete inputs - 0x03
 @dataclass
 class ReadHoldingRegisters(ModbusRequestSDU):
     """Read holding registers request."""
-    start_address : int
-    number_of_registers : int
+
+    start_address: int
+    number_of_registers: int
 
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        registers : list[int]
+
+        registers: list[int]
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.READ_HOLDING_REGISTERS
@@ -525,7 +547,9 @@ class ReadHoldingRegisters(ModbusRequestSDU):
         max_number_of_registers = (AVAILABLE_PDU_SIZE - 2) // 2
 
         if not 1 <= self.number_of_registers <= max_number_of_registers:
-            raise ValueError(f"Invalid number of registers : {self.number_of_registers}")
+            raise ValueError(
+                f"Invalid number of registers : {self.number_of_registers}"
+            )
 
     def make_sdu(self) -> bytes:
         sdu = struct.pack(
@@ -553,8 +577,9 @@ class ReadHoldingRegisters(ModbusRequestSDU):
 @dataclass
 class WriteSingleCoilSDU(ModbusRequestSDU):
     """Write single coil request."""
-    address : int
-    status : bool
+
+    address: int
+    status: bool
 
     _ON_VALUE = 0xFF00
     _OFF_VALUE = 0x0000
@@ -590,16 +615,19 @@ class WriteSingleCoilSDU(ModbusRequestSDU):
         self._check_for_error(sdu)
         return self.Response()
 
+
 @dataclass
 class ReadInputRegistersSDU(ModbusRequestSDU):
     """Read input registers request."""
-    start_address : int
-    number_of_registers : int
+
+    start_address: int
+    number_of_registers: int
 
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        registers : list[int]
+
+        registers: list[int]
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.READ_INPUT_REGISTERS
@@ -618,7 +646,9 @@ class ReadInputRegistersSDU(ModbusRequestSDU):
         max_number_of_registers = (AVAILABLE_PDU_SIZE - 2) // 2
 
         if not 1 <= self.number_of_registers <= max_number_of_registers:
-            raise ValueError(f"Invalid number of registers : {self.number_of_registers}")
+            raise ValueError(
+                f"Invalid number of registers : {self.number_of_registers}"
+            )
 
     def make_sdu(self) -> bytes:
         sdu = struct.pack(
@@ -641,11 +671,13 @@ class ReadInputRegistersSDU(ModbusRequestSDU):
 
         return self.Response(registers)
 
+
 @dataclass
 class WriteSingleRegisterSDU(ModbusRequestSDU):
     """Write single register request."""
-    address : int
-    value : int
+
+    address: int
+    value: int
 
     @dataclass
     class Response(ModbusSDU):
@@ -684,13 +716,16 @@ class WriteSingleRegisterSDU(ModbusRequestSDU):
             )
         return self.Response()
 
+
 @dataclass
 class ReadExceptionStatusSDU(SerialLineOnlySDU):
     """Read exception status request (serial only)."""
+
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        status : int
+
+        status: int
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.READ_EXCEPTION_STATUS
@@ -709,18 +744,21 @@ class ReadExceptionStatusSDU(SerialLineOnlySDU):
         _, status = cast(tuple[int, int], struct.unpack(ENDIAN + "BB", sdu))
         return self.Response(status)
 
+
 @dataclass
 class DiagnosticsSDU(SerialLineOnlySDU):
     """Diagnostics request (serial only)."""
-    code : DiagnosticsCode
-    subfunction_data : bytes
-    return_subfunction_bytes : int
-    check_response : bool = True
+
+    code: DiagnosticsCode
+    subfunction_data: bytes
+    return_subfunction_bytes: int
+    check_response: bool = True
 
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        data : bytes
+
+        data: bytes
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.DIAGNOSTICS
@@ -753,9 +791,7 @@ class DiagnosticsSDU(SerialLineOnlySDU):
                 subfunction_returned_data,
             ) = cast(
                 tuple[int, int, bytes],
-                struct.unpack(
-                    ENDIAN + f"BH{self.return_subfunction_bytes}s", sdu
-                ),
+                struct.unpack(ENDIAN + f"BH{self.return_subfunction_bytes}s", sdu),
             )
 
         if self.check_response:
@@ -772,14 +808,17 @@ class DiagnosticsSDU(SerialLineOnlySDU):
 
         return self.Response(subfunction_returned_data)
 
+
 @dataclass
 class GetCommEventCounterSDU(SerialLineOnlySDU):
     """Get communication event counter request (serial only)."""
+
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        status : int
-        event_count : int
+
+        status: int
+        event_count: int
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.GET_COMM_EVENT_COUNTER
@@ -798,16 +837,19 @@ class GetCommEventCounterSDU(SerialLineOnlySDU):
         _, status, event_count = struct.unpack(ENDIAN + "BHH", sdu)
         return self.Response(status, event_count)
 
+
 @dataclass
 class GetCommEventLogSDU(SerialLineOnlySDU):
     """Get communication event log request (serial only)."""
+
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        status : int
-        event_count : int
-        message_count : int
-        events : bytes
+
+        status: int
+        event_count: int
+        message_count: int
+        events: bytes
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.GET_COMM_EVENT_LOG
@@ -828,11 +870,13 @@ class GetCommEventLogSDU(SerialLineOnlySDU):
         events = sdu[8 : 8 + (byte_count - 6)]
         return self.Response(status, event_count, message_count, events)
 
+
 @dataclass
 class WriteMultipleCoilsSDU(ModbusRequestSDU):
     """Write multiple coils request."""
-    start_address : int
-    values : list[bool]
+
+    start_address: int
+    values: list[bool]
 
     @dataclass
     class Response(ModbusSDU):
@@ -878,16 +922,18 @@ class WriteMultipleCoilsSDU(ModbusRequestSDU):
             )
         if start_address != _dm_to_pdu_address(self.start_address):
             raise ProtocolReadError(
-                f"Start address mismatch : {start_address} != " \
+                f"Start address mismatch : {start_address} != "
                 "{_dm_to_pdu_address(self.start_address)}"
             )
         return self.Response()
 
+
 @dataclass
 class WriteMultipleRegistersSDU(ModbusRequestSDU):
     """Write multiple registers request."""
-    start_address : int
-    values : list[int]
+
+    start_address: int
+    values: list[int]
 
     @dataclass
     class Response(ModbusSDU):
@@ -940,23 +986,26 @@ class WriteMultipleRegistersSDU(ModbusRequestSDU):
             )
         if start_address != _dm_to_pdu_address(self.start_address):
             raise ProtocolReadError(
-                f"Start address mismatch : {start_address} != " \
+                f"Start address mismatch : {start_address} != "
                 "{_dm_to_pdu_address(self.start_address)}"
             )
         return self.Response()
 
+
 @dataclass
 class ReportServerIdSDU(SerialLineOnlySDU):
     """Report server ID request (serial only)."""
-    server_id_length : int
-    additional_data_length : int
+
+    server_id_length: int
+    additional_data_length: int
 
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        server_id : bytes
-        run_indicator_status : bool
-        additional_data : bytes
+
+        server_id: bytes
+        run_indicator_status: bool
+        additional_data: bytes
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.REPORT_SERVER_ID
@@ -985,15 +1034,18 @@ class ReportServerIdSDU(SerialLineOnlySDU):
         additional_data = sdu[end + 1 : end + 1 + self.additional_data_length]
         return self.Response(server_id, run_indicator_status, additional_data)
 
+
 @dataclass
 class ReadFileRecordSDU(ModbusRequestSDU):
     """Read file record request."""
-    records : list[tuple[int, int, int]]
+
+    records: list[tuple[int, int, int]]
 
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        records_data : list[bytes]
+
+        records_data: list[bytes]
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.READ_FILE_RECORD
@@ -1048,9 +1100,7 @@ class ReadFileRecordSDU(ModbusRequestSDU):
             length = sdu[offset]
             reference_type = sdu[offset + 1]
             if reference_type != 6:
-                raise ProtocolReadError(
-                    f"Invalid reference type : {reference_type}"
-                )
+                raise ProtocolReadError(f"Invalid reference type : {reference_type}")
             data_start = offset + 2
             data_end = data_start + length - 1
             records_data.append(sdu[data_start:data_end])
@@ -1058,10 +1108,12 @@ class ReadFileRecordSDU(ModbusRequestSDU):
 
         return self.Response(records_data)
 
+
 @dataclass
 class WriteFileRecordSDU(ModbusRequestSDU):
     """Write file record request."""
-    records : list[tuple[int, int, bytes]]
+
+    records: list[tuple[int, int, bytes]]
 
     @dataclass
     class Response(ModbusSDU):
@@ -1112,12 +1164,14 @@ class WriteFileRecordSDU(ModbusRequestSDU):
             raise ProtocolReadError("Response different from query")
         return self.Response()
 
+
 @dataclass
 class MaskWriteRegisterSDU(ModbusRequestSDU):
     """Mask write register request."""
-    address : int
-    and_mask : int
-    or_mask : int
+
+    address: int
+    and_mask: int
+    or_mask: int
 
     @dataclass
     class Response(ModbusSDU):
@@ -1155,18 +1209,21 @@ class MaskWriteRegisterSDU(ModbusRequestSDU):
             )
         return self.Response()
 
+
 @dataclass
 class ReadWriteMultipleRegistersSDU(ModbusRequestSDU):
     """Read/write multiple registers request."""
-    read_starting_address : int
-    number_of_read_registers : int
-    write_starting_address : int
-    write_values : list[int]
+
+    read_starting_address: int
+    number_of_read_registers: int
+    write_starting_address: int
+    write_values: list[int]
 
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        read_values : list[int]
+
+        read_values: list[int]
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.READ_WRITE_MULTIPLE_REGISTERS
@@ -1223,21 +1280,22 @@ class ReadWriteMultipleRegistersSDU(ModbusRequestSDU):
                 f"Invalid byte count : {byte_count}, expected {expected}"
             )
         read_values = list(
-            struct.unpack(
-                ENDIAN + f"{self.number_of_read_registers}H", sdu[2:]
-            )
+            struct.unpack(ENDIAN + f"{self.number_of_read_registers}H", sdu[2:])
         )
         return self.Response(read_values)
+
 
 @dataclass
 class ReadFifoQueueSDU(ModbusRequestSDU):
     """Read FIFO queue request."""
-    fifo_address : int
+
+    fifo_address: int
 
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        values : list[int]
+
+        values: list[int]
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.READ_FIFO_QUEUE
@@ -1255,7 +1313,9 @@ class ReadFifoQueueSDU(ModbusRequestSDU):
 
     def make_sdu(self) -> bytes:
         return struct.pack(
-            ENDIAN + "BH", self.function_code().value, _dm_to_pdu_address(self.fifo_address)
+            ENDIAN + "BH",
+            self.function_code().value,
+            _dm_to_pdu_address(self.fifo_address),
         )
 
     def parse_sdu(self, sdu: bytes) -> ModbusSDU:
@@ -1267,22 +1327,23 @@ class ReadFifoQueueSDU(ModbusRequestSDU):
             raise ProtocolReadError(
                 f"FIFO count mismatch : {fifo_count} != {register_count}"
             )
-        values = list(
-            struct.unpack(ENDIAN + f"{register_count}H", sdu[5:])
-        )
+        values = list(struct.unpack(ENDIAN + f"{register_count}H", sdu[5:]))
         return self.Response(values)
+
 
 @dataclass
 class EncapsulatedInterfaceTransportSDU(ModbusRequestSDU):
     """Encapsulated interface transport request."""
-    mei_type : int
-    mei_data : bytes
-    extra_exceptions : dict[int, str] | None = None
+
+    mei_type: int
+    mei_data: bytes
+    extra_exceptions: dict[int, str] | None = None
 
     @dataclass
     class Response(ModbusSDU):
         """Response data."""
-        data : bytes
+
+        data: bytes
 
     def function_code(self) -> FunctionCode:
         return FunctionCode.ENCAPSULATED_INTERFACE_TRANSPORT
@@ -1308,10 +1369,12 @@ class EncapsulatedInterfaceTransportSDU(ModbusRequestSDU):
 
 class ModbusFrame(ProtocolFrame[ModbusSDU]):
     """Modbus frame containing a ModbusSDU"""
-    payload : ModbusSDU
+
+    payload: ModbusSDU
 
     def __str__(self) -> str:
         return f"ModbusFrame({self.payload})"
+
 
 # pylint: disable=too-many-public-methods
 class Modbus(Protocol[ModbusSDU]):
@@ -1353,27 +1416,24 @@ class Modbus(Protocol[ModbusSDU]):
 
         self._slave_address = slave_address
 
-        self._last_sdu : ModbusSDU | None = None
+        self._last_sdu: ModbusSDU | None = None
         self._transaction_id = 0
 
     def _default_timeout(self) -> Timeout | None:
         return Timeout(response=1, action="error")
 
-    def _on_event(self, event: AdapterEvent) -> None:
-        ...
+    def _on_event(self, event: AdapterEvent) -> None: ...
 
     def _protocol_to_adapter(self, protocol_payload: ModbusSDU) -> bytes:
         if isinstance(protocol_payload, SerialLineOnlySDU):
             if self._modbus_type == ModbusType.TCP:
-                raise ProtocolError(
-                    "This function cannot be used with Modbus TCP"
-                )
+                raise ProtocolError("This function cannot be used with Modbus TCP")
 
         sdu = protocol_payload.make_sdu()
 
         if self._modbus_type == ModbusType.TCP:
             # Return raw data
-            length = len(sdu) + 1 # unit_id is included
+            length = len(sdu) + 1  # unit_id is included
             output = (
                 struct.pack(
                     ENDIAN + "HHHB", self._transaction_id, _PROTOCO_ID, length, _UNIT_ID
@@ -1397,7 +1457,9 @@ class Modbus(Protocol[ModbusSDU]):
         self._last_sdu = protocol_payload
         return output
 
-    def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> ProtocolFrame[ModbusSDU]:
+    def _adapter_to_protocol(
+        self, adapter_frame: AdapterFrame
+    ) -> ProtocolFrame[ModbusSDU]:
         pdu = adapter_frame.get_payload()
 
         if self._modbus_type == ModbusType.TCP:
@@ -1413,9 +1475,9 @@ class Modbus(Protocol[ModbusSDU]):
                 pdu = pdu[len(_ASCII_HEADER) : -len(_ASCII_TRAILER)]
             # Remove slave address and CRC and check CRC
 
-            #slave_address = pdu[0]
+            # slave_address = pdu[0]
             data = pdu[1:-2]
-            #crc = pdu[-2:] # TODO : Check CRC
+            # crc = pdu[-2:] # TODO : Check CRC
 
         if self._last_sdu is None:
             raise ModbusError("Cannot read without prior write")
@@ -1430,7 +1492,7 @@ class Modbus(Protocol[ModbusSDU]):
             stop_condition_type=adapter_frame.stop_condition_type,
             previous_read_buffer_used=adapter_frame.previous_read_buffer_used,
             response_delay=adapter_frame.response_delay,
-            payload=sdu
+            payload=sdu,
         )
 
     # ┌────────────┐
@@ -1452,8 +1514,7 @@ class Modbus(Protocol[ModbusSDU]):
         coils : list
         """
         payload = ReadCoilsSDU(
-            start_address=start_address,
-            number_of_coils=number_of_coils
+            start_address=start_address, number_of_coils=number_of_coils
         )
 
         output = cast(ReadCoilsSDU.Response, self.query(payload))
@@ -1475,13 +1536,10 @@ class Modbus(Protocol[ModbusSDU]):
         """
 
         payload = ReadCoilsSDU(
-            start_address=start_address,
-            number_of_coils=number_of_coils
+            start_address=start_address, number_of_coils=number_of_coils
         )
 
-        output = cast(ReadCoilsSDU.Response, await self.aquery(
-            payload
-        ))
+        output = cast(ReadCoilsSDU.Response, await self.aquery(payload))
 
         return output.coils
 
@@ -1537,8 +1595,7 @@ class Modbus(Protocol[ModbusSDU]):
         """
 
         payload = ReadDiscreteInputs(
-            start_address=start_address,
-            number_of_inputs=number_of_inputs
+            start_address=start_address, number_of_inputs=number_of_inputs
         )
 
         output = cast(ReadDiscreteInputs.Response, self.query(payload))
@@ -1563,8 +1620,7 @@ class Modbus(Protocol[ModbusSDU]):
         """
 
         payload = ReadDiscreteInputs(
-            start_address=start_address,
-            number_of_inputs=number_of_inputs
+            start_address=start_address, number_of_inputs=number_of_inputs
         )
 
         output = cast(ReadDiscreteInputs.Response, await self.aquery(payload))
@@ -1590,8 +1646,7 @@ class Modbus(Protocol[ModbusSDU]):
         """
 
         payload = ReadHoldingRegisters(
-            start_address=start_address,
-            number_of_registers=number_of_registers
+            start_address=start_address, number_of_registers=number_of_registers
         )
 
         output = cast(ReadHoldingRegisters.Response, self.query(payload))
@@ -1616,8 +1671,7 @@ class Modbus(Protocol[ModbusSDU]):
         """
 
         payload = ReadHoldingRegisters(
-            start_address=start_address,
-            number_of_registers=number_of_registers
+            start_address=start_address, number_of_registers=number_of_registers
         )
 
         output = cast(ReadHoldingRegisters.Response, await self.aquery(payload))
@@ -1625,15 +1679,15 @@ class Modbus(Protocol[ModbusSDU]):
         return output.registers
 
     def _parse_multi_register_value(
-            self,
-            n_registers: int,
-            registers : list[int],
-            value_type: str,
-            *,
-            byte_order: str = Endian.BIG.value,
-            word_order: str = Endian.BIG.value,
-            encoding: str = "utf-8",
-            padding: int | None = 0
+        self,
+        n_registers: int,
+        registers: list[int],
+        value_type: str,
+        *,
+        byte_order: str = Endian.BIG.value,
+        word_order: str = Endian.BIG.value,
+        encoding: str = "utf-8",
+        padding: int | None = 0,
     ) -> str | bytes | int | float:
 
         type_cast = TypeCast(value_type)
@@ -1721,7 +1775,7 @@ class Modbus(Protocol[ModbusSDU]):
             byte_order=byte_order,
             word_order=word_order,
             encoding=encoding,
-            padding=padding
+            padding=padding,
         )
 
     async def aread_multi_register_value(
@@ -1777,7 +1831,7 @@ class Modbus(Protocol[ModbusSDU]):
             byte_order=byte_order,
             word_order=word_order,
             encoding=encoding,
-            padding=padding
+            padding=padding,
         )
 
     def _make_multi_register_value(
@@ -1789,8 +1843,8 @@ class Modbus(Protocol[ModbusSDU]):
         byte_order: str = Endian.BIG.value,
         word_order: str = Endian.BIG.value,
         encoding: str = "utf-8",
-        padding: int = 0
-        ) -> list[int]:
+        padding: int = 0,
+    ) -> list[int]:
         _type = TypeCast(value_type)
         n_bytes = n_registers * 2
         if _type.is_number():
@@ -1894,7 +1948,7 @@ class Modbus(Protocol[ModbusSDU]):
             byte_order=byte_order,
             word_order=word_order,
             encoding=encoding,
-            padding=padding
+            padding=padding,
         )
 
         self.write_multiple_registers(start_address=address, values=registers)
@@ -1950,7 +2004,7 @@ class Modbus(Protocol[ModbusSDU]):
             byte_order=byte_order,
             word_order=word_order,
             encoding=encoding,
-            padding=padding
+            padding=padding,
         )
 
         await self.awrite_multiple_registers(start_address=address, values=registers)
@@ -2018,10 +2072,7 @@ class Modbus(Protocol[ModbusSDU]):
         address : int
         status : bool
         """
-        payload = WriteSingleCoilSDU(
-            address=address,
-            status=status
-        )
+        payload = WriteSingleCoilSDU(address=address, status=status)
 
         self.query(payload)
 
@@ -2034,10 +2085,7 @@ class Modbus(Protocol[ModbusSDU]):
         address : int
         status : bool
         """
-        payload = WriteSingleCoilSDU(
-            address=address,
-            status=status
-        )
+        payload = WriteSingleCoilSDU(address=address, status=status)
 
         await self.aquery(payload)
 

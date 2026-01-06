@@ -31,11 +31,11 @@ Async facade:
 # This avoids having a sync queue AND an async queue, and makes async wrappers trivial.
 
 import asyncio
-from enum import Enum
 import threading
 import weakref
 from abc import abstractmethod
 from collections.abc import Callable
+from enum import Enum
 from types import EllipsisType
 
 from syndesi.tools.errors import AdapterError
@@ -63,6 +63,7 @@ from .timeout import Timeout, TimeoutAction, any_to_timeout
 
 fragments: list[Fragment]
 
+
 # pylint: disable=too-many-public-methods, too-many-instance-attributes
 class Adapter(Component[bytes], AdapterWorker):
     """
@@ -73,6 +74,7 @@ class Adapter(Component[bytes], AdapterWorker):
 
     class WorkerTimeout(Enum):
         """Timeout value for each worker command scenario"""
+
         OPEN = 2
         STOP = 1
         IMMEDIATE_COMMAND = 0.2
@@ -89,7 +91,7 @@ class Adapter(Component[bytes], AdapterWorker):
         alias: str,
         encoding: str = "utf-8",
         event_callback: Callable[[AdapterEvent], None] | None = None,
-        auto_open: bool = True
+        auto_open: bool = True,
     ) -> None:
         super().__init__(LoggerAlias.ADAPTER)
         self.encoding = encoding
@@ -434,8 +436,8 @@ class Adapter(Component[bytes], AdapterWorker):
             await self.aflush_read()
             await self.awrite(payload)
             return await self.aread_detailed(
-                    timeout=timeout, stop_conditions=stop_conditions, scope=scope
-                )
+                timeout=timeout, stop_conditions=stop_conditions, scope=scope
+            )
 
     def query_detailed(
         self,

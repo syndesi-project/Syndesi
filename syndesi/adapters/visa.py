@@ -119,7 +119,7 @@ class Visa(Adapter):
             event_callback=event_callback,
         )
 
-        self._worker_descriptor : VisaDescriptor
+        self._worker_descriptor: VisaDescriptor
         self._descriptor: VisaDescriptor
 
         self._logger.info("Setting up VISA IP adapter")

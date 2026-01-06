@@ -64,5 +64,5 @@ class AdapterTimeoutError(AdapterError):
     def __init__(self, timeout: NumberLike) -> None:
         self.timeout = timeout
         super().__init__(
-            f'No response received from target within {self.timeout} seconds'
+            f"No response received from target within {self.timeout} seconds"
         )
