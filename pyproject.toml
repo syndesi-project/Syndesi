@@ -50,7 +50,7 @@ ignore = ["E501"]
 [tool.ruff.format]
 
 [tool.ruff.lint.pydocstyle]
-convention = "numpy"              # or "google"
+convention = "numpy"
 
 [tool.isort]
 profile = "black"
