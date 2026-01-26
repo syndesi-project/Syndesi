@@ -276,6 +276,10 @@ class AdapterWorker:
 
         self._event_callback: Callable[[AdapterEvent], None] | None = None
 
+    def _stop(self) -> None:
+        self._command_queue_r.close()
+        self._command_queue_w.close()
+
     # ┌─────────────────┐
     # │ Worker plumbing │
     # └─────────────────┘
@@ -478,7 +482,6 @@ class AdapterWorker:
                 # Restore stop conditions if we had applied an override
                 if pr.stop_override_applied and pr.prev_stop_conditions is not None:
                     self._stop_conditions = pr.prev_stop_conditions
-
                 pr.cmd.set_result(frame)
                 self._pending_read = None
                 return
@@ -803,6 +806,7 @@ class AdapterWorker:
 
             # Timeout wakeup: decide what timed out
             # 1) pending read response timeout (before qualifying first fragment)
+            print('Pending read')
             if (
                 self._pending_read is not None
                 and not self._pending_read.first_fragment_seen

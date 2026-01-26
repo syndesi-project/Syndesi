@@ -43,7 +43,6 @@ from math import ceil
 from types import EllipsisType
 from typing import cast
 
-from syndesi.adapters.adapter_worker import AdapterEvent
 from syndesi.component import AdapterFrame
 
 from ..adapters.adapter import Adapter
@@ -1421,8 +1420,6 @@ class Modbus(Protocol[ModbusSDU]):
 
     def _default_timeout(self) -> Timeout | None:
         return Timeout(response=1, action="error")
-
-    def _on_event(self, event: AdapterEvent) -> None: ...
 
     def _protocol_to_adapter(self, protocol_payload: ModbusSDU) -> bytes:
         if isinstance(protocol_payload, SerialLineOnlySDU):

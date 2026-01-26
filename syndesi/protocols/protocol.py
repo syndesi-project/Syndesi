@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from types import EllipsisType
 from typing import Generic, TypeVar
 
-from syndesi.adapters.adapter_worker import AdapterEvent
+from syndesi.adapters.adapter_worker import (
+    AdapterDisconnectedEvent,
+    AdapterEvent,
+    AdapterFrameEvent,
+)
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.component import AdapterFrame, Component, Event, Frame, ReadScope
 
@@ -70,7 +74,6 @@ class Protocol(Component[T], Generic[T]):
         event_callback: Callable[[ProtocolEvent], None] | None = None,
     ) -> None:
         super().__init__(LoggerAlias.PROTOCOL)
-        # TODO : Convert the callable from AdapterSignal to ProtocolSignal or something similar
         self._adapter = auto_adapter(adapter)
         self._event_callback = event_callback
 
@@ -88,9 +91,18 @@ class Protocol(Component[T], Generic[T]):
     def _default_timeout(self) -> Timeout | None:
         pass
 
-    @abstractmethod
     def _on_event(self, event: AdapterEvent) -> None:
-        pass
+        if self._event_callback is not None:
+            output_event: ProtocolEvent | None = None
+            if isinstance(event, AdapterDisconnectedEvent):
+                output_event = ProtocolDisconnectedEvent()
+            if isinstance(event, AdapterFrameEvent):
+                output_event = ProtocolFrameEvent(
+                    frame=self._adapter_to_protocol(event.frame)
+                )
+
+            if output_event is not None:
+                self._event_callback(output_event)
 
     @abstractmethod
     def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> ProtocolFrame[T]: ...
@@ -138,7 +150,9 @@ class Protocol(Component[T], Generic[T]):
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
     ) -> ProtocolFrame[T]:
-        adapter_frame = await self._adapter.aread_detailed()
+        adapter_frame = await self._adapter.aread_detailed(
+            timeout=timeout, stop_conditions=stop_conditions, scope=scope
+        )
         return self._adapter_to_protocol(adapter_frame)
 
     def read_detailed(

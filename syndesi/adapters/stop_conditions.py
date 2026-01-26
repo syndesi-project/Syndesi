@@ -98,21 +98,13 @@ class Termination(StopCondition):
             self._sequence = sequence.encode("utf-8")
         else:
             self._sequence = sequence
+
+        if self._sequence == b"":
+            raise ValueError(
+                "Empty termination isn't allowed. If you wish "
+                "to stop on any received data, use Datagram stop-conditions instead"
+            )
         self._sequence_found_length = 0
-
-    # TYPE = StopConditionType.TERMINATION
-
-    # def __init__(self, sequence: bytes | str) -> None:
-    #     """
-    #     Instanciate a new Termination class
-    #     """
-    #     self.sequence: bytes
-    #     if isinstance(sequence, str):
-    #         self.sequence = sequence.encode("utf-8")
-    #     elif isinstance(sequence, bytes):
-    #         self.sequence = sequence
-    #     else:
-    #         raise ValueError(f"Invalid termination sequence type : {type(sequence)}")
 
     def __str__(self) -> str:
         return f"Termination({repr(self._sequence)})"
@@ -202,7 +194,6 @@ class Length(StopCondition):
         deferred_fragment = raw_fragment[remaining_bytes:]
         self._counter += len(kept_fragment.data)
         remaining_bytes = self._n - self._counter
-        # TODO : remaining_bytes <= 0 ? Alongside above TODO maybe
         return remaining_bytes == 0, kept_fragment, deferred_fragment, None
 
 
@@ -249,6 +240,8 @@ class Continuation(StopCondition):
         else:
             stop = False
             next_event_timeout = None
+
+        self._last_fragment = raw_fragment.timestamp
 
         return stop, kept, deferred, next_event_timeout
 

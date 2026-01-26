@@ -15,9 +15,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from types import EllipsisType
+from typing import cast
+
+import pyvisa
+from pyvisa.resources import MessageBasedResource
 
 from syndesi.adapters.adapter_worker import (
-    AdapterDisconnectedEvent,
     AdapterEvent,
     HasFileno,
 )
@@ -28,13 +31,20 @@ from syndesi.tools.errors import AdapterReadError
 from .adapter import Adapter
 from .timeout import Timeout
 
-# --- Runtime optional import
-try:
-    import pyvisa  # type: ignore
-    from pyvisa.resources import Resource  # type: ignore
-except ImportError:
-    pyvisa = None
-    Resource = None
+
+class QueueEvent:
+    """VISA adapter queue event"""
+
+
+class DisconnectedEvent(QueueEvent):
+    """VISA queue disconnected event"""
+
+
+@dataclass
+class FragmentEvent(QueueEvent):
+    """VISA queue new fragment event"""
+
+    fragment: Fragment
 
 
 @dataclass
@@ -100,6 +110,8 @@ class Visa(Adapter):
     It uses pyvisa under the hood
     """
 
+    THREAD_STOP_DELAY = 0.2
+
     def __init__(
         self,
         descriptor: str,
@@ -109,20 +121,11 @@ class Visa(Adapter):
         timeout: None | float | Timeout | EllipsisType = ...,
         encoding: str = "utf-8",
         event_callback: Callable[[AdapterEvent], None] | None = None,
+        auto_open: bool = False,
     ) -> None:
-        super().__init__(
-            descriptor=VisaDescriptor.from_string(descriptor),
-            alias=alias,
-            stop_conditions=stop_conditions,
-            timeout=timeout,
-            encoding=encoding,
-            event_callback=event_callback,
-        )
 
         self._worker_descriptor: VisaDescriptor
         self._descriptor: VisaDescriptor
-
-        self._logger.info("Setting up VISA IP adapter")
 
         if pyvisa is None:
             raise ImportError(
@@ -131,7 +134,9 @@ class Visa(Adapter):
             )
 
         self._rm = pyvisa.ResourceManager()
-        self._inst: Resource | None = None  # annotation only; no runtime import needed
+        self._inst: MessageBasedResource | None = (
+            None  # annotation only; no runtime import needed
+        )
 
         # We need a socket pair because VISA doesn't expose a selectable fileno/socket
         # So we create a thread to read data and push that to the socket
@@ -142,18 +147,19 @@ class Visa(Adapter):
         self._stop_lock = threading.Lock()
         self.stop = False
 
-        self._fragment_lock = threading.Lock()
-        self._fragment: Fragment | None = None
-        self._event_queue: queue.Queue[AdapterEvent] = queue.Queue()
+        self._event_queue: queue.Queue[QueueEvent] = queue.Queue()
 
-        self._thread = threading.Thread(
-            target=self._internal_thread,
-            args=(self._inst, self._event_queue),
-            daemon=True,
+        self._thread: threading.Thread | None = None
+
+        super().__init__(
+            descriptor=VisaDescriptor.from_string(descriptor),
+            alias=alias,
+            stop_conditions=stop_conditions,
+            timeout=timeout,
+            encoding=encoding,
+            event_callback=event_callback,
+            auto_open=auto_open,
         )
-        self._thread.start()
-
-        self._inst_lock = threading.Lock()
 
     def _default_timeout(self) -> Timeout:
         return Timeout(response=5, action="error")
@@ -186,83 +192,95 @@ class Visa(Adapter):
         return available_resources
 
     def _worker_close(self) -> None:
-        with self._inst_lock:
-            if self._inst is not None:
-                self._inst.close()
-            self._opened = False
+        # with self._inst_lock:
+        # Stop the thread
+        if self._thread is not None:
             with self._stop_lock:
                 self.stop = True
+                self._thread.join(timeout=self.THREAD_STOP_DELAY)
+
+        # if self._inst is not None:
+        #     self._inst.close()
+        self._opened = False
 
     def _worker_write(self, data: bytes) -> None:
         # TODO : Add try around write
-        with self._inst_lock:
-            if self._inst is not None:
-                self._inst.write_raw(data)
+        # TODO : We assume that the instance is thread safe because
+        # it would slow things down to have a lock because the internal thread
+        # would release it every cycle (50ms)
+
+        # with self._inst_lock:
+        if self._inst is not None:
+            self._inst.write_raw(data)
 
     def _worker_read(self, fragment_timestamp: float) -> Fragment:
         self._notify_recv.recv(1)
-        if not self._event_queue.empty():
-            event = self._event_queue.get()
-            if isinstance(event, AdapterDisconnectedEvent):
-                # return Fragment(b"", fragment_timestamp)
-                raise AdapterReadError("Could not read from adapter")
+        event = self._event_queue.get(block=False, timeout=None)
 
-        with self._fragment_lock:
-            if self._fragment is None:
-                raise AdapterReadError("Invalid fragment")
-            output = self._fragment
-            self._fragment = None
-            return output
+        if isinstance(event, DisconnectedEvent):
+            # Signal that the adapter disconnected
+            return Fragment(b"", fragment_timestamp)
+        if isinstance(event, FragmentEvent):
+            return event.fragment
+
+        raise AdapterReadError("Invalid queue event")
 
     def _worker_open(self) -> None:
         self._worker_check_descriptor()
 
-        if self._inst is None:
-            # NOTE: self._rm is always defined in __init__ when pyvisa is present
-            self._inst = self._rm.open_resource(self._worker_descriptor.descriptor)
+        if self._thread is not None:
+            self.close()
 
-        if not self._opened:
-            # These attributes exist on pyvisa resources
-            self._inst.write_termination = ""
-            self._inst.read_termination = None
-            self._opened = True
+        # if self._inst is None:
+        # NOTE: self._rm is always defined in __init__ when pyvisa is present
 
-        # TODO : Tell the thread to open
+        self._inst = cast(
+            MessageBasedResource,
+            self._rm.open_resource(self._worker_descriptor.descriptor),
+        )
+        self._inst.write_termination = ""
+        self._inst.read_termination = None
 
-    def _internal_thread(
-        self,
-        inst: Resource,
-        event_queue: queue.Queue[AdapterEvent],
-    ) -> None:
-        timeout = 2000
+        self._opened = True
+
+        self._thread = threading.Thread(
+            target=self._internal_thread,
+            args=(self._inst,),
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _internal_thread(self, instance: MessageBasedResource) -> None:
+        timeout = 50e-3
         while True:
             payload = b""
-            with self._fragment_lock:
-                self._fragment = None  # Fragment(b"", None)
+            fragment: Fragment | None = None
             try:
-                inst.timeout = timeout
+                instance.timeout = timeout
             except pyvisa.InvalidSession:
-                pass
+                return
             try:
                 while True:
                     # Read up to an error
-                    payload += inst.read_bytes(1)
-                    inst.timeout = 0
+                    payload += instance.read_bytes(1)  # TODO : Maybe test with read_raw
+                    instance.timeout = 0
             except pyvisa.VisaIOError:
                 # Timeout
                 if payload:
-                    with self._fragment_lock:
-                        if self._fragment is None:
-                            self._fragment = Fragment(payload, time.time())
-                        else:
-                            self._fragment.data += payload
+                    if fragment is None:
+                        fragment = Fragment(payload, time.time())
+                    else:
+                        fragment.data += payload
                     # Tell the session that there's data (write to a virtual socket)
+                    self._event_queue.put(FragmentEvent(fragment))
                     self._notify_send.send(b"1")
             except (TypeError, pyvisa.InvalidSession, BrokenPipeError):
-                event_queue.put(AdapterDisconnectedEvent())
+                self._event_queue.put(DisconnectedEvent())
                 self._notify_send.send(b"1")
+
             with self._stop_lock:
                 if self.stop:
+                    instance.close()
                     break
 
     def _selectable(self) -> HasFileno | None:

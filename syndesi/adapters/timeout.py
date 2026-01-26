@@ -12,16 +12,13 @@ from typing import Any
 
 from ..tools.types import NumberLike, is_number
 
-
 class TimeoutAction(Enum):
     """
     Action on timeout expiration
     """
-
     ERROR = "error"
     RETURN_EMPTY = "return_empty"
     RETURN_NONE = "return_none"
-
 
 class Timeout:
     """
@@ -60,7 +57,7 @@ class Timeout:
         self._response: EllipsisType | NumberLike | None = response
 
     def __str__(self) -> str:
-        if self._response is ...:
+        if self._response is ... or self._response is None:
             r = "..."
         else:
             r = f"{self._response:.3f}"
