@@ -93,8 +93,9 @@ class Adapter(Component[bytes], AdapterWorker):
         event_callback: Callable[[AdapterEvent], None] | None = None,
         auto_open: bool = True,
     ) -> None:
-        super().__init__(LoggerAlias.ADAPTER)
-        self.encoding = encoding
+        Component.__init__(self, LoggerAlias.ADAPTER)
+        AdapterWorker.__init__(self, encoding)
+        
         self._alias = alias
 
         self._descriptor = descriptor

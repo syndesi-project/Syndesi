@@ -39,6 +39,8 @@ from .stop_conditions import (
 )
 from .timeout import Timeout, TimeoutAction, any_to_timeout
 
+from .tracehub import CloseEvent, FragmentEvent, OpenEvent, ReadEvent, tracehub
+
 
 def nmin(a: float | None, b: float | None) -> float | None:
     """
@@ -71,21 +73,17 @@ class HasFileno(Protocol):
 # │ Adapter events │
 # └────────────────┘
 
-
 class AdapterEvent(Event):
     """Adapter event"""
 
-
 class AdapterDisconnectedEvent(AdapterEvent):
     """Adapter disconnected event"""
-
 
 @dataclass
 class AdapterFrameEvent(AdapterEvent):
     """Adapter frame event, emitted when new data is available"""
 
     frame: AdapterFrame
-
 
 @dataclass
 class FirstFragmentEvent(AdapterEvent):
@@ -238,7 +236,8 @@ class AdapterWorker:
     _FRAME_BUFFER_MAX = 256
     _COMMAND_READY = b"\x00"
 
-    def __init__(self) -> None:
+    def __init__(self, encoding : str) -> None:
+        self.encoding = encoding
         # Command queue (worker input)
         self._command_queue_r, self._command_queue_w = socket.socketpair()
         self._command_queue_r.setblocking(False)
@@ -329,10 +328,12 @@ class AdapterWorker:
                 raise AdapterWriteError("Adapter not opened")
 
     @abstractmethod
-    def _worker_open(self) -> None: ...
+    def _worker_open(self) -> None:
+        tracehub.emit_open()
 
     @abstractmethod
-    def _worker_close(self) -> None: ...
+    def _worker_close(self) -> None:
+        tracehub.emit_close()
 
     # ┌──────────────────────────┐
     # │ Worker: command handling │
@@ -472,6 +473,7 @@ class AdapterWorker:
         - else buffer it
         - always emit callback event (if configured)
         """
+        t = time.time()
         self._worker_emit_event(AdapterFrameEvent(frame))
 
         pr = self._pending_read
@@ -482,6 +484,8 @@ class AdapterWorker:
                 # Restore stop conditions if we had applied an override
                 if pr.stop_override_applied and pr.prev_stop_conditions is not None:
                     self._stop_conditions = pr.prev_stop_conditions
+                payload = frame.get_payload()
+                tracehub.emit_read(payload)
                 pr.cmd.set_result(frame)
                 self._pending_read = None
                 return
@@ -570,6 +574,11 @@ class AdapterWorker:
             pr.stop_override_applied = True
 
     def _worker_manage_fragment(self, fragment: Fragment) -> None:
+
+        fragment_data = fragment.data
+        
+        tracehub.emit_fragment(fragment_data)
+
         # pylint: disable=too-many-branches, too-many-statements
         self._last_fragment_timestamp = fragment.timestamp
 

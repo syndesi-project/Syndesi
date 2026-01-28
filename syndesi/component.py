@@ -133,7 +133,7 @@ class Component(ABC, Generic[T]):
     """
 
     def __init__(self, logger_alias: LoggerAlias) -> None:
-        super().__init__()
+        #super().__init__()
         self._logger = logging.getLogger(logger_alias.value)
 
     # ==== open ====

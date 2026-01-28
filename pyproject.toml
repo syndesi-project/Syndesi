@@ -31,7 +31,7 @@ dependencies = ['prompt_toolkit', 'pyserial', 'rich', 'platformdirs']
 
 [project.scripts]
 syndesi = "syndesi.scripts.syndesi:main"
-syndesi-backend = "syndesi.scripts.syndesi_backend:main"
+syndesi-trace = "syndesi.scripts.syndesi_trace:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
