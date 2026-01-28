@@ -3,6 +3,7 @@
 # License : GPL
 
 from __future__ import annotations
+from abc import abstractmethod
 from enum import StrEnum
 
 # import json
@@ -12,6 +13,7 @@ from enum import StrEnum
 from syndesi.adapters.tracehub import (
     DEFAULT_MULTICAST_GROUP,
     DEFAULT_MULTICAST_PORT,
+    TraceEvent,
     json_to_trace_event
 )
 
@@ -85,8 +87,7 @@ try:
 except Exception:  # pragma: no cover
     Console = None  # type: ignore
 
-
-class ViewerMode(StrEnum):
+class TraceMode(StrEnum):
     """Viewer mode"""
     INTERACTIVE = 'interactive'
     FLAT = 'flat'
@@ -95,237 +96,214 @@ class ViewerMode(StrEnum):
 # Terminal input (interactive)
 # -----------------------------
 
-class _TerminalRawMode:
-    """Best-effort cbreak/raw mode (POSIX). Windows falls back to polling msvcrt."""
-    def __init__(self) -> None:
-        self._enabled = False
-        self._old = None
+class Trace:
+    def __init__(
+            self,
+            group : str,
+            port : int,
+            adapters : list[str] | None) -> None:
+        self.group = group
+        self.port = port
 
-    def __enter__(self):
-        if os.name != "posix":
-            return self
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("0.0.0.0", self.port))
+        mreq = struct.pack("4s4s", socket.inet_aton(self.group), socket.inet_aton("0.0.0.0"))
+        self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        self._sock.setblocking(False)
+
+        self._selector = selectors.DefaultSelector()
+        self._selector.register(self._sock, selectors.EVENT_READ, data="udp")
+
+        self._adapters = adapters
+
+    @abstractmethod
+    def run(self) -> None:
+        ...
+
+    def close(self) -> None:
         try:
-            import termios
-            import tty
-            fd = sys.stdin.fileno()
-            self._old = termios.tcgetattr(fd)
-            tty.setcbreak(fd)
-            self._enabled = True
+            self._selector.unregister(self._sock)
         except Exception:
-            self._enabled = False
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        if os.name != "posix":
-            return
-        if not self._enabled or self._old is None:
-            return
+            pass
         try:
-            import termios
-            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._old)
+            self._sock.close()
         except Exception:
             pass
 
-
-def _read_keys_nonblocking() -> List[str]:
-    """
-    Read available keys without blocking.
-    Returns a list of key tokens: "LEFT", "RIGHT", "q", etc.
-    """
-    keys: List[str] = []
-
-    if os.name == "nt":
-        try:
-            import msvcrt
-            while msvcrt.kbhit():
-                ch = msvcrt.getwch()
-                if ch in ("\x00", "\xe0"):  # special key prefix
-                    ch2 = msvcrt.getwch()
-                    if ch2 == "K":
-                        keys.append("LEFT")
-                    elif ch2 == "M":
-                        keys.append("RIGHT")
-                else:
-                    keys.append(ch)
-        except Exception:
-            return keys
-        return keys
-
-    # POSIX: stdin will be readable via selectors. We still decode escape sequences here.
-    try:
-        data = os.read(sys.stdin.fileno(), 64)
-    except Exception:
-        return keys
-
-    if not data:
-        return keys
-
-    s = data.decode("utf-8", "ignore")
-    i = 0
-    while i < len(s):
-        ch = s[i]
-        if ch == "\x1b":  # escape
-            # Arrow keys: ESC [ D/C
-            if i + 2 < len(s) and s[i + 1] == "[":
-                code = s[i + 2]
-                if code == "D":
-                    keys.append("LEFT")
-                    i += 3
-                    continue
-                if code == "C":
-                    keys.append("RIGHT")
-                    i += 3
-                    continue
-            i += 1
-            continue
-        keys.append(ch)
-        i += 1
-
-    return keys
+    def get_event(self, timeout : float) -> TraceEvent:
+        events = self._selector.select(timeout=timeout)
+        if events:
+            data, _addr = self._sock.recvfrom(65535)
+            json_data = json.loads(data.decode("utf-8", "replace"))
+            # Parse data
+            return json_to_trace_event(json_data)
+        return None
+            
+class FlatTrace(Trace):
+    def __init__(
+            self,
+            group: str = DEFAULT_MULTICAST_GROUP,
+            port: int = DEFAULT_MULTICAST_PORT,
+            adapters: list[str] | None = None,
+            adapter_regex: str | None = None,
+            time_mode: str = "rel",
+            abs_time_format: str = "%H:%M:%S.%f",
+            show_write_delta: bool = True,
+            fragments: str = "all",
+            max_preview: int = 80,
+            max_events: int = 200,
+            output: str | None = None) -> None:
+        super().__init__(group, port, adapters)
+        self.time_mode = time_mode
+        self.abs_time_format = abs_time_format
+        self.show_write_delta = show_write_delta
+        self.fragments = fragments
+        self.max_preview = max_preview
+        self.max_events = max_events
+        self._adapter_allow = set(adapters) if adapters else None
+        self._adapter_re: Optional[re.Pattern[str]] = re.compile(adapter_regex) if adapter_regex else None
+        self._output_fh = open(output, "a", encoding="utf-8") if output else None
 
 
-# -----------------------------
-# Rendering helpers
-# -----------------------------
+    def run(self) -> None:
+        # No live UI; just print as events arrive.
+        while True:
+            event = self.get_event()
 
-def _is_probably_epoch(ts: float) -> bool:
-    # heuristic: epoch seconds are ~ 1.6e9+; perf_counter is usually much smaller
-    return ts > 1_500_000_000
+            if event is not None:
+                self.print_event(event)
 
+    def close(self) -> None:
+        if self._output_fh:
+            try:
+                self._output_fh.flush()
+                self._output_fh.close()
+            except Exception:
+                pass
+            self._output_fh = None
+        super().close()
 
-def _format_time(ts: float, *, mode: str, base: Optional[float], abs_fmt: str) -> str:
-    if mode == "abs":
-        if _is_probably_epoch(ts):
-            dt = _dt.datetime.fromtimestamp(ts)
-            return dt.strftime(abs_fmt)
-        # fallback: monotonic "T+..."
-        if base is None:
-            base = ts
-        return f"T+{(ts - base):8.3f}s"
-    # relative
-    if base is None:
-        base = ts
-    return f"{(ts - base):8.3f}s"
+    def _print_header(self) -> None:
+        hdr = f"# syndesi-trace flat mode | host={self.group} port={self.port}"
+        #hdr += f" | time={self.time_mode}"
+        print(hdr)
 
+    def print_event(self, data):
+        print(data)
 
-def _safe_text_preview(b: bytes, limit: int) -> str:
-    if not b:
-        return ""
-    s = b.decode("utf-8", "replace").replace("\r", "\\r").replace("\n", "\\n")
-    if len(s) > limit:
-        s = s[:limit] + "…"
-    return s
+class InteractiveTrace(Trace):
+    def __init__(
+            self,
+            group: str = DEFAULT_MULTICAST_GROUP,
+            port: int = DEFAULT_MULTICAST_PORT,
+            adapters: list[str] | None = None,
+            adapter_regex: str | None = None,
+            time_mode: str = "rel",
+            abs_time_format: str = "%H:%M:%S.%f",
+            show_write_delta: bool = True,
+            fragments: str = "all",
+            max_preview: int = 80,
+            max_events: int = 200,
+            output: str | None = None) -> None:
+        super().__init__(group, port, adapters)
 
+        if Console is None:
+            print("This viewer requires 'rich'. Install it with: pip install rich", file=sys.stderr)
+            raise SystemExit(2)
+        
+        self._use_stdin = os.name == "posix"
+        if self._use_stdin:
+            try:
+                self._selector.register(sys.stdin, selectors.EVENT_READ, data="stdin")
+            except Exception:
+                self._use_stdin = False
 
-def _hex_preview(b: bytes, limit: int) -> str:
-    if not b:
-        return ""
-    s = b.hex()
-    if len(s) > limit:
-        s = s[:limit] + "…"
-    return s
-
-
-def _extract_bytes_and_len(d: dict[str, Any]) -> Tuple[bytes, Optional[int], bool]:
-    """
-    Returns (bytes_preview, total_len, truncated?)
-    - If 'data' is present as str, we treat it as preview and do not decode to bytes.
-    """
-    total_len: Optional[int] = None
-    truncated = bool(d.get("data_trunc") or d.get("truncated"))
-    for k in ("data_len", "nbytes", "length"):
-        if isinstance(d.get(k), int):
-            total_len = int(d[k])
-            break
-
-    if isinstance(d.get("data"), str):
-        # treat as preview only
-        return d["data"].encode("utf-8", "replace"), total_len, truncated
-
-    if isinstance(d.get("data_b64"), str) and d["data_b64"]:
-        try:
-            b = base64.b64decode(d["data_b64"].encode("ascii"), validate=False)
-            return b, total_len, truncated
-        except Exception:
-            return b"", total_len, True
-
-    if isinstance(d.get("data_hex"), str) and d["data_hex"]:
-        try:
-            b = bytes.fromhex(d["data_hex"])
-            return b, total_len, truncated
-        except Exception:
-            return b"", total_len, True
-
-    return b"", total_len, truncated
-
-
-def _extract_stop_reason(d: dict[str, Any]) -> str:
-    v = d.get("stop_reason") or d.get("stop_condition") or d.get("stop")
-    if v is None:
-        return ""
-    if isinstance(v, str):
-        return v
-    if isinstance(v, dict):
-        # common shapes: {"kind":"DELIM","value":"\\n"} etc.
-        kind = v.get("kind") or v.get("type") or v.get("name")
-        val = v.get("value") or v.get("param") or v.get("delimiter")
-        if kind and val is not None:
-            return f"{kind} {val!r}"
-        if kind:
-            return str(kind)
-    return str(v)
-
-
-def _adapter_style(name: str) -> str:
-    # stable-ish per adapter
-    colors = ["cyan", "magenta", "green", "yellow", "blue", "bright_cyan", "bright_magenta", "bright_green"]
-    idx = abs(hash(name)) % len(colors)
-    return colors[idx]
-
-
-def _badge(text: str, style: str) -> Text:
-    t = Text(f" {text} ", style=style)
-    return t
-
-
-# -----------------------------
-# Viewer state
-# -----------------------------
-
-
-class _AdapterState:
-    def __init__(self, max_events: int) -> None:
-        self.open_base_ts: Optional[float] = None
-        self.first_seen_ts: Optional[float] = None
-        self.last_write_ts: Optional[float] = None
-
-        # "pending fragments" before next read completion
-        self.pending_frags: List[dict[str, Any]] = []
-        self.pending_bytes: int = 0
-
-        # rolling rendered blocks for display (each block is list[Text])
-        self.blocks: Deque[List[Text]] = deque(maxlen=max_events)
-
-        # last activity
-        self.last_kind: str = ""
-        self.last_ts: Optional[float] = None
-
-    def base_ts(self) -> Optional[float]:
-        return self.open_base_ts or self.first_seen_ts
-
-
-class _Viewer:
-    def __init__(self) -> None:
         self.console = Console() if Console is not None else None
         self.adapters: Dict[str, _AdapterState] = {}
         self.adapter_order: List[str] = []
         self.selected_idx: int = 0
 
-        self._adapter_allow: Optional[set[str]] = set(args.adapter) if args.adapter else None
-        self._adapter_re: Optional[re.Pattern[str]] = re.compile(args.adapter_regex) if args.adapter_regex else None
+        self.time_mode = time_mode
+        self.abs_time_format = abs_time_format
+        self.show_write_delta = show_write_delta
+        self.fragments = fragments
+        self.max_events = max_events
+        self.max_preview = max_preview
 
-        self._output_fh = open(args.output, "a", encoding="utf-8") if args.output else None
+        self._adapter_allow = set(adapters) if adapters else None
+        self._adapter_re: Optional[re.Pattern[str]] = re.compile(adapter_regex) if adapter_regex else None
+        self._output_fh = open(output, "a", encoding="utf-8") if output else None
 
+    def selected_adapter(self) -> Optional[str]:
+        if not self.adapter_order:
+            return None
+        return self.adapter_order[self.selected_idx]
+
+    def _handle_key(self, token: str) -> bool:
+        # returns False to quit
+        token = token.strip()
+        if token in ("q", "Q"):
+            return False
+        if token in ("LEFT", "h"):
+            
+            if self.adapter_order:
+                self.selected_idx = (self.selected_idx - 1) % len(self.adapter_order)
+        if token in ("RIGHT", "l"):
+            if self.adapter_order:
+                self.selected_idx = (self.selected_idx + 1) % len(self.adapter_order)
+        if token in ("UP", "k"):
+            if self.adapter_order:
+                st = self.adapters[self.adapter_order[self.selected_idx]]
+                st.auto_follow = False
+                st.scroll_offset += 1
+        if token in ("DOWN", "j"):
+            if self.adapter_order:
+                st = self.adapters[self.adapter_order[self.selected_idx]]
+                if st.scroll_offset > 0:
+                    st.scroll_offset -= 1
+                if st.scroll_offset == 0:
+                    st.auto_follow = True
+        return True
+    
+    def run(self) -> None:
+        with _TerminalRawMode():
+            with Live(self._render_interactive(), refresh_per_second=20, screen=True) as live:
+                running = True
+                while running:
+                    events = self._selector.select(timeout=0.05)
+
+                    for key, _ in events:
+                        if key.data == "udp":
+                            # Drain all available datagrams
+                            while True:
+                                try:
+                                    data, _addr = self._sock.recvfrom(65535)
+                                except BlockingIOError:
+                                    break
+                                try:
+                                    d = json.loads(data.decode("utf-8", "replace"))
+                                    if isinstance(d, dict):
+                                        self.ingest(d)
+                                except Exception:
+                                    continue
+                        elif key.data == "stdin":
+                            for k in _read_keys_nonblocking():
+                                running = self._handle_key(k)
+                                if not running:
+                                    break
+
+                    # Windows key polling (no selector on stdin)
+                    if os.name == "nt":
+                        for k in _read_keys_nonblocking():
+                            running = self._handle_key(k)
+                            if not running:
+                                break
+
+                    live.update(self._render_interactive())
+                    if not running:
+                        break
+    
     def close(self) -> None:
         if self._output_fh:
             try:
@@ -344,7 +322,7 @@ class _Viewer:
 
     def _get_state(self, adapter: str) -> _AdapterState:
         if adapter not in self.adapters:
-            self.adapters[adapter] = _AdapterState(self.args.max_events)
+            self.adapters[adapter] = _AdapterState(self.max_events)
             self.adapter_order.append(adapter)
         return self.adapters[adapter]
 
@@ -354,11 +332,11 @@ class _Viewer:
             st.first_seen_ts = ts
 
         base = st.base_ts()
-        t_main = _format_time(ts, mode=self.args.time_mode, base=base, abs_fmt=self.args.abs_time_format)
+        t_main = _format_time(ts, mode=self.time_mode, base=base, abs_fmt=self.abs_time_format)
 
         # Δ since last write for fragments/read
         delta = ""
-        if self.args.show_write_delta and kind in ("fragment", "read") and st.last_write_ts is not None:
+        if self.show_write_delta and kind in ("fragment", "read") and st.last_write_ts is not None:
             delta_s = ts - st.last_write_ts
             delta = f"  +{delta_s*1000:6.1f}ms"
 
@@ -399,9 +377,9 @@ class _Viewer:
 
         preview_mode = "text"  # could be extended with a CLI flag
         if preview_mode == "text":
-            p = _safe_text_preview(b, self.args.max_preview)
+            p = _safe_text_preview(b, self.max_preview)
         else:
-            p = _hex_preview(b, self.args.max_preview)
+            p = _hex_preview(b, self.max_preview)
 
         # ---- build blocks ----
 
@@ -410,7 +388,7 @@ class _Viewer:
             st.pending_frags.append(d)
             st.pending_bytes += (n_total if n_total is not None else n_preview)
 
-            if self.args.fragments == "none":
+            if self.fragments == "none":
                 return None
 
             prefix = self._line_prefix(adapter, ts, kind)
@@ -432,11 +410,11 @@ class _Viewer:
 
             # Render pending fragments ABOVE read (connector fixed at render time)
             frag_lines: List[Text] = []
-            if self.args.fragments != "none":
+            if self.fragments != "none":
                 for i, fd in enumerate(st.pending_frags):
                     fts = float(fd.get("timestamp") if fd.get("timestamp") is not None else fd.get("t", ts))
                     fb, _, ftr = _extract_bytes_and_len(fd)
-                    fp = _safe_text_preview(fb, self.args.max_preview)
+                    fp = _safe_text_preview(fb, self.max_preview)
                     connector = "├─ "  # final connector will be for READ line itself
                     frag_lines.append(Text.assemble(
                         self._line_prefix(adapter, fts, "fragment"),
@@ -517,10 +495,8 @@ class _Viewer:
         block = self._render_event_block(adapter, d)
         if block:
             # If it's a fragment event and we're in interactive mode, avoid “double printing”
-            # in flat mode by respecting args.fragments.
+            # in flat mode by respecting self.fragments.
             st.blocks.append(block)
-            if self.args.mode == "flat":
-                self._emit_flat(block)
         return True
 
     def _emit_flat(self, block: List[Text]) -> None:
@@ -543,7 +519,7 @@ class _Viewer:
             style = f"bold reverse {_adapter_style(name)}" if sel else f"{_adapter_style(name)}"
             t.append(f" {name} ", style=style)
         t.append("   ", style="dim")
-        t.append("←/→ switch  q quit  (h/l also)", style="dim")
+        t.append("←/→ switch  ↑/↓ scroll  q quit  (h/j/k/l also)", style="dim")
         return t
 
     def _render_interactive(self) -> Panel:
@@ -576,7 +552,7 @@ class _Viewer:
         if not lines:
             lines = [Text("No events yet for this adapter.", style="dim")]
 
-        body = Text("\n").join(lines)
+        body = Text("\n").join(self._visible_lines(lines, st))
         header = self._render_tabs()
 
         # Wrap body in a panel; header goes as title-ish via subtitle
@@ -587,111 +563,248 @@ class _Viewer:
             padding=(1, 1),
         )
 
-    def _render_flat_header(self) -> None:
-        if self.args.mode != "flat":
-            return
-        hdr = f"# syndesi-trace flat mode | host={self.args.listen_host} port={self.args.listen_port}"
-        if self.args.multicast_group:
-            hdr += f" mcast={self.args.multicast_group}"
-        hdr += f" | time={self.args.time_mode}"
-        print(hdr)
+    def _visible_lines(self, lines: List[Text], st: _AdapterState) -> List[Text]:
+        height = self.console.size.height if self.console is not None else 24
+        # Reserve space for borders, title, and padding.
+        visible = max(1, height - 6)
+        total = len(lines)
+        max_offset = max(0, total - visible)
+        if st.auto_follow:
+            st.scroll_offset = 0
+        else:
+            st.scroll_offset = min(max_offset, st.scroll_offset)
+        start = max(0, total - visible - st.scroll_offset)
+        return lines[start:start + visible]
 
-    def selected_adapter(self) -> Optional[str]:
-        if not self.adapter_order:
-            return None
-        return self.adapter_order[self.selected_idx]
+class _TerminalRawMode:
+    """Best-effort cbreak/raw mode (POSIX). Windows falls back to polling msvcrt."""
+    def __init__(self) -> None:
+        self._enabled = False
+        self._old = None
 
-class Display:
-    def __init__(self, multicast_group : str, port : int) -> None:
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._sock.bind(("localhost", port))
-        mreq = struct.pack("4s4s", socket.inet_aton(multicast_group), socket.inet_aton("0.0.0.0"))
-        self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-        self._sock.setblocking(False)
-
-        self._selector = selectors.DefaultSelector()
-        self._selector.register(self._sock, selectors.EVENT_READ, data="udp")
-
-    def run(self, mode : ViewerMode):
+    def __enter__(self):
+        if os.name != "posix":
+            return self
         try:
-            if mode == ViewerMode.INTERACTIVE:
-                self.run_interactive_mode()
-            elif mode == ViewerMode.FLAT:
-                self.run_flat_mode()
-        except KeyboardInterrupt:
+            import termios
+            import tty
+            fd = sys.stdin.fileno()
+            self._old = termios.tcgetattr(fd)
+            tty.setcbreak(fd)
+            self._enabled = True
+        except Exception:
+            self._enabled = False
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if os.name != "posix":
+            return
+        if not self._enabled or self._old is None:
+            return
+        try:
+            import termios
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._old)
+        except Exception:
             pass
-        finally:
-            #viewer.close()
-            try:
-                self._selector.unregister(self._sock)
-            except Exception:
-                pass
-            try:
-                self._sock.close()
-            except Exception:
-                pass
 
-    def run_flat_mode(self):
-        # No live UI; just print as events arrive.
-        while True:
-            events = self._selector.select(timeout=0.5)
-            for key, _ in events:
-                if key.data == "udp":
-                    while True:
-                        try:
-                            data, _addr = sock.recvfrom(65535)
-                            print(f'Data : {data}')
-                        except BlockingIOError:
-                            break
-                        try:
-                            d = json.loads(data.decode("utf-8", "replace"))
-                            if isinstance(d, dict):
-                                viewer.ingest(d)
-                        except Exception:
-                            # ignore malformed packet
-                            continue
 
-    def run_interactive_mode(self):
-        # Interactive: alternate screen, render tabs + selected adapter panel.
-        with _TerminalRawMode():
-            with Live(viewer._render_interactive(), refresh_per_second=20, screen=True) as live:
-                running = True
-                while running:
-                    events = sel.select(timeout=0.1)
+def _read_keys_nonblocking() -> List[str]:
+    """
+    Read available keys without blocking.
+    Returns a list of key tokens: "LEFT", "RIGHT", "q", etc.
+    """
+    keys: List[str] = []
 
-                    # Windows key polling (no selector on stdin)
-                    if os.name == "nt":
-                        for k in _read_keys_nonblocking():
-                            running = handle_key(k)
-                            if not running:
-                                break
+    if os.name == "nt":
+        try:
+            import msvcrt
+            while msvcrt.kbhit():
+                ch = msvcrt.getwch()
+                if ch in ("\x00", "\xe0"):  # special key prefix
+                    ch2 = msvcrt.getwch()
+                    if ch2 == "K":
+                        keys.append("LEFT")
+                    elif ch2 == "M":
+                        keys.append("RIGHT")
+                    elif ch2 == "H":
+                        keys.append("UP")
+                    elif ch2 == "P":
+                        keys.append("DOWN")
+                else:
+                    keys.append(ch)
+        except Exception:
+            return keys
+        return keys
 
-                    for key, _ in events:
-                        if key.data == "udp":
-                            # Drain all available datagrams
-                            while True:
-                                try:
-                                    data, _addr = sock.recvfrom(65535)
-                                    print(f'Data : {data}')
-                                except BlockingIOError:
-                                    break
-                                try:
-                                    d = json.loads(data.decode("utf-8", "replace"))
-                                    if isinstance(d, dict):
-                                        viewer.ingest(d)
-                                except Exception:
-                                    continue
+    # POSIX: stdin will be readable via selectors. We still decode escape sequences here.
+    try:
+        data = os.read(sys.stdin.fileno(), 64)
+    except Exception:
+        return keys
 
-                        elif key.data == "stdin":
-                            for k in _read_keys_nonblocking():
-                                running = handle_key(k)
-                                if not running:
-                                    break
+    if not data:
+        return keys
 
-                    live.update(viewer._render_interactive())
-                    if not running:
-                        break
+    s = data.decode("utf-8", "ignore")
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch == "\x1b":  # escape
+            # Arrow keys: ESC [ D/C
+            if i + 2 < len(s) and s[i + 1] == "[":
+                code = s[i + 2]
+                if code == "D":
+                    keys.append("LEFT")
+                    i += 3
+                    continue
+                if code == "C":
+                    keys.append("RIGHT")
+                    i += 3
+                    continue
+                if code == "A":
+                    keys.append("UP")
+                    i += 3
+                    continue
+                if code == "B":
+                    keys.append("DOWN")
+                    i += 3
+                    continue
+            i += 1
+            continue
+        keys.append(ch)
+        i += 1
+
+    return keys
+
+
+# -----------------------------
+# Rendering helpers
+# -----------------------------
+
+# def _is_probably_epoch(ts: float) -> bool:
+#     # heuristic: epoch seconds are ~ 1.6e9+; perf_counter is usually much smaller
+#     return ts > 1_500_000_000
+
+def _format_time(ts: float, *, mode: str, base: Optional[float], abs_fmt: str) -> str:
+    if mode == "abs":
+        # if _is_probably_epoch(ts):
+        #     dt = _dt.datetime.fromtimestamp(ts)
+        #     return dt.strftime(abs_fmt)
+        # fallback: monotonic "T+..."
+        if base is None:
+            base = ts
+        return f"T+{(ts - base):8.3f}s"
+    # relative
+    if base is None:
+        base = ts
+    return f"{(ts - base):8.3f}s"
+
+
+def _safe_text_preview(b: bytes, limit: int) -> str:
+    if not b:
+        return ""
+    s = b.decode("utf-8", "replace").replace("\r", "\\r").replace("\n", "\\n")
+    if len(s) > limit:
+        s = s[:limit] + "…"
+    return s
+
+
+def _hex_preview(b: bytes, limit: int) -> str:
+    if not b:
+        return ""
+    s = b.hex()
+    if len(s) > limit:
+        s = s[:limit] + "…"
+    return s
+
+
+def _extract_bytes_and_len(d: dict[str, Any]) -> Tuple[bytes, Optional[int], bool]:
+    """
+    Returns (bytes_preview, total_len, truncated?)
+    - If 'data' is present as str, we treat it as preview and do not decode to bytes.
+    """
+    total_len: Optional[int] = None
+    truncated = bool(d.get("data_trunc") or d.get("truncated"))
+    for k in ("data_len", "nbytes", "length"):
+        if isinstance(d.get(k), int):
+            total_len = int(d[k])
+            break
+
+    if isinstance(d.get("data"), str):
+        # treat as preview only
+        return d["data"].encode("utf-8", "replace"), total_len, truncated
+
+    if isinstance(d.get("data_b64"), str) and d["data_b64"]:
+        try:
+            b = base64.b64decode(d["data_b64"].encode("ascii"), validate=False)
+            return b, total_len, truncated
+        except Exception:
+            return b"", total_len, True
+
+    if isinstance(d.get("data_hex"), str) and d["data_hex"]:
+        try:
+            b = bytes.fromhex(d["data_hex"])
+            return b, total_len, truncated
+        except Exception:
+            return b"", total_len, True
+
+    return b"", total_len, truncated
+
+def _extract_stop_reason(d: dict[str, Any]) -> str:
+    v = d.get("stop_reason") or d.get("stop_condition") or d.get("stop")
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v
+    if isinstance(v, dict):
+        # common shapes: {"kind":"DELIM","value":"\\n"} etc.
+        kind = v.get("kind") or v.get("type") or v.get("name")
+        val = v.get("value") or v.get("param") or v.get("delimiter")
+        if kind and val is not None:
+            return f"{kind} {val!r}"
+        if kind:
+            return str(kind)
+    return str(v)
+
+def _adapter_style(name: str) -> str:
+    # stable-ish per adapter
+    colors = ["cyan", "magenta", "green", "yellow", "blue", "bright_cyan", "bright_magenta", "bright_green"]
+    idx = abs(hash(name)) % len(colors)
+    return colors[idx]
+
+
+def _badge(text: str, style: str) -> Text:
+    t = Text(f" {text} ", style=style)
+    return t
+
+# -----------------------------
+# Viewer state
+# -----------------------------
+
+class _AdapterState:
+    def __init__(self, max_events: int) -> None:
+        self.open_base_ts: Optional[float] = None
+        self.first_seen_ts: Optional[float] = None
+        self.last_write_ts: Optional[float] = None
+
+        # "pending fragments" before next read completion
+        self.pending_frags: List[dict[str, Any]] = []
+        self.pending_bytes: int = 0
+
+        # rolling rendered blocks for display (each block is list[Text])
+        maxlen = max_events if max_events > 0 else None
+        self.blocks: Deque[List[Text]] = deque(maxlen=maxlen)
+
+        # last activity
+        self.last_kind: str = ""
+        self.last_ts: Optional[float] = None
+
+        # interactive scroll state
+        self.scroll_offset: int = 0
+        self.auto_follow: bool = True
+
+    def base_ts(self) -> Optional[float]:
+        return self.open_base_ts or self.first_seen_ts
 
 # -----------------------------
 # Main loop
@@ -702,8 +815,8 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     parser.add_argument(
         "--mode",
-        choices=[str(x) for x in ViewerMode],
-        default=ViewerMode.INTERACTIVE.value,
+        choices=[str(x) for x in TraceMode],
+        default=TraceMode.INTERACTIVE.value,
         help="Display mode. interactive: tabs per adapter. flat: append-only timeline.",
     )
 
@@ -740,48 +853,52 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument("--fragments", choices=["auto", "all", "none"], default="all",
                         help="Fragment visibility. all=show fragments. none=hide fragments. auto reserved for future.")
     parser.add_argument("--max-preview", type=int, default=80, help="Max preview chars for payload display.")
-    parser.add_argument("--max-events", type=int, default=200, help="Max event blocks kept per adapter in interactive mode.")
+    parser.add_argument("--max-events", type=int, default=200, help="Max event blocks kept per adapter in interactive mode (0 = unlimited).")
 
     # Output (flat)
     parser.add_argument("--output", default=None, help="Write flat output to this file instead of stdout.")
 
     args = parser.parse_args(argv)
 
-    mode = ViewerMode(args.mode)
-
-    if Console is None:
-        print("This viewer requires 'rich'. Install it with: pip install rich", file=sys.stderr)
-        raise SystemExit(2)
-
-    viewer = _Viewer(args)
-    print(f'Make UDP socket : {args.listen_host}:{args.listen_port}')
-
-    use_stdin = (args.mode == "interactive" and os.name == "posix")
-    if use_stdin:
-        try:
-            sel.register(sys.stdin, selectors.EVENT_READ, data="stdin")
-        except Exception:
-            use_stdin = False
-
-    viewer._render_flat_header()
-
-    def handle_key(token: str) -> bool:
-        # returns False to quit
-        token = token.strip()
-        if token in ("q", "Q"):
-            return False
-        if token in ("LEFT", "h"):
-            if viewer.adapter_order:
-                viewer.selected_idx = (viewer.selected_idx - 1) % len(viewer.adapter_order)
-        if token in ("RIGHT", "l"):
-            if viewer.adapter_order:
-                viewer.selected_idx = (viewer.selected_idx + 1) % len(viewer.adapter_order)
-        return True
-
-    trace = Display()
-
-    trace.run(mode)
-
+    mode = TraceMode(args.mode)    
+    
+    if mode == TraceMode.INTERACTIVE:
+        trace = InteractiveTrace(
+            group=args.multicast_group,
+            port=args.listen_port,
+            adapters=args.adapter or None,
+            adapter_regex=args.adapter_regex,
+            time_mode=args.time_mode,
+            abs_time_format=args.abs_time_format,
+            show_write_delta=args.show_write_delta,
+            fragments=args.fragments,
+            max_preview=args.max_preview,
+            max_events=args.max_events,
+            output=args.output,
+        )
+    elif mode == TraceMode.FLAT:
+        trace = FlatTrace(
+            group=args.multicast_group,
+            port=args.listen_port,
+            adapters=args.adapter or None,
+            adapter_regex=args.adapter_regex,
+            time_mode=args.time_mode,
+            abs_time_format=args.abs_time_format,
+            show_write_delta=args.show_write_delta,
+            fragments=args.fragments,
+            max_preview=args.max_preview,
+            max_events=args.max_events,
+            output=args.output,
+        )
+    else:
+        raise ValueError(f'Invalid mode : {mode}')
+    
+    try:
+        trace.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        trace.close()
 
 if __name__ == "__main__":
     main()
