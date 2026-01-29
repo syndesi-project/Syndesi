@@ -329,11 +329,13 @@ class AdapterWorker:
 
     @abstractmethod
     def _worker_open(self) -> None:
-        tracehub.emit_open()
+        if self._worker_descriptor is not None:
+            tracehub.emit_open(str(self._worker_descriptor))
 
     @abstractmethod
     def _worker_close(self) -> None:
-        tracehub.emit_close()
+        if self._worker_descriptor is not None:
+            tracehub.emit_close(str(self._worker_descriptor))
 
     # ┌──────────────────────────┐
     # │ Worker: command handling │
@@ -485,7 +487,8 @@ class AdapterWorker:
                 if pr.stop_override_applied and pr.prev_stop_conditions is not None:
                     self._stop_conditions = pr.prev_stop_conditions
                 payload = frame.get_payload()
-                tracehub.emit_read(payload)
+                if self._worker_descriptor is not None:
+                    tracehub.emit_read(str(self._worker_descriptor), payload, self.encoding)
                 pr.cmd.set_result(frame)
                 self._pending_read = None
                 return
@@ -576,8 +579,8 @@ class AdapterWorker:
     def _worker_manage_fragment(self, fragment: Fragment) -> None:
 
         fragment_data = fragment.data
-        
-        tracehub.emit_fragment(fragment_data)
+        if self._worker_descriptor is not None:
+            tracehub.emit_fragment(str(self._worker_descriptor), fragment_data, self.encoding)
 
         # pylint: disable=too-many-branches, too-many-statements
         self._last_fragment_timestamp = fragment.timestamp

@@ -14,7 +14,11 @@ from syndesi.adapters.tracehub import (
     DEFAULT_MULTICAST_GROUP,
     DEFAULT_MULTICAST_PORT,
     TraceEvent,
-    json_to_trace_event
+    json_to_trace_event,
+    FragmentEvent,
+    OpenEvent,
+    CloseEvent,
+    ReadEvent
 )
 
 # TRUNCATE_LENGTH = 20
@@ -87,6 +91,12 @@ try:
 except Exception:  # pragma: no cover
     Console = None  # type: ignore
 
+from rich.align import Align
+from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
+from rich.text import Text
+
 class TraceMode(StrEnum):
     """Viewer mode"""
     INTERACTIVE = 'interactive'
@@ -134,11 +144,17 @@ class Trace:
     def get_event(self, timeout : float) -> TraceEvent:
         events = self._selector.select(timeout=timeout)
         if events:
-            data, _addr = self._sock.recvfrom(65535)
-            json_data = json.loads(data.decode("utf-8", "replace"))
-            # Parse data
-            return json_to_trace_event(json_data)
-        return None
+            while True:
+                try:
+                    data, _addr = self._sock.recvfrom(65535)
+                except BlockingIOError:
+                    break
+
+                json_data = json.loads(data.decode("utf-8", "replace"))
+                # Parse data
+                yield json_to_trace_event(json_data)
+        else:
+            yield None
             
 class FlatTrace(Trace):
     def __init__(
@@ -169,7 +185,7 @@ class FlatTrace(Trace):
     def run(self) -> None:
         # No live UI; just print as events arrive.
         while True:
-            event = self.get_event()
+            event = self.get_event(None)
 
             if event is not None:
                 self.print_event(event)
@@ -271,22 +287,29 @@ class InteractiveTrace(Trace):
             with Live(self._render_interactive(), refresh_per_second=20, screen=True) as live:
                 running = True
                 while running:
-                    events = self._selector.select(timeout=0.05)
 
-                    for key, _ in events:
-                        if key.data == "udp":
+
+                    for event in self.get_event(timeout=0.05):
+                        if event is not None:
+                            d = json.loads(data.decode("utf-8", "replace"))
+                            if isinstance(d, dict):
+                                self.ingest(d)
+                    #events = self._selector.select(timeout=0.05)
+
+                    #for key, _ in events:
+                        if# key.data == "udp":
                             # Drain all available datagrams
                             while True:
                                 try:
                                     data, _addr = self._sock.recvfrom(65535)
                                 except BlockingIOError:
                                     break
-                                try:
-                                    d = json.loads(data.decode("utf-8", "replace"))
-                                    if isinstance(d, dict):
-                                        self.ingest(d)
-                                except Exception:
-                                    continue
+                                #try:
+                                d = json.loads(data.decode("utf-8", "replace"))
+                                if isinstance(d, dict):
+                                    self.ingest(d)
+                                # except Exception:
+                                #     continue
                         elif key.data == "stdin":
                             for k in _read_keys_nonblocking():
                                 running = self._handle_key(k)
@@ -326,7 +349,7 @@ class InteractiveTrace(Trace):
             self.adapter_order.append(adapter)
         return self.adapters[adapter]
 
-    def _line_prefix(self, adapter: str, ts: float, kind: str) -> Text:
+    def _line_prefix(self, adapter: str, ts: float) -> Text:
         st = self._get_state(adapter)
         if st.first_seen_ts is None:
             st.first_seen_ts = ts
@@ -336,95 +359,98 @@ class InteractiveTrace(Trace):
 
         # Δ since last write for fragments/read
         delta = ""
-        if self.show_write_delta and kind in ("fragment", "read") and st.last_write_ts is not None:
-            delta_s = ts - st.last_write_ts
-            delta = f"  +{delta_s*1000:6.1f}ms"
+        # if self.show_write_delta and kind in ("fragment", "read") and st.last_write_ts is not None:
+        #     delta_s = ts - st.last_write_ts
+        #     delta = f"  +{delta_s*1000:6.1f}ms"
 
         tag = Text()
         tag.append(t_main, style="dim")
-        tag.append(delta, style="dim")
+        #tag.append(delta, style="dim")
         tag.append("  ")
         tag.append(f"[{adapter}]", style=f"bold {_adapter_style(adapter)}")
         tag.append(" ")
         return tag
 
-    def _render_event_block(self, adapter: str, d: dict[str, Any]) -> Optional[List[Text]]:
+    def _render_event_block(self, adapter: str, event : TraceEvent) -> Optional[List[Text]]:
         """
         Returns a block of one or more Text lines.
         For "read", includes pending fragments above it (per user requirement).
         """
         st = self._get_state(adapter)
-        kind = str(d.get("kind") or d.get("type") or d.get("event") or "unknown").lower()
-        ts = float(d.get("timestamp") if d.get("timestamp") is not None else d.get("t", time.time()))
+        #kind = str(d.get("kind") or d.get("type") or d.get("event") or "unknown").lower()
+        ts = event.timestamp#float(d.get("timestamp") if d.get("timestamp") is not None else d.get("t", time.time()))
 
-        st.last_kind = kind
+        #st.last_kind = kind
         st.last_ts = ts
 
-        # Track open base time
-        if kind == "open" and st.open_base_ts is None:
-            st.open_base_ts = ts
         if st.first_seen_ts is None:
             st.first_seen_ts = ts
 
-        # Interpret "write" / "tx" as "previous write"
-        if kind in ("tx", "write") or str(d.get("direction", "")).upper() == "TX":
-            st.last_write_ts = ts
+        
 
-        # Extract payload preview
-        b, total_len, truncated = _extract_bytes_and_len(d)
-        n_preview = len(b)
-        n_total = total_len if total_len is not None else (int(d.get("n")) if isinstance(d.get("n"), int) else None)
+        
+        if isinstance(event, OpenEvent):
+            if st.open_base_ts is None:
+                st.open_base_ts = ts
 
-        preview_mode = "text"  # could be extended with a CLI flag
-        if preview_mode == "text":
-            p = _safe_text_preview(b, self.max_preview)
-        else:
-            p = _hex_preview(b, self.max_preview)
-
-        # ---- build blocks ----
-
-        if kind == "fragment":
-            # store pending; also add a "live line" block if showing fragments
-            st.pending_frags.append(d)
-            st.pending_bytes += (n_total if n_total is not None else n_preview)
+            prefix = self._line_prefix(adapter, ts)
+            line = Text.assemble(prefix, Text("🔌✅ OPEN", style="bold green"), Text("  "))
+            return [line]
+        
+        if isinstance(event, FragmentEvent):
+            n_preview = len(event.data)
+            total_len = event.length
+            #st.pending_frags.append(event)
+            #st.pending_bytes += (n_total if n_total is not None else n_preview)
 
             if self.fragments == "none":
                 return None
 
-            prefix = self._line_prefix(adapter, ts, kind)
+            prefix = self._line_prefix(adapter, ts)
             line = Text.assemble(
                 prefix,
                 Text("├─ ", style="dim"),
-                Text("🧩 FRAG", style="cyan"),
+                Text("🧩 ", style="cyan"),
                 Text(f"  {n_preview:4d}B", style="dim"),
                 Text("  "),
-                Text(p, style="white"),
-                Text(" …" if truncated else "", style="dim"),
+                Text(event.data, style="white"),
+                #Text(" …" if truncated else "", style="dim"),
             )
             return [line]
 
-        if kind == "read":
-            prefix = self._line_prefix(adapter, ts, kind)
-            stop = _extract_stop_reason(d)
+        # preview_mode = "text"  # could be extended with a CLI flag
+        # if preview_mode == "text":
+        #     p = _safe_text_preview(b, self.max_preview)
+        # else:
+        #     p = _hex_preview(b, self.max_preview)
+
+        # ---- build blocks ----
+            
+
+        if isinstance(event, ReadEvent):
+            prefix = self._line_prefix(adapter, ts)
+            stop = 'test'#_extract_stop_reason(d)
             stop_badge = _badge(f"⏹ {stop}" if stop else "⏹", "bold magenta") if self.console else Text(f"⏹ {stop}".strip())
 
             # Render pending fragments ABOVE read (connector fixed at render time)
             frag_lines: List[Text] = []
-            if self.fragments != "none":
-                for i, fd in enumerate(st.pending_frags):
-                    fts = float(fd.get("timestamp") if fd.get("timestamp") is not None else fd.get("t", ts))
-                    fb, _, ftr = _extract_bytes_and_len(fd)
-                    fp = _safe_text_preview(fb, self.max_preview)
-                    connector = "├─ "  # final connector will be for READ line itself
-                    frag_lines.append(Text.assemble(
-                        self._line_prefix(adapter, fts, "fragment"),
-                        Text(f"{connector}", style="dim"),
-                        Text("🧩 FRAG", style="cyan"),
-                        Text(f"  {len(fb):4d}B", style="dim"),
-                        Text("  "),
-                        Text(fp, style="white"),
-                        Text(" …" if ftr else "", style="dim"),
-                    ))
+            # if self.fragments != "none":
+            #     for i, fd in enumerate(st.pending_frags):
+
+
+            #         fts = float(fd.get("timestamp") if fd.get("timestamp") is not None else fd.get("t", ts))
+            #         fb, _, ftr = _extract_bytes_and_len(fd)
+            #         fp = _safe_text_preview(fb, self.max_preview)
+            #         connector = "├─ "  # final connector will be for READ line itself
+            #         frag_lines.append(Text.assemble(
+            #             self._line_prefix(adapter, fts, "fragment"),
+            #             Text(f"{connector}", style="dim"),
+            #             Text("🧩 FRAG", style="cyan"),
+            #             Text(f"  {len(fb):4d}B", style="dim"),
+            #             Text("  "),
+            #             Text(fp, style="white"),
+            #             Text(" …" if ftr else "", style="dim"),
+            #         ))
 
             # Now read line (must be last; uses └─)
             read_line = Text()
@@ -432,11 +458,7 @@ class InteractiveTrace(Trace):
             read_line.append("└─ ", style="dim")
             read_line.append("🧵 READ", style="bold bright_white")
 
-            # byte count
-            if n_total is None:
-                # if producer doesn't send total len, approximate with preview
-                n_total = n_preview
-            read_line.append(f"  {n_total:4d}B", style="dim")
+            #read_line.append(f"  {n_total:4d}B", style="dim")
 
             read_line.append("  ")
             if self.console:
@@ -445,9 +467,7 @@ class InteractiveTrace(Trace):
                 read_line.append(f"{stop_badge}", style="magenta")
 
             read_line.append("  ")
-            read_line.append(p, style="white")
-            if truncated:
-                read_line.append(" …", style="dim")
+            read_line.append(event.data, style="white")
 
             # Clear pending fragments once read completes
             st.pending_frags.clear()
@@ -455,44 +475,39 @@ class InteractiveTrace(Trace):
 
             return frag_lines + [read_line]
 
-        if kind == "open":
-            prefix = self._line_prefix(adapter, ts, kind)
-            msg = str(d.get("message") or d.get("url") or d.get("resource") or "")
-            line = Text.assemble(prefix, Text("🔌✅ OPEN", style="bold green"), Text("  "), Text(msg, style="white"))
+        if isinstance(event, CloseEvent):
+            prefix = self._line_prefix(adapter, ts)
+            #msg = str(d.get("message") or "")
+            line = Text.assemble(prefix, Text("🔌🛑 CLOSE", style="bold red"), Text("  "), Text('close', style="white"))
             return [line]
 
-        if kind == "close":
-            prefix = self._line_prefix(adapter, ts, kind)
-            msg = str(d.get("message") or "")
-            line = Text.assemble(prefix, Text("🔌🛑 CLOSE", style="bold red"), Text("  "), Text(msg, style="white"))
-            return [line]
 
-        if kind in ("tx", "write"):
-            prefix = self._line_prefix(adapter, ts, kind)
-            line = Text.assemble(prefix, Text("📤 TX", style="green"), Text(f"  {n_preview:4d}B", style="dim"),
-                                 Text("  "), Text(p, style="white"), Text(" …" if truncated else "", style="dim"))
-            return [line]
+        # if kind in ("tx", "write"):
+        #     prefix = self._line_prefix(adapter, ts, kind)
+        #     line = Text.assemble(prefix, Text("📤 TX", style="green"), Text(f"  {n_preview:4d}B", style="dim"),
+        #                          Text("  "), Text(p, style="white"), Text(" …" if truncated else "", style="dim"))
+        #     return [line]
 
-        if kind in ("error", "exception"):
-            prefix = self._line_prefix(adapter, ts, kind)
-            msg = str(d.get("message") or d.get("error") or "")
-            line = Text.assemble(prefix, Text("❌ ERROR", style="bold red"), Text("  "), Text(msg, style="white"))
-            return [line]
+        # if kind in ("error", "exception"):
+        #     prefix = self._line_prefix(adapter, ts, kind)
+        #     msg = str(d.get("message") or d.get("error") or "")
+        #     line = Text.assemble(prefix, Text("❌ ERROR", style="bold red"), Text("  "), Text(msg, style="white"))
+        #     return [line]
 
         # Fallback
-        prefix = self._line_prefix(adapter, ts, kind)
-        msg = str(d.get("message") or "")
-        line = Text.assemble(prefix, Text(f"• {kind.upper()}", style="dim"), Text("  "), Text(msg, style="white"))
+        prefix = self._line_prefix(adapter, ts)
+        msg = "error" # str(d.get("message") or "")
+        line = Text.assemble(prefix, Text(f"• kind", style="dim"), Text("  "), Text(msg, style="white"))
         return [line]
 
-    def ingest(self, d: dict[str, Any]) -> bool:
-        adapter = str(d.get("adapter") or d.get("adapter_id") or d.get("port") or "default")
-        if not self._allow_adapter(adapter):
+    def ingest(self, event : TraceEvent) -> bool:
+        adapter_id = event.descriptor
+        if not self._allow_adapter(adapter_id):
             return False
 
-        st = self._get_state(adapter)
+        st = self._get_state(adapter_id)
 
-        block = self._render_event_block(adapter, d)
+        block = self._render_event_block(adapter_id, event)
         if block:
             # If it's a fragment event and we're in interactive mode, avoid “double printing”
             # in flat mode by respecting self.fragments.
@@ -716,19 +731,6 @@ def _hex_preview(b: bytes, limit: int) -> str:
     if len(s) > limit:
         s = s[:limit] + "…"
     return s
-
-
-def _extract_bytes_and_len(d: dict[str, Any]) -> Tuple[bytes, Optional[int], bool]:
-    """
-    Returns (bytes_preview, total_len, truncated?)
-    - If 'data' is present as str, we treat it as preview and do not decode to bytes.
-    """
-    total_len: Optional[int] = None
-    truncated = bool(d.get("data_trunc") or d.get("truncated"))
-    for k in ("data_len", "nbytes", "length"):
-        if isinstance(d.get(k), int):
-            total_len = int(d[k])
-            break
 
     if isinstance(d.get("data"), str):
         # treat as preview only

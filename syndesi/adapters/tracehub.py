@@ -17,6 +17,15 @@ class TraceEvent:
     """
     Base trace event
     """
+    descriptor : str
+    timestamp : float
+
+@dataclass(frozen=True)
+class OpenEvent(TraceEvent):
+    """
+    Adapter open trace event
+    """
+    t : str = field(default="open", init=False)
 
 @dataclass(frozen=True)
 class FragmentEvent(TraceEvent):
@@ -24,21 +33,15 @@ class FragmentEvent(TraceEvent):
     Fragment received trace event
     """
     data : str
-    key : str = field(default="fragment", init=False)
-
-@dataclass(frozen=True)
-class OpenEvent(TraceEvent):
-    """
-    Adapter open trace event
-    """
-    key : str = field(default="open", init=False)
+    length : int
+    t : str = field(default="fragment", init=False)
 
 @dataclass(frozen=True)
 class CloseEvent(TraceEvent):
     """
     Adapter close trace event
     """
-    key : str = field(default="close", init=False)
+    t : str = field(default="close", init=False)
 
 @dataclass(frozen=True)
 class ReadEvent(TraceEvent):
@@ -46,10 +49,10 @@ class ReadEvent(TraceEvent):
     Adapter read trace event
     """
     data : str
-    key : str = field(default="read", init=False)
+    t : str = field(default="read", init=False)
 
 EVENTS : dict[str, type[TraceEvent]]= {
-    e.key : e for e in [FragmentEvent, OpenEvent, CloseEvent, ReadEvent]
+    e.t : e for e in [FragmentEvent, OpenEvent, CloseEvent, ReadEvent]
 }
 
 DEFAULT_MULTICAST_GROUP = "239.255.42.99"
@@ -59,11 +62,11 @@ def json_to_trace_event(payload : dict) -> TraceEvent:
     """
     Convert json data to TraceEvent
     """
-    payload_key = payload.get("key", None)
+    payload_type = payload.get("t", None)
     for k, event in EVENTS.items():
-        if k == payload_key:
+        if k == payload_type:
             arguments = payload.copy()
-            arguments.pop("key")
+            arguments.pop("t")
             return event(**arguments)
     raise ValueError(f"Could not parse payload : {payload}")
 
@@ -82,29 +85,36 @@ class _TraceHub:
         self._udp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, struct.pack("b", 1 if self.LOOPBACK else 0))
         self._udp_dropped = 0
 
-    def emit_open(self):
+    def emit_open(self, descriptor : str):
         """
         Emit an open trace event
         """
-        self._emit_event(OpenEvent())
+        self._emit_event(OpenEvent(descriptor, time.time()))
     
-    def emit_close(self):
+    def emit_close(self, descriptor : str):
         """
         Emit a close trace event
         """
-        self._emit_event(CloseEvent())
+        self._emit_event(CloseEvent(descriptor, time.time()))
 
-    def emit_fragment(self, data : bytes, encoding : str = 'utf-8'):
+    def emit_fragment(self, descriptor : str, data : bytes, encoding : str):
         """
         Emit a fragment trace event
         """
-        self._emit_event(FragmentEvent(data[:self.TRUNCATE_LENGTH].decode(encoding, errors='replace')))
+        self._emit_event(FragmentEvent(
+            descriptor,
+            time.time(),
+            data[:self.TRUNCATE_LENGTH].decode(encoding, errors='replace'),
+            len(data)
+        ))
 
-    def emit_read(self, data : bytes, encoding : str = 'utf-8'):
+    def emit_read(self, descriptor : str, data : bytes, encoding : str):
         """
         Emit a read trace event
         """
         self._emit_event(ReadEvent(
+            descriptor,
+            time.time(),
             data[:self.TRUNCATE_LENGTH].decode(encoding, errors='replace')
         ))
 
