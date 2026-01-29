@@ -194,6 +194,7 @@ class IP(Adapter):
                 )
 
     def _worker_open(self) -> None:
+        super()._worker_open()
         self._worker_check_descriptor()
 
         # Create the socket instance
@@ -224,6 +225,7 @@ class IP(Adapter):
         self._logger.info(f"IP Adapter {self._worker_descriptor} opened")
 
     def _worker_close(self) -> None:
+        super()._worker_close()
         if self._socket is not None:
             try:
                 self._socket.shutdown(_socket.SHUT_RDWR)

@@ -326,6 +326,9 @@ class AdapterWorker:
             self._worker_open()
             if not self._opened:
                 raise AdapterWriteError("Adapter not opened")
+        if self._worker_descriptor is not None:
+            tracehub.emit_write(str(self._worker_descriptor), data, self.encoding)
+            
 
     @abstractmethod
     def _worker_open(self) -> None:

@@ -14,6 +14,7 @@ from syndesi.adapters.tracehub import (
     DEFAULT_MULTICAST_GROUP,
     DEFAULT_MULTICAST_PORT,
     TraceEvent,
+    WriteEvent,
     json_to_trace_event,
     FragmentEvent,
     OpenEvent,
@@ -80,7 +81,7 @@ import sys
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Any, Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, Generator, List, Optional, Tuple
 
 try:
     from rich.align import Align
@@ -141,20 +142,21 @@ class Trace:
         except Exception:
             pass
 
-    def get_event(self, timeout : float) -> TraceEvent:
+    def get_event(self, timeout : float) -> Generator[TraceEvent, Any, Any]:
         events = self._selector.select(timeout=timeout)
-        if events:
-            while True:
-                try:
-                    data, _addr = self._sock.recvfrom(65535)
-                except BlockingIOError:
-                    break
+        for key, _ in events:
+            if key.data == "udp":
+                while True:
+                    try:
+                        data, _addr = self._sock.recvfrom(65535)
+                    except BlockingIOError:
+                        break
 
-                json_data = json.loads(data.decode("utf-8", "replace"))
-                # Parse data
-                yield json_to_trace_event(json_data)
-        else:
-            yield None
+                    json_data = json.loads(data.decode("utf-8", "replace"))
+                    # Parse data
+                    yield json_to_trace_event(json_data)
+            else:
+                yield None
             
 class FlatTrace(Trace):
     def __init__(
@@ -207,6 +209,29 @@ class FlatTrace(Trace):
 
     def print_event(self, data):
         print(data)
+
+
+    def _line_prefix(self, adapter: str, ts: float) -> Text:
+        st = self._get_state(adapter)
+        if st.first_seen_ts is None:
+            st.first_seen_ts = ts
+
+        base = st.base_ts()
+        t_main = _format_time(ts, mode=self.time_mode, base=base, abs_fmt=self.abs_time_format)
+
+        # Δ since last write for fragments/read
+        delta = ""
+        # if self.show_write_delta and kind in ("fragment", "read") and st.last_write_ts is not None:
+        #     delta_s = ts - st.last_write_ts
+        #     delta = f"  +{delta_s*1000:6.1f}ms"
+
+        tag = Text()
+        tag.append(t_main, style="dim")
+        #tag.append(delta, style="dim")
+        #tag.append("  ")
+        tag.append(f"[{adapter}]", style=f"bold {_adapter_style(adapter)}")
+        tag.append(" ")
+        return tag
 
 class InteractiveTrace(Trace):
     def __init__(
@@ -288,41 +313,22 @@ class InteractiveTrace(Trace):
                 running = True
                 while running:
 
-
                     for event in self.get_event(timeout=0.05):
-                        if event is not None:
-                            d = json.loads(data.decode("utf-8", "replace"))
-                            if isinstance(d, dict):
-                                self.ingest(d)
-                    #events = self._selector.select(timeout=0.05)
-
-                    #for key, _ in events:
-                        if# key.data == "udp":
-                            # Drain all available datagrams
-                            while True:
-                                try:
-                                    data, _addr = self._sock.recvfrom(65535)
-                                except BlockingIOError:
-                                    break
-                                #try:
-                                d = json.loads(data.decode("utf-8", "replace"))
-                                if isinstance(d, dict):
-                                    self.ingest(d)
-                                # except Exception:
-                                #     continue
-                        elif key.data == "stdin":
+                        print(f'Event : {event}')
+                        if event is None:
                             for k in _read_keys_nonblocking():
                                 running = self._handle_key(k)
                                 if not running:
                                     break
+                        else:
+                            self.ingest(event)
 
-                    # Windows key polling (no selector on stdin)
                     if os.name == "nt":
                         for k in _read_keys_nonblocking():
                             running = self._handle_key(k)
                             if not running:
                                 break
-
+                
                     live.update(self._render_interactive())
                     if not running:
                         break
@@ -364,11 +370,7 @@ class InteractiveTrace(Trace):
         #     delta = f"  +{delta_s*1000:6.1f}ms"
 
         tag = Text()
-        tag.append(t_main, style="dim")
-        #tag.append(delta, style="dim")
-        tag.append("  ")
-        tag.append(f"[{adapter}]", style=f"bold {_adapter_style(adapter)}")
-        tag.append(" ")
+        tag.append(t_main, style="dim").append(" ")
         return tag
 
     def _render_event_block(self, adapter: str, event : TraceEvent) -> Optional[List[Text]]:
@@ -385,36 +387,46 @@ class InteractiveTrace(Trace):
 
         if st.first_seen_ts is None:
             st.first_seen_ts = ts
-
-        
-
         
         if isinstance(event, OpenEvent):
             if st.open_base_ts is None:
                 st.open_base_ts = ts
 
             prefix = self._line_prefix(adapter, ts)
-            line = Text.assemble(prefix, Text("🔌✅ OPEN", style="bold green"), Text("  "))
+            line = Text.assemble(
+                prefix,
+                Text("open  ●", style="bold green")
+            )
+            return [line]
+        
+        if isinstance(event, CloseEvent):
+            prefix = self._line_prefix(adapter, ts)
+            line = Text.assemble(
+                prefix,
+                Text("close ●", style="bold red")
+            )
+            return [line]
+        
+        if isinstance(event, WriteEvent):
+            prefix = self._line_prefix(adapter, ts)
+            line = Text.assemble(
+                prefix,
+                Text("write → ", style="bold dim"),
+                Text(f"{event.length:4d}B", style="dim"),
+                Text(f" {event.data}")
+            )
             return [line]
         
         if isinstance(event, FragmentEvent):
-            n_preview = len(event.data)
-            total_len = event.length
-            #st.pending_frags.append(event)
-            #st.pending_bytes += (n_total if n_total is not None else n_preview)
-
-            if self.fragments == "none":
-                return None
+            # if self.fragments == "none":
+            #     return None
 
             prefix = self._line_prefix(adapter, ts)
             line = Text.assemble(
                 prefix,
-                Text("├─ ", style="dim"),
-                Text("🧩 ", style="cyan"),
-                Text(f"  {n_preview:4d}B", style="dim"),
-                Text("  "),
+                Text("frag  ⋮⋮", style="bold dim"),
+                Text(f"{event.length:4d}B ", style="dim"),
                 Text(event.data, style="white"),
-                #Text(" …" if truncated else "", style="dim"),
             )
             return [line]
 
@@ -429,11 +441,23 @@ class InteractiveTrace(Trace):
 
         if isinstance(event, ReadEvent):
             prefix = self._line_prefix(adapter, ts)
+
             stop = 'test'#_extract_stop_reason(d)
             stop_badge = _badge(f"⏹ {stop}" if stop else "⏹", "bold magenta") if self.console else Text(f"⏹ {stop}".strip())
 
+            line = Text.assemble(
+                prefix,
+                Text("read  ← ", style="bold dim"),
+                Text(f"{event.length:4d}B ", style="dim"),
+                Text(f"{event.data} "),
+                Text(f'{stop_badge}', style="magenta")
+            )
+
+            return [line]
+
+
+
             # Render pending fragments ABOVE read (connector fixed at render time)
-            frag_lines: List[Text] = []
             # if self.fragments != "none":
             #     for i, fd in enumerate(st.pending_frags):
 
@@ -453,33 +477,25 @@ class InteractiveTrace(Trace):
             #         ))
 
             # Now read line (must be last; uses └─)
-            read_line = Text()
-            read_line.append_text(prefix)
-            read_line.append("└─ ", style="dim")
-            read_line.append("🧵 READ", style="bold bright_white")
+            #read_line.append("└─ ", style="dim")
+            
 
             #read_line.append(f"  {n_total:4d}B", style="dim")
 
-            read_line.append("  ")
-            if self.console:
-                read_line.append_text(stop_badge)
-            else:
-                read_line.append(f"{stop_badge}", style="magenta")
+            # read_line.append("  ")
+            # if self.console:
+            #     read_line.append_text(stop_badge)
+            # else:
+            #     read_line.append(f"{stop_badge}", style="magenta")
 
-            read_line.append("  ")
-            read_line.append(event.data, style="white")
+            # read_line.append("  ")
+            # read_line.append(event.data, style="white")
 
-            # Clear pending fragments once read completes
-            st.pending_frags.clear()
-            st.pending_bytes = 0
+            # # Clear pending fragments once read completes
+            # st.pending_frags.clear()
+            # st.pending_bytes = 0
 
-            return frag_lines + [read_line]
-
-        if isinstance(event, CloseEvent):
-            prefix = self._line_prefix(adapter, ts)
-            #msg = str(d.get("message") or "")
-            line = Text.assemble(prefix, Text("🔌🛑 CLOSE", style="bold red"), Text("  "), Text('close', style="white"))
-            return [line]
+            # return frag_lines + [read_line]            
 
 
         # if kind in ("tx", "write"):

@@ -4,9 +4,7 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod
 from dataclasses import asdict, dataclass, field
-import os
 import struct
 import json
 import socket
@@ -50,9 +48,19 @@ class ReadEvent(TraceEvent):
     """
     data : str
     t : str = field(default="read", init=False)
+    length : int
+
+@dataclass(frozen=True)
+class WriteEvent(TraceEvent):
+    """
+    Adapter write trace event
+    """
+    data : str
+    length : int
+    t : str = field(default="write", init=False)
 
 EVENTS : dict[str, type[TraceEvent]]= {
-    e.t : e for e in [FragmentEvent, OpenEvent, CloseEvent, ReadEvent]
+    e.t : e for e in [FragmentEvent, OpenEvent, CloseEvent, ReadEvent, WriteEvent]
 }
 
 DEFAULT_MULTICAST_GROUP = "239.255.42.99"
@@ -69,7 +77,6 @@ def json_to_trace_event(payload : dict) -> TraceEvent:
             arguments.pop("t")
             return event(**arguments)
     raise ValueError(f"Could not parse payload : {payload}")
-
 
 class _TraceHub:
     TTL = 1
@@ -97,6 +104,9 @@ class _TraceHub:
         """
         self._emit_event(CloseEvent(descriptor, time.time()))
 
+    def _truncate(self, data : bytes, encoding : str) -> str:
+        return data[:self.TRUNCATE_LENGTH].decode(encoding, errors='replace')
+
     def emit_fragment(self, descriptor : str, data : bytes, encoding : str):
         """
         Emit a fragment trace event
@@ -104,7 +114,18 @@ class _TraceHub:
         self._emit_event(FragmentEvent(
             descriptor,
             time.time(),
-            data[:self.TRUNCATE_LENGTH].decode(encoding, errors='replace'),
+            self._truncate(data, encoding),
+            len(data)
+        ))
+
+    def emit_write(self, descriptor : str, data : bytes, encoding : str):
+        """
+        Emit a write trace event
+        """
+        self._emit_event(WriteEvent(
+            descriptor,
+            time.time(),
+            self._truncate(data, encoding),
             len(data)
         ))
 
@@ -115,7 +136,8 @@ class _TraceHub:
         self._emit_event(ReadEvent(
             descriptor,
             time.time(),
-            data[:self.TRUNCATE_LENGTH].decode(encoding, errors='replace')
+            data[:self.TRUNCATE_LENGTH].decode(encoding, errors='replace'),
+            len(data)
         ))
 
     def _emit_event(self, ev: TraceEvent) -> None:

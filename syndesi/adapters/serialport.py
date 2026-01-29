@@ -158,6 +158,7 @@ class SerialPort(Adapter):
         return [Continuation(0.1)]
 
     def _worker_open(self) -> None:
+        super()._worker_open()
         self._worker_check_descriptor()
 
         if self._worker_descriptor.baudrate is None:
@@ -203,6 +204,7 @@ class SerialPort(Adapter):
             raise AdapterOpenError("Unknown error")
 
     def _worker_close(self) -> None:
+        super()._worker_close()
         if self._port is not None:
             self._port.close()
             self._logger.info(f"Adapter {self._worker_descriptor} closed")
@@ -229,6 +231,7 @@ class SerialPort(Adapter):
             self.open()
 
     def _worker_write(self, data: bytes) -> None:
+        super()._worker_write(data)
         if self._worker_descriptor.rts_cts:  # Experimental
             self._port.setRTS(True)  # type: ignore
         if self._port is not None:

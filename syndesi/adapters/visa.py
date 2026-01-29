@@ -192,6 +192,7 @@ class Visa(Adapter):
         return available_resources
 
     def _worker_close(self) -> None:
+        super()._worker_close()
         # with self._inst_lock:
         # Stop the thread
         if self._thread is not None:
@@ -204,6 +205,7 @@ class Visa(Adapter):
         self._opened = False
 
     def _worker_write(self, data: bytes) -> None:
+        super()._worker_write(data)
         # TODO : Add try around write
         # TODO : We assume that the instance is thread safe because
         # it would slow things down to have a lock because the internal thread
@@ -226,6 +228,7 @@ class Visa(Adapter):
         raise AdapterReadError("Invalid queue event")
 
     def _worker_open(self) -> None:
+        super()._worker_open()
         self._worker_check_descriptor()
 
         if self._thread is not None:
