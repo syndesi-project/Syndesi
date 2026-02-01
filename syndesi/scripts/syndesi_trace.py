@@ -3,23 +3,24 @@
 # License : GPL
 
 from __future__ import annotations
+
 from abc import abstractmethod
 from enum import StrEnum
+from types import TracebackType
 
 # import json
 # import socket
 # import struct
-
 from syndesi.adapters.tracehub import (
     DEFAULT_MULTICAST_GROUP,
     DEFAULT_MULTICAST_PORT,
+    CloseEvent,
+    FragmentEvent,
+    OpenEvent,
+    ReadEvent,
     TraceEvent,
     WriteEvent,
     json_to_trace_event,
-    FragmentEvent,
-    OpenEvent,
-    CloseEvent,
-    ReadEvent
 )
 
 # TRUNCATE_LENGTH = 20
@@ -69,8 +70,6 @@ This viewer is intentionally tolerant: it will render best-effort.
 """
 
 import argparse
-import base64
-import datetime as _dt
 import json
 import os
 import re
@@ -78,10 +77,9 @@ import selectors
 import socket
 import struct
 import sys
-import time
-from collections import defaultdict, deque
-from dataclasses import dataclass
-from typing import Any, Deque, Dict, Generator, List, Optional, Tuple
+from collections import deque
+from collections.abc import Generator
+from typing import Any
 
 try:
     from rich.align import Align
@@ -97,6 +95,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
+
 
 class TraceMode(StrEnum):
     """Viewer mode"""
@@ -119,7 +118,8 @@ class Trace:
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock.bind(("0.0.0.0", self.port))
-        mreq = struct.pack("4s4s", socket.inet_aton(self.group), socket.inet_aton("0.0.0.0"))
+        #self._sock.bind(("127.0.0.1", self.port))
+        mreq = struct.pack("4s4s", socket.inet_aton(self.group), socket.inet_aton("127.0.0.1"))
         self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
         self._sock.setblocking(False)
 
@@ -142,7 +142,7 @@ class Trace:
         except Exception:
             pass
 
-    def get_event(self, timeout : float) -> Generator[TraceEvent, Any, Any]:
+    def get_event(self, timeout : float | None) -> Generator[TraceEvent | None, Any, Any]:
         events = self._selector.select(timeout=timeout)
         for key, _ in events:
             if key.data == "udp":
@@ -157,7 +157,7 @@ class Trace:
                     yield json_to_trace_event(json_data)
             else:
                 yield None
-            
+
 class FlatTrace(Trace):
     def __init__(
             self,
@@ -180,17 +180,16 @@ class FlatTrace(Trace):
         self.max_preview = max_preview
         self.max_events = max_events
         self._adapter_allow = set(adapters) if adapters else None
-        self._adapter_re: Optional[re.Pattern[str]] = re.compile(adapter_regex) if adapter_regex else None
+        self._adapter_re: re.Pattern[str] | None = re.compile(adapter_regex) if adapter_regex else None
         self._output_fh = open(output, "a", encoding="utf-8") if output else None
 
 
     def run(self) -> None:
         # No live UI; just print as events arrive.
         while True:
-            event = self.get_event(None)
-
-            if event is not None:
-                self.print_event(event)
+            for event in self.get_event(None):
+                if event is not None:
+                    self.print_event(event)
 
     def close(self) -> None:
         if self._output_fh:
@@ -207,17 +206,17 @@ class FlatTrace(Trace):
         #hdr += f" | time={self.time_mode}"
         print(hdr)
 
-    def print_event(self, data):
+    def print_event(self, data : TraceEvent) -> None:
         print(data)
 
 
     def _line_prefix(self, adapter: str, ts: float) -> Text:
-        st = self._get_state(adapter)
-        if st.first_seen_ts is None:
-            st.first_seen_ts = ts
+        #st = self._get_state(adapter)
+        #if st.first_seen_ts is None:
+        #    st.first_seen_ts = ts
 
-        base = st.base_ts()
-        t_main = _format_time(ts, mode=self.time_mode, base=base, abs_fmt=self.abs_time_format)
+        #base = st.base_ts()
+        #t_main = _format_time(ts, mode=self.time_mode, base=base, abs_fmt=self.abs_time_format)
 
         # Δ since last write for fragments/read
         delta = ""
@@ -226,7 +225,7 @@ class FlatTrace(Trace):
         #     delta = f"  +{delta_s*1000:6.1f}ms"
 
         tag = Text()
-        tag.append(t_main, style="dim")
+        tag.append("time", style="dim")
         #tag.append(delta, style="dim")
         #tag.append("  ")
         tag.append(f"[{adapter}]", style=f"bold {_adapter_style(adapter)}")
@@ -252,7 +251,7 @@ class InteractiveTrace(Trace):
         if Console is None:
             print("This viewer requires 'rich'. Install it with: pip install rich", file=sys.stderr)
             raise SystemExit(2)
-        
+
         self._use_stdin = os.name == "posix"
         if self._use_stdin:
             try:
@@ -261,8 +260,8 @@ class InteractiveTrace(Trace):
                 self._use_stdin = False
 
         self.console = Console() if Console is not None else None
-        self.adapters: Dict[str, _AdapterState] = {}
-        self.adapter_order: List[str] = []
+        self.adapters: dict[str, _AdapterState] = {}
+        self.adapter_order: list[str] = []
         self.selected_idx: int = 0
 
         self.time_mode = time_mode
@@ -273,10 +272,10 @@ class InteractiveTrace(Trace):
         self.max_preview = max_preview
 
         self._adapter_allow = set(adapters) if adapters else None
-        self._adapter_re: Optional[re.Pattern[str]] = re.compile(adapter_regex) if adapter_regex else None
+        self._adapter_re: re.Pattern[str] | None = re.compile(adapter_regex) if adapter_regex else None
         self._output_fh = open(output, "a", encoding="utf-8") if output else None
 
-    def selected_adapter(self) -> Optional[str]:
+    def selected_adapter(self) -> str | None:
         if not self.adapter_order:
             return None
         return self.adapter_order[self.selected_idx]
@@ -287,7 +286,7 @@ class InteractiveTrace(Trace):
         if token in ("q", "Q"):
             return False
         if token in ("LEFT", "h"):
-            
+
             if self.adapter_order:
                 self.selected_idx = (self.selected_idx - 1) % len(self.adapter_order)
         if token in ("RIGHT", "l"):
@@ -306,7 +305,7 @@ class InteractiveTrace(Trace):
                 if st.scroll_offset == 0:
                     st.auto_follow = True
         return True
-    
+
     def run(self) -> None:
         with _TerminalRawMode():
             with Live(self._render_interactive(), refresh_per_second=20, screen=True) as live:
@@ -328,11 +327,11 @@ class InteractiveTrace(Trace):
                             running = self._handle_key(k)
                             if not running:
                                 break
-                
+
                     live.update(self._render_interactive())
                     if not running:
                         break
-    
+
     def close(self) -> None:
         if self._output_fh:
             try:
@@ -373,7 +372,7 @@ class InteractiveTrace(Trace):
         tag.append(t_main, style="dim").append(" ")
         return tag
 
-    def _render_event_block(self, adapter: str, event : TraceEvent) -> Optional[List[Text]]:
+    def _render_event_block(self, adapter: str, event : TraceEvent) -> list[Text] | None:
         """
         Returns a block of one or more Text lines.
         For "read", includes pending fragments above it (per user requirement).
@@ -387,7 +386,7 @@ class InteractiveTrace(Trace):
 
         if st.first_seen_ts is None:
             st.first_seen_ts = ts
-        
+
         if isinstance(event, OpenEvent):
             if st.open_base_ts is None:
                 st.open_base_ts = ts
@@ -398,7 +397,7 @@ class InteractiveTrace(Trace):
                 Text("open  ●", style="bold green")
             )
             return [line]
-        
+
         if isinstance(event, CloseEvent):
             prefix = self._line_prefix(adapter, ts)
             line = Text.assemble(
@@ -406,27 +405,25 @@ class InteractiveTrace(Trace):
                 Text("close ●", style="bold red")
             )
             return [line]
-        
+
         if isinstance(event, WriteEvent):
             prefix = self._line_prefix(adapter, ts)
             line = Text.assemble(
                 prefix,
-                Text("write → ", style="bold dim"),
+                Text("write →", style="bold dim"),
                 Text(f"{event.length:4d}B", style="dim"),
                 Text(f" {event.data}")
             )
             return [line]
-        
-        if isinstance(event, FragmentEvent):
-            # if self.fragments == "none":
-            #     return None
 
+        if isinstance(event, FragmentEvent):
             prefix = self._line_prefix(adapter, ts)
             line = Text.assemble(
                 prefix,
-                Text("frag  ⋮⋮", style="bold dim"),
+                Text("      ↓", style="dim"),
                 Text(f"{event.length:4d}B ", style="dim"),
-                Text(event.data, style="white"),
+                Text(event.data, style="dim"),
+                Text(" (frag)", style="dim")
             )
             return [line]
 
@@ -437,20 +434,20 @@ class InteractiveTrace(Trace):
         #     p = _hex_preview(b, self.max_preview)
 
         # ---- build blocks ----
-            
+
 
         if isinstance(event, ReadEvent):
             prefix = self._line_prefix(adapter, ts)
 
-            stop = 'test'#_extract_stop_reason(d)
-            stop_badge = _badge(f"⏹ {stop}" if stop else "⏹", "bold magenta") if self.console else Text(f"⏹ {stop}".strip())
+            #stop = 'test'#_extract_stop_reason(d)
+            #stop_badge = _badge(f"⏹ {stop}" if stop else "⏹", "bold magenta") if self.console else Text(f"⏹ {stop}".strip())
 
             line = Text.assemble(
                 prefix,
-                Text("read  ← ", style="bold dim"),
+                Text("read  ←", style="bold dim"),
                 Text(f"{event.length:4d}B ", style="dim"),
                 Text(f"{event.data} "),
-                Text(f'{stop_badge}', style="magenta")
+                Text(f'({event.stop_condition_indicator})', style="dim")
             )
 
             return [line]
@@ -478,7 +475,7 @@ class InteractiveTrace(Trace):
 
             # Now read line (must be last; uses └─)
             #read_line.append("└─ ", style="dim")
-            
+
 
             #read_line.append(f"  {n_total:4d}B", style="dim")
 
@@ -495,25 +492,12 @@ class InteractiveTrace(Trace):
             # st.pending_frags.clear()
             # st.pending_bytes = 0
 
-            # return frag_lines + [read_line]            
-
-
-        # if kind in ("tx", "write"):
-        #     prefix = self._line_prefix(adapter, ts, kind)
-        #     line = Text.assemble(prefix, Text("📤 TX", style="green"), Text(f"  {n_preview:4d}B", style="dim"),
-        #                          Text("  "), Text(p, style="white"), Text(" …" if truncated else "", style="dim"))
-        #     return [line]
-
-        # if kind in ("error", "exception"):
-        #     prefix = self._line_prefix(adapter, ts, kind)
-        #     msg = str(d.get("message") or d.get("error") or "")
-        #     line = Text.assemble(prefix, Text("❌ ERROR", style="bold red"), Text("  "), Text(msg, style="white"))
-        #     return [line]
+            # return frag_lines + [read_line]
 
         # Fallback
         prefix = self._line_prefix(adapter, ts)
         msg = "error" # str(d.get("message") or "")
-        line = Text.assemble(prefix, Text(f"• kind", style="dim"), Text("  "), Text(msg, style="white"))
+        line = Text.assemble(prefix, Text("• kind", style="dim"), Text("  "), Text(msg, style="white"))
         return [line]
 
     def ingest(self, event : TraceEvent) -> bool:
@@ -530,7 +514,7 @@ class InteractiveTrace(Trace):
             st.blocks.append(block)
         return True
 
-    def _emit_flat(self, block: List[Text]) -> None:
+    def _emit_flat(self, block: list[Text]) -> None:
         # Flat mode: write plain text lines (no colors) for exportability
         for line in block:
             s = line.plain if hasattr(line, "plain") else str(line)
@@ -562,23 +546,23 @@ class InteractiveTrace(Trace):
         st = self.adapters[selected]
 
         # Compose recent blocks into lines
-        lines: List[Text] = []
+        lines: list[Text] = []
         for block in st.blocks:
             lines.extend(block)
 
         # Add “read in progress” hint (best-effort)
-        if st.pending_frags:
-            # show a pinned in-progress line at the bottom
-            last_ts = st.last_ts or st.first_seen_ts or time.time()
-            prefix = self._line_prefix(selected, float(last_ts), "read")
-            inprog = Text.assemble(
-                prefix,
-                Text("⏳ reading…", style="yellow"),
-                Text(f"  frags={len(st.pending_frags)}", style="dim"),
-                Text(f"  bytes≈{st.pending_bytes}", style="dim"),
-            )
-            lines.append(Text(""))
-            lines.append(inprog)
+        # if st.pending_frags:
+        #     # show a pinned in-progress line at the bottom
+        #     last_ts = st.last_ts or st.first_seen_ts or time.time()
+        #     prefix = self._line_prefix(selected, float(last_ts), "read")
+        #     inprog = Text.assemble(
+        #         prefix,
+        #         Text("⏳ reading…", style="yellow"),
+        #         Text(f"  frags={len(st.pending_frags)}", style="dim"),
+        #         Text(f"  bytes≈{st.pending_bytes}", style="dim"),
+        #     )
+        #     lines.append(Text(""))
+        #     lines.append(inprog)
 
         if not lines:
             lines = [Text("No events yet for this adapter.", style="dim")]
@@ -594,7 +578,7 @@ class InteractiveTrace(Trace):
             padding=(1, 1),
         )
 
-    def _visible_lines(self, lines: List[Text], st: _AdapterState) -> List[Text]:
+    def _visible_lines(self, lines: list[Text], st: _AdapterState) -> list[Text]:
         height = self.console.size.height if self.console is not None else 24
         # Reserve space for borders, title, and padding.
         visible = max(1, height - 6)
@@ -611,9 +595,9 @@ class _TerminalRawMode:
     """Best-effort cbreak/raw mode (POSIX). Windows falls back to polling msvcrt."""
     def __init__(self) -> None:
         self._enabled = False
-        self._old = None
+        self._old : list[Any] | None = None
 
-    def __enter__(self):
+    def __enter__(self) -> _TerminalRawMode:
         if os.name != "posix":
             return self
         try:
@@ -627,7 +611,12 @@ class _TerminalRawMode:
             self._enabled = False
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(
+            self,
+            type_: type[BaseException] | None,
+            value: BaseException | None,
+            traceback: TracebackType | None
+        ) -> None:
         if os.name != "posix":
             return
         if not self._enabled or self._old is None:
@@ -639,33 +628,34 @@ class _TerminalRawMode:
             pass
 
 
-def _read_keys_nonblocking() -> List[str]:
+def _read_keys_nonblocking() -> list[str]:
     """
     Read available keys without blocking.
     Returns a list of key tokens: "LEFT", "RIGHT", "q", etc.
     """
-    keys: List[str] = []
+    keys: list[str] = []
 
     if os.name == "nt":
-        try:
-            import msvcrt
-            while msvcrt.kbhit():
-                ch = msvcrt.getwch()
-                if ch in ("\x00", "\xe0"):  # special key prefix
-                    ch2 = msvcrt.getwch()
-                    if ch2 == "K":
-                        keys.append("LEFT")
-                    elif ch2 == "M":
-                        keys.append("RIGHT")
-                    elif ch2 == "H":
-                        keys.append("UP")
-                    elif ch2 == "P":
-                        keys.append("DOWN")
-                else:
-                    keys.append(ch)
-        except Exception:
-            return keys
-        return keys
+        raise NotImplementedError()
+        # try:
+        #     import msvcrt
+        #     while msvcrt.kbhit():
+        #         ch = msvcrt.getwch()
+        #         if ch in ("\x00", "\xe0"):  # special key prefix
+        #             ch2 = msvcrt.getwch()
+        #             if ch2 == "K":
+        #                 keys.append("LEFT")
+        #             elif ch2 == "M":
+        #                 keys.append("RIGHT")
+        #             elif ch2 == "H":
+        #                 keys.append("UP")
+        #             elif ch2 == "P":
+        #                 keys.append("DOWN")
+        #         else:
+        #             keys.append(ch)
+        # except Exception:
+        #     return keys
+        # return keys
 
     # POSIX: stdin will be readable via selectors. We still decode escape sequences here.
     try:
@@ -716,7 +706,7 @@ def _read_keys_nonblocking() -> List[str]:
 #     # heuristic: epoch seconds are ~ 1.6e9+; perf_counter is usually much smaller
 #     return ts > 1_500_000_000
 
-def _format_time(ts: float, *, mode: str, base: Optional[float], abs_fmt: str) -> str:
+def _format_time(ts: float, *, mode: str, base: float | None, abs_fmt: str) -> str:
     if mode == "abs":
         # if _is_probably_epoch(ts):
         #     dt = _dt.datetime.fromtimestamp(ts)
@@ -740,49 +730,33 @@ def _safe_text_preview(b: bytes, limit: int) -> str:
     return s
 
 
-def _hex_preview(b: bytes, limit: int) -> str:
-    if not b:
-        return ""
-    s = b.hex()
-    if len(s) > limit:
-        s = s[:limit] + "…"
-    return s
+# def _hex_preview(b: bytes, limit: int) -> str:
+#     if not b:
+#         return ""
+#     s = b.hex()
+#     if len(s) > limit:
+#         s = s[:limit] + "…"
+#     return s
 
-    if isinstance(d.get("data"), str):
-        # treat as preview only
-        return d["data"].encode("utf-8", "replace"), total_len, truncated
+#     if isinstance(d.get("data"), str):
+#         # treat as preview only
+#         return d["data"].encode("utf-8", "replace"), total_len, truncated
 
-    if isinstance(d.get("data_b64"), str) and d["data_b64"]:
-        try:
-            b = base64.b64decode(d["data_b64"].encode("ascii"), validate=False)
-            return b, total_len, truncated
-        except Exception:
-            return b"", total_len, True
+#     if isinstance(d.get("data_b64"), str) and d["data_b64"]:
+#         try:
+#             b = base64.b64decode(d["data_b64"].encode("ascii"), validate=False)
+#             return b, total_len, truncated
+#         except Exception:
+#             return b"", total_len, True
 
-    if isinstance(d.get("data_hex"), str) and d["data_hex"]:
-        try:
-            b = bytes.fromhex(d["data_hex"])
-            return b, total_len, truncated
-        except Exception:
-            return b"", total_len, True
+#     if isinstance(d.get("data_hex"), str) and d["data_hex"]:
+#         try:
+#             b = bytes.fromhex(d["data_hex"])
+#             return b, total_len, truncated
+#         except Exception:
+#             return b"", total_len, True
 
-    return b"", total_len, truncated
-
-def _extract_stop_reason(d: dict[str, Any]) -> str:
-    v = d.get("stop_reason") or d.get("stop_condition") or d.get("stop")
-    if v is None:
-        return ""
-    if isinstance(v, str):
-        return v
-    if isinstance(v, dict):
-        # common shapes: {"kind":"DELIM","value":"\\n"} etc.
-        kind = v.get("kind") or v.get("type") or v.get("name")
-        val = v.get("value") or v.get("param") or v.get("delimiter")
-        if kind and val is not None:
-            return f"{kind} {val!r}"
-        if kind:
-            return str(kind)
-    return str(v)
+#     return b"", total_len, truncated
 
 def _adapter_style(name: str) -> str:
     # stable-ish per adapter
@@ -790,45 +764,40 @@ def _adapter_style(name: str) -> str:
     idx = abs(hash(name)) % len(colors)
     return colors[idx]
 
-
-def _badge(text: str, style: str) -> Text:
-    t = Text(f" {text} ", style=style)
-    return t
-
 # -----------------------------
 # Viewer state
 # -----------------------------
 
 class _AdapterState:
     def __init__(self, max_events: int) -> None:
-        self.open_base_ts: Optional[float] = None
-        self.first_seen_ts: Optional[float] = None
-        self.last_write_ts: Optional[float] = None
+        self.open_base_ts: float | None = None
+        self.first_seen_ts: float | None = None
+        self.last_write_ts: float | None = None
 
         # "pending fragments" before next read completion
-        self.pending_frags: List[dict[str, Any]] = []
+        self.pending_frags: list[dict[str, Any]] = []
         self.pending_bytes: int = 0
 
         # rolling rendered blocks for display (each block is list[Text])
         maxlen = max_events if max_events > 0 else None
-        self.blocks: Deque[List[Text]] = deque(maxlen=maxlen)
+        self.blocks: deque[list[Text]] = deque(maxlen=maxlen)
 
         # last activity
         self.last_kind: str = ""
-        self.last_ts: Optional[float] = None
+        self.last_ts: float | None = None
 
         # interactive scroll state
         self.scroll_offset: int = 0
         self.auto_follow: bool = True
 
-    def base_ts(self) -> Optional[float]:
+    def base_ts(self) -> float | None:
         return self.open_base_ts or self.first_seen_ts
 
 # -----------------------------
 # Main loop
 # -----------------------------
 
-def main(argv: Optional[List[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="syndesi-trace", description="Live console viewer for Syndesi trace events (UDP).")
 
     parser.add_argument(
@@ -878,8 +847,10 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     args = parser.parse_args(argv)
 
-    mode = TraceMode(args.mode)    
-    
+    mode = TraceMode(args.mode)
+
+    trace : Trace
+
     if mode == TraceMode.INTERACTIVE:
         trace = InteractiveTrace(
             group=args.multicast_group,
@@ -910,7 +881,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         )
     else:
         raise ValueError(f'Invalid mode : {mode}')
-    
+
     try:
         trace.run()
     except KeyboardInterrupt:

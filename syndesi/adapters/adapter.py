@@ -95,7 +95,7 @@ class Adapter(Component[bytes], AdapterWorker):
     ) -> None:
         Component.__init__(self, LoggerAlias.ADAPTER)
         AdapterWorker.__init__(self, encoding)
-        
+
         self._alias = alias
 
         self._descriptor = descriptor

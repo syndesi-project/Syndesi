@@ -39,12 +39,12 @@ class StopConditionType(Enum):
     """
     Stop-condition type
     """
-
     TERMINATION = "termination"
     LENGTH = "length"
     CONTINUATION = "continuation"
     TOTAL = "total"
     FRAGMENT = "fragment"
+    TIMEOUT = "timeout"
 
 
 class StopCondition:

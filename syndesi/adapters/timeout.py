@@ -12,6 +12,7 @@ from typing import Any
 
 from ..tools.types import NumberLike, is_number
 
+
 class TimeoutAction(Enum):
     """
     Action on timeout expiration

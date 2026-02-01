@@ -5,14 +5,13 @@
 IP Adapter, used to communicate with IP targets using the socket module
 """
 
+import _socket
 import socket
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
 from typing import cast
-
-import _socket
 
 from syndesi.adapters.adapter_worker import AdapterEvent, HasFileno
 from syndesi.adapters.stop_conditions import Continuation, StopCondition

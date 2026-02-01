@@ -8,10 +8,10 @@ the OS layers (COMx, /dev/ttyUSBx or /dev/ttyACMx)
 
 """
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-import threading
 from types import EllipsisType
 
 import serial

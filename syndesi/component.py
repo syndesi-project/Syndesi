@@ -57,7 +57,7 @@ class Frame(Generic[T]):
     """
 
     stop_timestamp: float | None
-    stop_condition_type: StopConditionType | None  # None if it's a response timeout
+    stop_condition_type: StopConditionType
     previous_read_buffer_used: bool
     response_delay: float | None
 
