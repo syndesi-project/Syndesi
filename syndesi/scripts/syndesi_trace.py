@@ -24,7 +24,6 @@ from types import TracebackType
 import argparse
 import json
 import os
-import re
 import selectors
 import socket
 import struct
@@ -33,6 +32,8 @@ from collections import OrderedDict, deque
 from collections.abc import Generator
 from typing import Any, TYPE_CHECKING
 from fnmatch import fnmatchcase
+import termios
+import tty
 
 from syndesi.adapters.tracehub import (
     DEFAULT_MULTICAST_GROUP,
@@ -52,7 +53,7 @@ if TYPE_CHECKING:
     from rich.live import Live
     from rich.panel import Panel
     from rich.text import Text
-    RICH_AVAILABLE = True
+    rich_available = True
 else:
     try:
         from rich.align import Align
@@ -60,9 +61,9 @@ else:
         from rich.live import Live
         from rich.panel import Panel
         from rich.text import Text
-        RICH_AVAILABLE = True
+        rich_available = True
     except ImportError:
-        RICH_AVAILABLE = False
+        rich_available = False
 
 class TraceMode(StrEnum):
     """Trace mode"""
@@ -82,6 +83,7 @@ class Trace:
     """Trace viewer base class"""
     def __init__(
             self,
+            *,
             group : str,
             port : int,
             descriptor_filter : str,
@@ -105,8 +107,13 @@ class Trace:
 
         self._console = Console()
 
-        self._last_write_timestamp : float | None = None
         self._no_fragments = no_fragments
+
+        self._adapter_last_write : dict[str, float] = {}
+
+        #self.adapters: dict[str, AdapterState] = {}
+
+        self.max_events
 
         # Time
         self._time_mode = TimeMode(time_mode)
@@ -144,20 +151,22 @@ class Trace:
             else:
                 yield None
 
-    def _time_prefix(self, event) -> str:
+    def _time_prefix(self, event : TraceEvent) -> str:
         if self._first_event_timestamp is None:
             self._first_event_timestamp = event.timestamp
 
         if self._time_mode == TimeMode.RELATIVE:
             relative_time = event.timestamp - self._first_event_timestamp
             return f'{relative_time:+8.3f}s'
-        elif self._time_mode == TimeMode.ABSOLUTE:
+        if self._time_mode == TimeMode.ABSOLUTE:
             return f'{event.timestamp:.3f}s'
         raise ValueError(f"Invalid time mode : {self._time_mode}")
 
 
-    def _format_entry(self, event : TraceEvent) -> Text | None:
+    def _format_entry(self, descriptor : str, event : TraceEvent) -> Text | None:
         fragments = [Text(self._time_prefix(event), style="dim"), Text(" ")]
+
+        last_write : float | None = self._adapter_last_write.get(descriptor, None)
 
         if isinstance(event, OpenEvent):
             fragments.append(
@@ -169,7 +178,7 @@ class Trace:
             )
 
         elif isinstance(event, WriteEvent):
-            self._last_write_timestamp = event.timestamp
+            self._adapter_last_write[descriptor] = event.timestamp
             fragments += [
                 Text("write →", style="bold dim"),
                 Text(f"{event.length:4d}B", style="dim"),
@@ -184,8 +193,8 @@ class Trace:
                 Text(event.data, style="dim"),
                 Text(" (frag)", style="dim")
             ]
-            if self._last_write_timestamp is not None:
-                write_delta = event.timestamp - self._last_write_timestamp
+            if last_write is not None:
+                write_delta = event.timestamp - last_write
                 fragments.append(
                     Text(f" {write_delta:+.3f}s", style="dim")
                 )
@@ -196,8 +205,8 @@ class Trace:
                 Text(f"{event.data} "),
                 Text(f'({event.stop_condition_indicator})', style="dim")
             ]
-            if self._last_write_timestamp is not None:
-                write_delta = event.timestamp - self._last_write_timestamp
+            if last_write is not None:
+                write_delta = event.timestamp - last_write
                 fragments.append(
                     Text(f" {write_delta:+.3f}s", style="dim")
                 )
@@ -206,11 +215,15 @@ class Trace:
                 Text("ERROR", style="bold red")
             ]
 
-
-
         return Text.assemble(
             *fragments
         )
+
+    # def _get_state(self, adapter: str) -> AdapterState:
+    #     if adapter not in self.adapters:
+    #         self.adapters[adapter] = AdapterState(self.max_events)
+    #         self.adapter_order.append(adapter)
+    #     return self.adapters[adapter]
 
 class FlatTrace(Trace):
     """Flat trace (stdout or file)"""
@@ -222,16 +235,21 @@ class FlatTrace(Trace):
             time_mode : str,
             descriptor_filter : str,
             no_fragments : bool,
-            output: str | None) -> None:
-        super().__init__(group, port, descriptor_filter, time_mode, no_fragments)
-        # self.show_fragments = show_fragments
-        # self.max_preview = max_preview
-        # self.max_events = max_events
+            output: str | None
+        ) -> None:
+        super().__init__(
+            group=group,
+            port=port,
+            descriptor_filter=descriptor_filter,
+            time_mode=time_mode,
+            no_fragments=no_fragments
+        )
 
         # pylint: disable=consider-using-with
         self._output_fh = open(output, "a", encoding="utf-8") if output else None
 
     class CSVColumn(StrEnum):
+        """Name of CSV columns"""
         DESCRIPTOR = "descriptor"
         TIME = "time"
         EVENT = "event"
@@ -248,19 +266,21 @@ class FlatTrace(Trace):
                         file_event = self._format_file_entry(event)
                         if file_event is not None:
                             self._output_fh.write(file_event)
-                    self.print_event(event)
+                    self.print_event(event.descriptor, event)
 
     def _format_file_entry(self, event : TraceEvent) -> str | None:
-        columns : OrderedDict[FlatTrace.CSVColumn, str] = OrderedDict({k : "" for k in self.CSVColumn})
+        columns : OrderedDict[FlatTrace.CSVColumn, str] = OrderedDict(
+            {k : "" for k in self.CSVColumn}
+        )
 
         if isinstance(event, FragmentEvent) and self._no_fragments:
             return None
-        
+
         columns[self.CSVColumn.DESCRIPTOR] = event.descriptor
         columns[self.CSVColumn.TIME] = f"{event.timestamp:.6f}"
         columns[self.CSVColumn.EVENT] = event.t
 
-        if isinstance(event, WriteEvent) or isinstance(event, ReadEvent) or isinstance(event, FragmentEvent):
+        if isinstance(event, (WriteEvent, ReadEvent, FragmentEvent)):
             columns[self.CSVColumn.DATA] = event.data
             columns[self.CSVColumn.SIZE] = str(event.length)
 
@@ -284,16 +304,20 @@ class FlatTrace(Trace):
         hdr = f"# syndesi-trace flat mode | host={self.group} port={self.port}"
         print(hdr)
 
-    def print_event(self, event : TraceEvent) -> None:
+    def print_event(self, descriptor : str, event : TraceEvent) -> None:
         """Print event to the console"""
-        output = self._format_entry(event)
+        output = self._format_entry(descriptor, event)
         if output is not None:
             self._console.print(output)
 
 class InteractiveTrace(Trace):
     """Interactive trace with tabs for each adapter"""
+    ADAPTER_COLORS = ["cyan", "magenta", "green", "yellow", "blue", "bright_cyan",
+            "bright_magenta", "bright_green"]
+
     def __init__(
             self,
+            *,
             group: str,
             port: int,
             time_mode : str,
@@ -301,7 +325,13 @@ class InteractiveTrace(Trace):
             no_fragments : bool,
             max_events: int
             ) -> None:
-        super().__init__(group, port, descriptor_filter, time_mode, no_fragments)
+        super().__init__(
+            group=group,
+            port=port,
+            descriptor_filter=descriptor_filter,
+            time_mode=time_mode,
+            no_fragments=no_fragments
+        )
 
         if Console is None:
             print("This viewer requires 'rich'. Install it with: pip install rich", file=sys.stderr)
@@ -311,30 +341,33 @@ class InteractiveTrace(Trace):
         if self._use_stdin:
             self._selector.register(sys.stdin, selectors.EVENT_READ, data="stdin")
 
-        self.adapters: dict[str, _AdapterState] = {}
-        self.adapter_order: list[str] = []
         self.selected_idx: int = 0
 
+        self.adapter_order: list[str] = []
+
+
         ## Adapter colors
-        self._adapter_colors = {}
-        self._adapter_color_index = 0
+        self._adapter_colors : dict [str, str] = {}
+        self._adapter_color_index : int = 0
 
         self.max_events = max_events
 
+        self._adapter_blocks : dict[str, deque[Text]] = {}
+
+        self._scroll_offset : int = 0
+        self._auto_follow : bool = True
+
     def selected_adapter(self) -> str | None:
+        """Return the current selected adapter"""
         if not self.adapter_order:
             return None
         return self.adapter_order[self.selected_idx]
-    
-    ADAPTER_COLORS = ["cyan", "magenta", "green", "yellow", "blue", "bright_cyan",
-            "bright_magenta", "bright_green"]
-    
+
     def _adapter_style(self, name : str) -> str:
         # stable-ish per adapter
         if name not in self._adapter_colors:
             self._adapter_colors[name] = self.ADAPTER_COLORS[self._adapter_color_index]
             self._adapter_color_index = (self._adapter_color_index + 1) % len(self.ADAPTER_COLORS)
-        
         return self._adapter_colors[name]
 
     def _handle_key(self, token: str) -> bool:
@@ -388,43 +421,17 @@ class InteractiveTrace(Trace):
                     if not running:
                         break
 
-    def close(self) -> None:
-        if self._output_fh:
-            try:
-                self._output_fh.flush()
-                self._output_fh.close()
-            except Exception:
-                pass
-            self._output_fh = None
-
-    def _get_state(self, adapter: str) -> _AdapterState:
-        if adapter not in self.adapters:
-            self.adapters[adapter] = _AdapterState(self.max_events)
-            self.adapter_order.append(adapter)
-        return self.adapters[adapter]
-        
-
     def ingest(self, event : TraceEvent) -> None:
+        """Manage an incoming event"""
         adapter_id = event.descriptor
         if not self._allow_descriptor(adapter_id):
             return
 
-        st = self._get_state(adapter_id)
+        adapter = self._get_state(adapter_id)
 
-        block = self._format_entry(event)
+        block = self._format_entry(adapter, event)
         if block is not None:
-            st.blocks.append(block)
-
-    def _emit_flat(self, block: list[Text]) -> None:
-        # Flat mode: write plain text lines (no colors) for exportability
-        for line in block:
-            s = line.plain if hasattr(line, "plain") else str(line)
-            if self._output_fh:
-                self._output_fh.write(s + "\n")
-            else:
-                print(s)
-        if self._output_fh:
-            self._output_fh.flush()
+            adapter.blocks.append(block)
 
     def _render_tabs(self) -> Text:
         names = self.adapter_order[:] or ["(no adapters)"]
@@ -432,7 +439,8 @@ class InteractiveTrace(Trace):
         t.append("Adapters: ", style="dim")
         for i, name in enumerate(names):
             sel = i == self.selected_idx
-            style = f"bold reverse {self._adapter_style(name)}" if sel else f"{self._adapter_style(name)}"
+            style = f"bold reverse {self._adapter_style(name)}" if sel else \
+                f"{self._adapter_style(name)}"
             t.append(f" {name} ", style=style)
         t.append("   ", style="dim")
         t.append("←/→ switch  ↑/↓ scroll  q quit  (h/j/k/l also)", style="dim")
@@ -444,7 +452,7 @@ class InteractiveTrace(Trace):
             return Panel(Align.left(body), title="Syndesi Trace", border_style="dim")
 
         selected = self.adapter_order[self.selected_idx]
-        st = self.adapters[selected]
+        st = self._adapter_blocks adapters[selected]
 
         # Compose recent blocks into lines
         lines: list[Text] = []
@@ -454,7 +462,7 @@ class InteractiveTrace(Trace):
         if not lines:
             lines = [Text("No events yet for this adapter.", style="dim")]
 
-        body = Text("\n").join(self._visible_lines(lines, st))
+        body = Text("\n").join(self._visible_lines(lines))
         header = self._render_tabs()
 
         # Wrap body in a panel; header goes as title-ish via subtitle
@@ -465,17 +473,18 @@ class InteractiveTrace(Trace):
             padding=(1, 1),
         )
 
-    def _visible_lines(self, lines: list[Text], st: _AdapterState) -> list[Text]:
+    def _visible_lines(self, lines: list[Text]) -> list[Text]:
         height = self._console.size.height if self._console is not None else 24
         # Reserve space for borders, title, and padding.
         visible = max(1, height - 6)
         total = len(lines)
         max_offset = max(0, total - visible)
-        if st.auto_follow:
-            st.scroll_offset = 0
+
+        if self._auto_follow:
+            self._scroll_offset = 0
         else:
-            st.scroll_offset = min(max_offset, st.scroll_offset)
-        start = max(0, total - visible - st.scroll_offset)
+            self._scroll_offset = min(max_offset, self._scroll_offset)
+        start = max(0, total - visible - self._scroll_offset)
         return lines[start:start + visible]
 
 class _TerminalRawMode:
@@ -488,13 +497,11 @@ class _TerminalRawMode:
         if os.name != "posix":
             return self
         try:
-            import termios
-            import tty
             fd = sys.stdin.fileno()
             self._old = termios.tcgetattr(fd)
             tty.setcbreak(fd)
             self._enabled = True
-        except Exception:
+        except OSError:
             self._enabled = False
         return self
 
@@ -509,9 +516,8 @@ class _TerminalRawMode:
         if not self._enabled or self._old is None:
             return
         try:
-            import termios
             termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._old)
-        except Exception:
+        except OSError:
             pass
 
 
@@ -547,7 +553,7 @@ def _read_keys_nonblocking() -> list[str]:
     # POSIX: stdin will be readable via selectors. We still decode escape sequences here.
     try:
         data = os.read(sys.stdin.fileno(), 64)
-    except Exception:
+    except OSError:
         return keys
 
     if not data:
@@ -588,27 +594,11 @@ def _read_keys_nonblocking() -> list[str]:
 # Viewer state
 # -----------------------------
 
-class _AdapterState:
-    def __init__(self, max_events: int | None) -> None:
-        self.open_base_ts: float | None = None
-        self.first_seen_ts: float | None = None
-        self.last_write_ts: float | None = None
-
-        # "pending fragments" before next read completion
-        self.pending_frags: list[dict[str, Any]] = []
-        self.pending_bytes: int = 0
-
-        # rolling rendered blocks for display (each block is list[Text])
-        self.max_events = max_events
-        self.blocks: deque[Text] = deque(maxlen=self.max_events)
-
-        # last activity
-        self.last_kind: str = ""
-        self.last_ts: float | None = None
-
-        # interactive scroll state
-        self.scroll_offset: int = 0
-        self.auto_follow: bool = True
+# class AdapterState:
+#     """Adapter state class"""
+#     def __init__(self, max_events : int) -> None:
+#         self.last_write_timestamp: float | None = None
+#         self.blocks: deque[Text] = deque(maxlen=max_events)
 
 # -----------------------------
 # Main loop
@@ -617,6 +607,8 @@ class _AdapterState:
 DEFAULT_MAX_EVENTS = 1000
 
 def main(argv: list[str] | None = None) -> None:
+    """Main syndesi-trace entry-point"""
+
     parser = argparse.ArgumentParser(
         prog="syndesi-trace",
         description="Live console viewer for Syndesi trace events (UDP)."

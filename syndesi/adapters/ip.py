@@ -5,13 +5,11 @@
 IP Adapter, used to communicate with IP targets using the socket module
 """
 
-import _socket
 import socket
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
-from typing import cast
 
 from syndesi.adapters.adapter_worker import AdapterEvent, HasFileno
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
@@ -141,7 +139,8 @@ class IP(Adapter):
             port=port,
             transport=IPDescriptor.Transport(transport.upper()),
         )
-        self._socket: _socket.socket | None = None
+        #self._socket: _socket.socket | None = None
+        self._socket : socket.socket | None = None
 
         super().__init__(
             descriptor=descriptor,
@@ -198,17 +197,11 @@ class IP(Adapter):
 
         # Create the socket instance
         if self._worker_descriptor.transport == IPDescriptor.Transport.TCP:
-            self._socket = cast(
-                _socket.socket,
-                socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-            )
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         elif self._worker_descriptor.transport == IPDescriptor.Transport.UDP:
-            self._socket = cast(
-                _socket.socket, socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            )
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         else:
             raise AdapterOpenError("Invalid transport protocol")
-
         try:
             self._socket.settimeout(self.WorkerTimeout.OPEN.value)
             self._socket.connect(
@@ -227,7 +220,7 @@ class IP(Adapter):
         super()._worker_close()
         if self._socket is not None:
             try:
-                self._socket.shutdown(_socket.SHUT_RDWR)
+                self._socket.shutdown(socket.SHUT_RDWR)
                 self._socket.close()
             except OSError:
                 pass
