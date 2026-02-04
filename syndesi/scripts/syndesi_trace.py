@@ -1,16 +1,39 @@
 # File : syndesi_trace.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+CLI viewer for Syndesi trace events (UDP).
+
+This tool allows the user to see what's going inside syndesi while it's running in another process
+
+Usage :
+
+syndesi-trace [--mode MODE]
+
+Modes
+-----
+- interactive (default): tabs per adapter, switch with ←/→ (or h/l), quit with q.
+- flat: append-only timeline (stdout or --output file).
+"""
 
 from __future__ import annotations
 
 from abc import abstractmethod
 from enum import StrEnum
 from types import TracebackType
+import argparse
+import json
+import os
+import re
+import selectors
+import socket
+import struct
+import sys
+from collections import OrderedDict, deque
+from collections.abc import Generator
+from typing import Any, TYPE_CHECKING
+from fnmatch import fnmatchcase
 
-# import json
-# import socket
-# import struct
 from syndesi.adapters.tracehub import (
     DEFAULT_MULTICAST_GROUP,
     DEFAULT_MULTICAST_PORT,
@@ -23,102 +46,54 @@ from syndesi.adapters.tracehub import (
     json_to_trace_event,
 )
 
-# TRUNCATE_LENGTH = 20
-
-# def _truncate_string(input_string : str):
-#     utf16_string = input_string.encode('utf-16')
-#     return utf16_string[:TRUNCATE_LENGTH*2].decode('utf-16')
-
-# def main(group: str = DEFAULT_MULTICAST_GROUP, port : int = DEFAULT_MULTICAST_PORT) -> None:
-#     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-#     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-#     sock.bind(("0.0.0.0", port))
-
-#     mreq = struct.pack("4s4s", socket.inet_aton(group), socket.inet_aton("0.0.0.0"))
-#     sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-
-#     print(f"[syndesi-trace] subscribed to udp://{group}:{port}")
-#     while True:
-#         data, _ = sock.recvfrom(65535)
-#         ev = json.loads(data.decode("utf-8", "replace"))
-#         event = json_to_trace_event(ev)
-#         print(event)
-
-#!/usr/bin/env python3
-"""
-syndesi_trace.py
-
-CLI viewer for Syndesi trace events (UDP).
-
-Modes
------
-- interactive (default): tabs per adapter, switch with ←/→ (or h/l), quit with q.
-- flat: append-only timeline (stdout or --output file).
-
-Expected incoming datagram
---------------------------
-A JSON object with (flexible) keys. Recommended keys:
-- kind: "open" | "close" | "fragment" | "read" | "tx" | "write" | "error" | ...
-- timestamp: float (monotonic or epoch). Also supports "t".
-- adapter: str (also supports "adapter_id")
-- data: str (already preview text) OR data_b64 OR data_hex
-- data_len / nbytes: int (optional)
-- stop_reason / stop_condition / stop: str|dict (for read)
-- meta: dict (optional)
-
-This viewer is intentionally tolerant: it will render best-effort.
-"""
-
-import argparse
-import json
-import os
-import re
-import selectors
-import socket
-import struct
-import sys
-from collections import deque
-from collections.abc import Generator
-from typing import Any
-
-try:
+if TYPE_CHECKING:
     from rich.align import Align
     from rich.console import Console
     from rich.live import Live
     from rich.panel import Panel
     from rich.text import Text
-except Exception:  # pragma: no cover
-    Console = None  # type: ignore
-
-from rich.align import Align
-from rich.console import Console
-from rich.live import Live
-from rich.panel import Panel
-from rich.text import Text
-
+    RICH_AVAILABLE = True
+else:
+    try:
+        from rich.align import Align
+        from rich.console import Console
+        from rich.live import Live
+        from rich.panel import Panel
+        from rich.text import Text
+        RICH_AVAILABLE = True
+    except ImportError:
+        RICH_AVAILABLE = False
 
 class TraceMode(StrEnum):
-    """Viewer mode"""
+    """Trace mode"""
     INTERACTIVE = 'interactive'
     FLAT = 'flat'
+
+class TimeMode(StrEnum):
+    """Time display mode"""
+    ABSOLUTE = 'abs'
+    RELATIVE = 'rel'
 
 # -----------------------------
 # Terminal input (interactive)
 # -----------------------------
 
 class Trace:
+    """Trace viewer base class"""
     def __init__(
             self,
             group : str,
             port : int,
-            adapters : list[str] | None) -> None:
+            descriptor_filter : str,
+            time_mode : str,
+            no_fragments : bool
+        ) -> None:
         self.group = group
         self.port = port
 
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock.bind(("0.0.0.0", self.port))
-        #self._sock.bind(("127.0.0.1", self.port))
         mreq = struct.pack("4s4s", socket.inet_aton(self.group), socket.inet_aton("127.0.0.1"))
         self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
         self._sock.setblocking(False)
@@ -126,23 +101,34 @@ class Trace:
         self._selector = selectors.DefaultSelector()
         self._selector.register(self._sock, selectors.EVENT_READ, data="udp")
 
-        self._adapters = adapters
+        self._descriptor_filter = descriptor_filter.lower()
+
+        self._console = Console()
+
+        self._last_write_timestamp : float | None = None
+        self._no_fragments = no_fragments
+
+        # Time
+        self._time_mode = TimeMode(time_mode)
+        self._first_event_timestamp : float | None = None
 
     @abstractmethod
     def run(self) -> None:
-        ...
+        """Base run method"""
 
     def close(self) -> None:
-        try:
-            self._selector.unregister(self._sock)
-        except Exception:
-            pass
+        """Close the trace viewer"""
+        self._selector.unregister(self._sock)
         try:
             self._sock.close()
-        except Exception:
+        except OSError:
             pass
 
+    def _allow_descriptor(self, name: str) -> bool:
+        return fnmatchcase(name.lower(), self._descriptor_filter)
+
     def get_event(self, timeout : float | None) -> Generator[TraceEvent | None, Any, Any]:
+        """Return an event or None if something else triggered the selector"""
         events = self._selector.select(timeout=timeout)
         for key, _ in events:
             if key.data == "udp":
@@ -158,95 +144,164 @@ class Trace:
             else:
                 yield None
 
+    def _time_prefix(self, event) -> str:
+        if self._first_event_timestamp is None:
+            self._first_event_timestamp = event.timestamp
+
+        if self._time_mode == TimeMode.RELATIVE:
+            relative_time = event.timestamp - self._first_event_timestamp
+            return f'{relative_time:+8.3f}s'
+        elif self._time_mode == TimeMode.ABSOLUTE:
+            return f'{event.timestamp:.3f}s'
+        raise ValueError(f"Invalid time mode : {self._time_mode}")
+
+
+    def _format_entry(self, event : TraceEvent) -> Text | None:
+        fragments = [Text(self._time_prefix(event), style="dim"), Text(" ")]
+
+        if isinstance(event, OpenEvent):
+            fragments.append(
+                Text("open  ●", style="bold green")
+            )
+        elif isinstance(event, CloseEvent):
+            fragments.append(
+                Text("close ●", style="bold red")
+            )
+
+        elif isinstance(event, WriteEvent):
+            self._last_write_timestamp = event.timestamp
+            fragments += [
+                Text("write →", style="bold dim"),
+                Text(f"{event.length:4d}B", style="dim"),
+                Text(f" {event.data}")
+            ]
+        elif isinstance(event, FragmentEvent):
+            if self._no_fragments:
+                return None
+            fragments += [
+                Text("      ↓", style="dim"),
+                Text(f"{event.length:4d}B ", style="dim"),
+                Text(event.data, style="dim"),
+                Text(" (frag)", style="dim")
+            ]
+            if self._last_write_timestamp is not None:
+                write_delta = event.timestamp - self._last_write_timestamp
+                fragments.append(
+                    Text(f" {write_delta:+.3f}s", style="dim")
+                )
+        elif isinstance(event, ReadEvent):
+            fragments += [
+                Text("read  ←", style="bold dim"),
+                Text(f"{event.length:4d}B ", style="dim"),
+                Text(f"{event.data} "),
+                Text(f'({event.stop_condition_indicator})', style="dim")
+            ]
+            if self._last_write_timestamp is not None:
+                write_delta = event.timestamp - self._last_write_timestamp
+                fragments.append(
+                    Text(f" {write_delta:+.3f}s", style="dim")
+                )
+        else:
+            fragments += [
+                Text("ERROR", style="bold red")
+            ]
+
+
+
+        return Text.assemble(
+            *fragments
+        )
+
 class FlatTrace(Trace):
+    """Flat trace (stdout or file)"""
     def __init__(
             self,
-            group: str = DEFAULT_MULTICAST_GROUP,
-            port: int = DEFAULT_MULTICAST_PORT,
-            adapters: list[str] | None = None,
-            adapter_regex: str | None = None,
-            time_mode: str = "rel",
-            abs_time_format: str = "%H:%M:%S.%f",
-            show_write_delta: bool = True,
-            fragments: str = "all",
-            max_preview: int = 80,
-            max_events: int = 200,
-            output: str | None = None) -> None:
-        super().__init__(group, port, adapters)
-        self.time_mode = time_mode
-        self.abs_time_format = abs_time_format
-        self.show_write_delta = show_write_delta
-        self.fragments = fragments
-        self.max_preview = max_preview
-        self.max_events = max_events
-        self._adapter_allow = set(adapters) if adapters else None
-        self._adapter_re: re.Pattern[str] | None = re.compile(adapter_regex) if adapter_regex else None
+            *,
+            group: str,
+            port: int,
+            time_mode : str,
+            descriptor_filter : str,
+            no_fragments : bool,
+            output: str | None) -> None:
+        super().__init__(group, port, descriptor_filter, time_mode, no_fragments)
+        # self.show_fragments = show_fragments
+        # self.max_preview = max_preview
+        # self.max_events = max_events
+
+        # pylint: disable=consider-using-with
         self._output_fh = open(output, "a", encoding="utf-8") if output else None
 
+    class CSVColumn(StrEnum):
+        DESCRIPTOR = "descriptor"
+        TIME = "time"
+        EVENT = "event"
+        SIZE = "size"
+        DATA = "data"
+        STOP_CONDITION = "stop_condition"
 
     def run(self) -> None:
         # No live UI; just print as events arrive.
         while True:
             for event in self.get_event(None):
-                if event is not None:
+                if event is not None and self._allow_descriptor(event.descriptor):
+                    if self._output_fh is not None:
+                        file_event = self._format_file_entry(event)
+                        if file_event is not None:
+                            self._output_fh.write(file_event)
                     self.print_event(event)
+
+    def _format_file_entry(self, event : TraceEvent) -> str | None:
+        columns : OrderedDict[FlatTrace.CSVColumn, str] = OrderedDict({k : "" for k in self.CSVColumn})
+
+        if isinstance(event, FragmentEvent) and self._no_fragments:
+            return None
+        
+        columns[self.CSVColumn.DESCRIPTOR] = event.descriptor
+        columns[self.CSVColumn.TIME] = f"{event.timestamp:.6f}"
+        columns[self.CSVColumn.EVENT] = event.t
+
+        if isinstance(event, WriteEvent) or isinstance(event, ReadEvent) or isinstance(event, FragmentEvent):
+            columns[self.CSVColumn.DATA] = event.data
+            columns[self.CSVColumn.SIZE] = str(event.length)
+
+            if isinstance(event, ReadEvent):
+                columns[self.CSVColumn.STOP_CONDITION] = event.stop_condition_indicator
+
+
+        return ','.join(columns.values()) + '\n'
 
     def close(self) -> None:
         if self._output_fh:
             try:
                 self._output_fh.flush()
                 self._output_fh.close()
-            except Exception:
+            except OSError:
                 pass
             self._output_fh = None
         super().close()
 
     def _print_header(self) -> None:
         hdr = f"# syndesi-trace flat mode | host={self.group} port={self.port}"
-        #hdr += f" | time={self.time_mode}"
         print(hdr)
 
-    def print_event(self, data : TraceEvent) -> None:
-        print(data)
-
-
-    def _line_prefix(self, adapter: str, ts: float) -> Text:
-        #st = self._get_state(adapter)
-        #if st.first_seen_ts is None:
-        #    st.first_seen_ts = ts
-
-        #base = st.base_ts()
-        #t_main = _format_time(ts, mode=self.time_mode, base=base, abs_fmt=self.abs_time_format)
-
-        # Δ since last write for fragments/read
-        delta = ""
-        # if self.show_write_delta and kind in ("fragment", "read") and st.last_write_ts is not None:
-        #     delta_s = ts - st.last_write_ts
-        #     delta = f"  +{delta_s*1000:6.1f}ms"
-
-        tag = Text()
-        tag.append("time", style="dim")
-        #tag.append(delta, style="dim")
-        #tag.append("  ")
-        tag.append(f"[{adapter}]", style=f"bold {_adapter_style(adapter)}")
-        tag.append(" ")
-        return tag
+    def print_event(self, event : TraceEvent) -> None:
+        """Print event to the console"""
+        output = self._format_entry(event)
+        if output is not None:
+            self._console.print(output)
 
 class InteractiveTrace(Trace):
+    """Interactive trace with tabs for each adapter"""
     def __init__(
             self,
-            group: str = DEFAULT_MULTICAST_GROUP,
-            port: int = DEFAULT_MULTICAST_PORT,
-            adapters: list[str] | None = None,
-            adapter_regex: str | None = None,
-            time_mode: str = "rel",
-            abs_time_format: str = "%H:%M:%S.%f",
-            show_write_delta: bool = True,
-            fragments: str = "all",
-            max_preview: int = 80,
-            max_events: int = 200,
-            output: str | None = None) -> None:
-        super().__init__(group, port, adapters)
+            group: str,
+            port: int,
+            time_mode : str,
+            descriptor_filter: str,
+            no_fragments : bool,
+            max_events: int
+            ) -> None:
+        super().__init__(group, port, descriptor_filter, time_mode, no_fragments)
 
         if Console is None:
             print("This viewer requires 'rich'. Install it with: pip install rich", file=sys.stderr)
@@ -254,31 +309,33 @@ class InteractiveTrace(Trace):
 
         self._use_stdin = os.name == "posix"
         if self._use_stdin:
-            try:
-                self._selector.register(sys.stdin, selectors.EVENT_READ, data="stdin")
-            except Exception:
-                self._use_stdin = False
+            self._selector.register(sys.stdin, selectors.EVENT_READ, data="stdin")
 
-        self.console = Console() if Console is not None else None
         self.adapters: dict[str, _AdapterState] = {}
         self.adapter_order: list[str] = []
         self.selected_idx: int = 0
 
-        self.time_mode = time_mode
-        self.abs_time_format = abs_time_format
-        self.show_write_delta = show_write_delta
-        self.fragments = fragments
-        self.max_events = max_events
-        self.max_preview = max_preview
+        ## Adapter colors
+        self._adapter_colors = {}
+        self._adapter_color_index = 0
 
-        self._adapter_allow = set(adapters) if adapters else None
-        self._adapter_re: re.Pattern[str] | None = re.compile(adapter_regex) if adapter_regex else None
-        self._output_fh = open(output, "a", encoding="utf-8") if output else None
+        self.max_events = max_events
 
     def selected_adapter(self) -> str | None:
         if not self.adapter_order:
             return None
         return self.adapter_order[self.selected_idx]
+    
+    ADAPTER_COLORS = ["cyan", "magenta", "green", "yellow", "blue", "bright_cyan",
+            "bright_magenta", "bright_green"]
+    
+    def _adapter_style(self, name : str) -> str:
+        # stable-ish per adapter
+        if name not in self._adapter_colors:
+            self._adapter_colors[name] = self.ADAPTER_COLORS[self._adapter_color_index]
+            self._adapter_color_index = (self._adapter_color_index + 1) % len(self.ADAPTER_COLORS)
+        
+        return self._adapter_colors[name]
 
     def _handle_key(self, token: str) -> bool:
         # returns False to quit
@@ -313,7 +370,6 @@ class InteractiveTrace(Trace):
                 while running:
 
                     for event in self.get_event(timeout=0.05):
-                        print(f'Event : {event}')
                         if event is None:
                             for k in _read_keys_nonblocking():
                                 running = self._handle_key(k)
@@ -341,178 +397,23 @@ class InteractiveTrace(Trace):
                 pass
             self._output_fh = None
 
-    def _allow_adapter(self, name: str) -> bool:
-        if self._adapter_allow is not None and name not in self._adapter_allow:
-            return False
-        if self._adapter_re is not None and not self._adapter_re.search(name):
-            return False
-        return True
-
     def _get_state(self, adapter: str) -> _AdapterState:
         if adapter not in self.adapters:
             self.adapters[adapter] = _AdapterState(self.max_events)
             self.adapter_order.append(adapter)
         return self.adapters[adapter]
+        
 
-    def _line_prefix(self, adapter: str, ts: float) -> Text:
-        st = self._get_state(adapter)
-        if st.first_seen_ts is None:
-            st.first_seen_ts = ts
-
-        base = st.base_ts()
-        t_main = _format_time(ts, mode=self.time_mode, base=base, abs_fmt=self.abs_time_format)
-
-        # Δ since last write for fragments/read
-        delta = ""
-        # if self.show_write_delta and kind in ("fragment", "read") and st.last_write_ts is not None:
-        #     delta_s = ts - st.last_write_ts
-        #     delta = f"  +{delta_s*1000:6.1f}ms"
-
-        tag = Text()
-        tag.append(t_main, style="dim").append(" ")
-        return tag
-
-    def _render_event_block(self, adapter: str, event : TraceEvent) -> list[Text] | None:
-        """
-        Returns a block of one or more Text lines.
-        For "read", includes pending fragments above it (per user requirement).
-        """
-        st = self._get_state(adapter)
-        #kind = str(d.get("kind") or d.get("type") or d.get("event") or "unknown").lower()
-        ts = event.timestamp#float(d.get("timestamp") if d.get("timestamp") is not None else d.get("t", time.time()))
-
-        #st.last_kind = kind
-        st.last_ts = ts
-
-        if st.first_seen_ts is None:
-            st.first_seen_ts = ts
-
-        if isinstance(event, OpenEvent):
-            if st.open_base_ts is None:
-                st.open_base_ts = ts
-
-            prefix = self._line_prefix(adapter, ts)
-            line = Text.assemble(
-                prefix,
-                Text("open  ●", style="bold green")
-            )
-            return [line]
-
-        if isinstance(event, CloseEvent):
-            prefix = self._line_prefix(adapter, ts)
-            line = Text.assemble(
-                prefix,
-                Text("close ●", style="bold red")
-            )
-            return [line]
-
-        if isinstance(event, WriteEvent):
-            prefix = self._line_prefix(adapter, ts)
-            line = Text.assemble(
-                prefix,
-                Text("write →", style="bold dim"),
-                Text(f"{event.length:4d}B", style="dim"),
-                Text(f" {event.data}")
-            )
-            return [line]
-
-        if isinstance(event, FragmentEvent):
-            prefix = self._line_prefix(adapter, ts)
-            line = Text.assemble(
-                prefix,
-                Text("      ↓", style="dim"),
-                Text(f"{event.length:4d}B ", style="dim"),
-                Text(event.data, style="dim"),
-                Text(" (frag)", style="dim")
-            )
-            return [line]
-
-        # preview_mode = "text"  # could be extended with a CLI flag
-        # if preview_mode == "text":
-        #     p = _safe_text_preview(b, self.max_preview)
-        # else:
-        #     p = _hex_preview(b, self.max_preview)
-
-        # ---- build blocks ----
-
-
-        if isinstance(event, ReadEvent):
-            prefix = self._line_prefix(adapter, ts)
-
-            #stop = 'test'#_extract_stop_reason(d)
-            #stop_badge = _badge(f"⏹ {stop}" if stop else "⏹", "bold magenta") if self.console else Text(f"⏹ {stop}".strip())
-
-            line = Text.assemble(
-                prefix,
-                Text("read  ←", style="bold dim"),
-                Text(f"{event.length:4d}B ", style="dim"),
-                Text(f"{event.data} "),
-                Text(f'({event.stop_condition_indicator})', style="dim")
-            )
-
-            return [line]
-
-
-
-            # Render pending fragments ABOVE read (connector fixed at render time)
-            # if self.fragments != "none":
-            #     for i, fd in enumerate(st.pending_frags):
-
-
-            #         fts = float(fd.get("timestamp") if fd.get("timestamp") is not None else fd.get("t", ts))
-            #         fb, _, ftr = _extract_bytes_and_len(fd)
-            #         fp = _safe_text_preview(fb, self.max_preview)
-            #         connector = "├─ "  # final connector will be for READ line itself
-            #         frag_lines.append(Text.assemble(
-            #             self._line_prefix(adapter, fts, "fragment"),
-            #             Text(f"{connector}", style="dim"),
-            #             Text("🧩 FRAG", style="cyan"),
-            #             Text(f"  {len(fb):4d}B", style="dim"),
-            #             Text("  "),
-            #             Text(fp, style="white"),
-            #             Text(" …" if ftr else "", style="dim"),
-            #         ))
-
-            # Now read line (must be last; uses └─)
-            #read_line.append("└─ ", style="dim")
-
-
-            #read_line.append(f"  {n_total:4d}B", style="dim")
-
-            # read_line.append("  ")
-            # if self.console:
-            #     read_line.append_text(stop_badge)
-            # else:
-            #     read_line.append(f"{stop_badge}", style="magenta")
-
-            # read_line.append("  ")
-            # read_line.append(event.data, style="white")
-
-            # # Clear pending fragments once read completes
-            # st.pending_frags.clear()
-            # st.pending_bytes = 0
-
-            # return frag_lines + [read_line]
-
-        # Fallback
-        prefix = self._line_prefix(adapter, ts)
-        msg = "error" # str(d.get("message") or "")
-        line = Text.assemble(prefix, Text("• kind", style="dim"), Text("  "), Text(msg, style="white"))
-        return [line]
-
-    def ingest(self, event : TraceEvent) -> bool:
+    def ingest(self, event : TraceEvent) -> None:
         adapter_id = event.descriptor
-        if not self._allow_adapter(adapter_id):
-            return False
+        if not self._allow_descriptor(adapter_id):
+            return
 
         st = self._get_state(adapter_id)
 
-        block = self._render_event_block(adapter_id, event)
-        if block:
-            # If it's a fragment event and we're in interactive mode, avoid “double printing”
-            # in flat mode by respecting self.fragments.
+        block = self._format_entry(event)
+        if block is not None:
             st.blocks.append(block)
-        return True
 
     def _emit_flat(self, block: list[Text]) -> None:
         # Flat mode: write plain text lines (no colors) for exportability
@@ -530,8 +431,8 @@ class InteractiveTrace(Trace):
         t = Text()
         t.append("Adapters: ", style="dim")
         for i, name in enumerate(names):
-            sel = (i == self.selected_idx)
-            style = f"bold reverse {_adapter_style(name)}" if sel else f"{_adapter_style(name)}"
+            sel = i == self.selected_idx
+            style = f"bold reverse {self._adapter_style(name)}" if sel else f"{self._adapter_style(name)}"
             t.append(f" {name} ", style=style)
         t.append("   ", style="dim")
         t.append("←/→ switch  ↑/↓ scroll  q quit  (h/j/k/l also)", style="dim")
@@ -548,21 +449,7 @@ class InteractiveTrace(Trace):
         # Compose recent blocks into lines
         lines: list[Text] = []
         for block in st.blocks:
-            lines.extend(block)
-
-        # Add “read in progress” hint (best-effort)
-        # if st.pending_frags:
-        #     # show a pinned in-progress line at the bottom
-        #     last_ts = st.last_ts or st.first_seen_ts or time.time()
-        #     prefix = self._line_prefix(selected, float(last_ts), "read")
-        #     inprog = Text.assemble(
-        #         prefix,
-        #         Text("⏳ reading…", style="yellow"),
-        #         Text(f"  frags={len(st.pending_frags)}", style="dim"),
-        #         Text(f"  bytes≈{st.pending_bytes}", style="dim"),
-        #     )
-        #     lines.append(Text(""))
-        #     lines.append(inprog)
+            lines.append(block)
 
         if not lines:
             lines = [Text("No events yet for this adapter.", style="dim")]
@@ -579,7 +466,7 @@ class InteractiveTrace(Trace):
         )
 
     def _visible_lines(self, lines: list[Text], st: _AdapterState) -> list[Text]:
-        height = self.console.size.height if self.console is not None else 24
+        height = self._console.size.height if self._console is not None else 24
         # Reserve space for borders, title, and padding.
         visible = max(1, height - 6)
         total = len(lines)
@@ -697,79 +584,12 @@ def _read_keys_nonblocking() -> list[str]:
 
     return keys
 
-
-# -----------------------------
-# Rendering helpers
-# -----------------------------
-
-# def _is_probably_epoch(ts: float) -> bool:
-#     # heuristic: epoch seconds are ~ 1.6e9+; perf_counter is usually much smaller
-#     return ts > 1_500_000_000
-
-def _format_time(ts: float, *, mode: str, base: float | None, abs_fmt: str) -> str:
-    if mode == "abs":
-        # if _is_probably_epoch(ts):
-        #     dt = _dt.datetime.fromtimestamp(ts)
-        #     return dt.strftime(abs_fmt)
-        # fallback: monotonic "T+..."
-        if base is None:
-            base = ts
-        return f"T+{(ts - base):8.3f}s"
-    # relative
-    if base is None:
-        base = ts
-    return f"{(ts - base):8.3f}s"
-
-
-def _safe_text_preview(b: bytes, limit: int) -> str:
-    if not b:
-        return ""
-    s = b.decode("utf-8", "replace").replace("\r", "\\r").replace("\n", "\\n")
-    if len(s) > limit:
-        s = s[:limit] + "…"
-    return s
-
-
-# def _hex_preview(b: bytes, limit: int) -> str:
-#     if not b:
-#         return ""
-#     s = b.hex()
-#     if len(s) > limit:
-#         s = s[:limit] + "…"
-#     return s
-
-#     if isinstance(d.get("data"), str):
-#         # treat as preview only
-#         return d["data"].encode("utf-8", "replace"), total_len, truncated
-
-#     if isinstance(d.get("data_b64"), str) and d["data_b64"]:
-#         try:
-#             b = base64.b64decode(d["data_b64"].encode("ascii"), validate=False)
-#             return b, total_len, truncated
-#         except Exception:
-#             return b"", total_len, True
-
-#     if isinstance(d.get("data_hex"), str) and d["data_hex"]:
-#         try:
-#             b = bytes.fromhex(d["data_hex"])
-#             return b, total_len, truncated
-#         except Exception:
-#             return b"", total_len, True
-
-#     return b"", total_len, truncated
-
-def _adapter_style(name: str) -> str:
-    # stable-ish per adapter
-    colors = ["cyan", "magenta", "green", "yellow", "blue", "bright_cyan", "bright_magenta", "bright_green"]
-    idx = abs(hash(name)) % len(colors)
-    return colors[idx]
-
 # -----------------------------
 # Viewer state
 # -----------------------------
 
 class _AdapterState:
-    def __init__(self, max_events: int) -> None:
+    def __init__(self, max_events: int | None) -> None:
         self.open_base_ts: float | None = None
         self.first_seen_ts: float | None = None
         self.last_write_ts: float | None = None
@@ -779,8 +599,8 @@ class _AdapterState:
         self.pending_bytes: int = 0
 
         # rolling rendered blocks for display (each block is list[Text])
-        maxlen = max_events if max_events > 0 else None
-        self.blocks: deque[list[Text]] = deque(maxlen=maxlen)
+        self.max_events = max_events
+        self.blocks: deque[Text] = deque(maxlen=self.max_events)
 
         # last activity
         self.last_kind: str = ""
@@ -790,15 +610,17 @@ class _AdapterState:
         self.scroll_offset: int = 0
         self.auto_follow: bool = True
 
-    def base_ts(self) -> float | None:
-        return self.open_base_ts or self.first_seen_ts
-
 # -----------------------------
 # Main loop
 # -----------------------------
 
+DEFAULT_MAX_EVENTS = 1000
+
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="syndesi-trace", description="Live console viewer for Syndesi trace events (UDP).")
+    parser = argparse.ArgumentParser(
+        prog="syndesi-trace",
+        description="Live console viewer for Syndesi trace events (UDP)."
+    )
 
     parser.add_argument(
         "--mode",
@@ -807,43 +629,56 @@ def main(argv: list[str] | None = None) -> None:
         help="Display mode. interactive: tabs per adapter. flat: append-only timeline.",
     )
 
-    # parser.add_argument(
-    #     "--view",
-    #     choices=["timeline"],
-    #     default="timeline",
-    #     help="Reserved for future (kept for CLI stability).",
-    # )
-
     # Network
-    #parser.add_argument("--listen-host", default=DEFAULT_MULTICAST_GROUP, help="Host/interface to bind (default: 127.0.0.1).")
-    parser.add_argument("--listen-port", type=int, default=DEFAULT_MULTICAST_PORT, help="UDP port to bind (default: 12000).")
     parser.add_argument(
-        "--multicast-group",
+        "--port",
+        type=int,
+        default=DEFAULT_MULTICAST_PORT,
+        help="UDP port to bind (default: 12000)."
+    )
+    parser.add_argument(
+        "--group",
         default=DEFAULT_MULTICAST_GROUP,
-        help="If set, join this UDP multicast group (enables true pub/sub without producer client management).",
+        help="If set, join this UDP multicast group "\
+            "(enables true pub/sub without producer client management).",
     )
 
     # Filtering
-    parser.add_argument("--adapter", action="append", default=[], help="Show only this adapter (repeatable).")
-    parser.add_argument("--adapter-regex", default=None, help="Regex filter on adapter name.")
+    parser.add_argument(
+        "--filter",
+        default="*",
+        type=str,
+        help="Filter which adapters are displayed"
+    )
 
     # Time
-    parser.add_argument("--time", dest="time_mode", choices=["rel", "abs"], default="rel",
-                        help="Time display: rel = relative to adapter open/first seen, abs = wall time if timestamp looks like epoch.")
-    parser.add_argument("--abs-time-format", default="%H:%M:%S.%f",
-                        help="strftime format for --time abs (default: %%H:%%M:%%S.%%f).")
-    parser.add_argument("--no-write-delta", dest="show_write_delta", action="store_false",
-                        help="Disable the extra +Δt shown for fragments/reads relative to the last TX/write.")
-    parser.set_defaults(show_write_delta=True)
+    parser.add_argument(
+        "--time",
+        dest="time_mode",
+        choices=[str(x) for x in TimeMode],
+        default=TimeMode.RELATIVE.value,
+        help="Time display: rel = relative to adapter open/first seen, "\
+            "abs = absolute timestamp")
 
     # Content verbosity
-    parser.add_argument("--fragments", choices=["auto", "all", "none"], default="all",
-                        help="Fragment visibility. all=show fragments. none=hide fragments. auto reserved for future.")
-    parser.add_argument("--max-preview", type=int, default=80, help="Max preview chars for payload display.")
-    parser.add_argument("--max-events", type=int, default=200, help="Max event blocks kept per adapter in interactive mode (0 = unlimited).")
+    parser.add_argument(
+        "--no-frag",
+        action="store_true",
+        help="Disable fragment display"
+    )
+    parser.add_argument(
+        "--max-events",
+        type=int,
+        default=DEFAULT_MAX_EVENTS,
+        help="Max event blocks kept per adapter in interactive mode (0 = unlimited)."
+    )
 
     # Output (flat)
-    parser.add_argument("--output", default=None, help="Write flat output to this file instead of stdout.")
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Write flat output to this file instead of stdout."
+    )
 
     args = parser.parse_args(argv)
 
@@ -853,31 +688,21 @@ def main(argv: list[str] | None = None) -> None:
 
     if mode == TraceMode.INTERACTIVE:
         trace = InteractiveTrace(
-            group=args.multicast_group,
-            port=args.listen_port,
-            adapters=args.adapter or None,
-            adapter_regex=args.adapter_regex,
+            group=args.group,
+            port=args.port,
             time_mode=args.time_mode,
-            abs_time_format=args.abs_time_format,
-            show_write_delta=args.show_write_delta,
-            fragments=args.fragments,
-            max_preview=args.max_preview,
-            max_events=args.max_events,
-            output=args.output,
+            descriptor_filter=args.filter,
+            no_fragments=args.no_frag,
+            max_events=args.max_events
         )
     elif mode == TraceMode.FLAT:
         trace = FlatTrace(
-            group=args.multicast_group,
-            port=args.listen_port,
-            adapters=args.adapter or None,
-            adapter_regex=args.adapter_regex,
+            group=args.group,
+            port=args.port,
             time_mode=args.time_mode,
-            abs_time_format=args.abs_time_format,
-            show_write_delta=args.show_write_delta,
-            fragments=args.fragments,
-            max_preview=args.max_preview,
-            max_events=args.max_events,
-            output=args.output,
+            descriptor_filter=args.filter,
+            no_fragments=args.no_frag,
+            output=args.output
         )
     else:
         raise ValueError(f'Invalid mode : {mode}')

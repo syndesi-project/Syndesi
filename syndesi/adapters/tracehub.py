@@ -1,6 +1,12 @@
 # File : tracehub.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Trace module
+
+A single global instance of TraceHub allows all the syndesi modules and workers
+to emit trace events
+"""
 
 from __future__ import annotations
 
@@ -116,9 +122,21 @@ class _TraceHub:
 
         self._udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self._udp_sock.setblocking(False)
-        self._udp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton("127.0.0.1"))
-        self._udp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, struct.pack("b", self.TTL))
-        self._udp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, struct.pack("b", 1 if self.LOOPBACK else 0))
+        self._udp_sock.setsockopt(
+            socket.IPPROTO_IP,
+            socket.IP_MULTICAST_IF,
+            socket.inet_aton("127.0.0.1")
+        )
+        self._udp_sock.setsockopt(
+            socket.IPPROTO_IP,
+            socket.IP_MULTICAST_TTL,
+            struct.pack("b", self.TTL)
+        )
+        self._udp_sock.setsockopt(
+            socket.IPPROTO_IP,
+            socket.IP_MULTICAST_LOOP,
+            struct.pack("b", 1 if self.LOOPBACK else 0)
+        )
         self._udp_dropped = 0
 
     def emit_open(self, descriptor : str) -> None:
@@ -144,8 +162,7 @@ class _TraceHub:
 
         if len(str_data) != len(truncated_str):
             return truncated_str[:-len(self.TRUNCATION_TERMINATION)] + self.TRUNCATION_TERMINATION
-        else:
-            return truncated_str
+        return truncated_str
 
     def emit_fragment(self, descriptor : str, data : bytes) -> None:
         """
