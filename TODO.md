@@ -1,7 +1,4 @@
-# TODO list
+# TODO
 
-- [ ] Implement a "return_default" action on timeout with a specified value
-- [ ] Add stop conditions action
-  - [ ] Return empty
-  - [ ] Ignore (trash what has been received)
-  - [ ] Return (default)
+1) Implement IP server
+2) Implement Modbus Server

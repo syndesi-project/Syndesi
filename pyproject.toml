@@ -11,9 +11,11 @@ dynamic = ["version"]
 description = "Syndesi"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "GPL" }
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [{ name = "Sébastien Deriaz", email = "sebastien.deriaz1@gmail.com" }]
-keywords = ["python", "syndesi", "interface", "ethernet", "serial", "visa"]
+keywords = ["python", "syndesi", "interface", "ethernet",
+"serial", "visa", "protocol", "driver", "adpater"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Education",
@@ -29,7 +31,7 @@ dependencies = ['prompt_toolkit', 'pyserial', 'rich', 'platformdirs']
 
 [project.scripts]
 syndesi = "syndesi.scripts.syndesi:main"
-syndesi-backend = "syndesi.scripts.syndesi_backend:main"
+syndesi-trace = "syndesi.scripts.syndesi_trace:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -74,4 +76,4 @@ exclude = ["tests"]
 # All arguments are necessary and it would not make sense to group them / move them
 # too-many-positional-arguments is kept however because it makes sense
 # Also disable W1203 to allow f-strings in logging lines
-disable = ["R0913", "W1203", "W0511", "R0903"]
+disable = ["R0913", "W1203", "R0903"]

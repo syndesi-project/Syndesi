@@ -38,6 +38,7 @@ from .stop_conditions import (
     Total,
 )
 from .timeout import Timeout, TimeoutAction, any_to_timeout
+from .tracehub import tracehub
 
 
 def nmin(a: float | None, b: float | None) -> float | None:
@@ -71,21 +72,17 @@ class HasFileno(Protocol):
 # │ Adapter events │
 # └────────────────┘
 
-
 class AdapterEvent(Event):
     """Adapter event"""
 
-
 class AdapterDisconnectedEvent(AdapterEvent):
     """Adapter disconnected event"""
-
 
 @dataclass
 class AdapterFrameEvent(AdapterEvent):
     """Adapter frame event, emitted when new data is available"""
 
     frame: AdapterFrame
-
 
 @dataclass
 class FirstFragmentEvent(AdapterEvent):
@@ -238,7 +235,8 @@ class AdapterWorker:
     _FRAME_BUFFER_MAX = 256
     _COMMAND_READY = b"\x00"
 
-    def __init__(self) -> None:
+    def __init__(self, encoding : str) -> None:
+        self.encoding = encoding
         # Command queue (worker input)
         self._command_queue_r, self._command_queue_w = socket.socketpair()
         self._command_queue_r.setblocking(False)
@@ -270,11 +268,15 @@ class AdapterWorker:
         self._first_fragment_timestamp: float | None = None
         self._last_fragment_timestamp: float | None = None
         self._last_write_timestamp: float | None = None
-        self._timeout_origin: StopConditionType | None = None
+        self._timeout_origin: StopConditionType  = StopConditionType.TIMEOUT
         self._next_stop_condition_timeout_timestamp: float | None = None
         self._read_start_timestamp: float | None = None
 
         self._event_callback: Callable[[AdapterEvent], None] | None = None
+
+    def _stop(self) -> None:
+        self._command_queue_r.close()
+        self._command_queue_w.close()
 
     # ┌─────────────────┐
     # │ Worker plumbing │
@@ -323,12 +325,18 @@ class AdapterWorker:
             self._worker_open()
             if not self._opened:
                 raise AdapterWriteError("Adapter not opened")
+        if self._worker_descriptor is not None:
+            tracehub.emit_write(str(self._worker_descriptor), data)
 
     @abstractmethod
-    def _worker_open(self) -> None: ...
+    def _worker_open(self) -> None:
+        if self._worker_descriptor is not None:
+            tracehub.emit_open(str(self._worker_descriptor))
 
     @abstractmethod
-    def _worker_close(self) -> None: ...
+    def _worker_close(self) -> None:
+        if self._worker_descriptor is not None:
+            tracehub.emit_close(str(self._worker_descriptor))
 
     # ┌──────────────────────────┐
     # │ Worker: command handling │
@@ -469,6 +477,9 @@ class AdapterWorker:
         - always emit callback event (if configured)
         """
         self._worker_emit_event(AdapterFrameEvent(frame))
+        if self._worker_descriptor is not None:
+            payload = frame.get_payload()
+            tracehub.emit_read(str(self._worker_descriptor), payload, frame.stop_condition_type)
 
         pr = self._pending_read
         if pr is not None:
@@ -516,7 +527,7 @@ class AdapterWorker:
                     AdapterFrame(
                         fragments=[Fragment(b"", time.time())],
                         stop_timestamp=None,
-                        stop_condition_type=None,
+                        stop_condition_type=StopConditionType.TIMEOUT,
                         previous_read_buffer_used=False,
                         response_delay=None,
                     )
@@ -640,7 +651,13 @@ class AdapterWorker:
 
             self.fragments.append(kept)
 
+            # If there's no stop, break here
             if stop_condition_type is None:
+                # Only upload emit a fragment event if there's no frame
+                if self._worker_descriptor is not None:
+                    tracehub.emit_fragment(str(self._worker_descriptor), kept.data)
+
+
                 break
 
             # frame complete
@@ -708,7 +725,7 @@ class AdapterWorker:
         self._last_write_timestamp = None
         self.fragments = []
         self._next_stop_condition_timeout_timestamp = None
-        self._timeout_origin = None
+        self._timeout_origin = StopConditionType.TIMEOUT
 
     def _worker_next_timeout_timestamp(self) -> float | None:
         stop_conditions = self._stop_conditions
@@ -803,6 +820,7 @@ class AdapterWorker:
 
             # Timeout wakeup: decide what timed out
             # 1) pending read response timeout (before qualifying first fragment)
+            print('Pending read')
             if (
                 self._pending_read is not None
                 and not self._pending_read.first_fragment_seen

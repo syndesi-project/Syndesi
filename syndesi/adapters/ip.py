@@ -10,9 +10,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
-from typing import cast
-
-import _socket
 
 from syndesi.adapters.adapter_worker import AdapterEvent, HasFileno
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
@@ -142,7 +139,8 @@ class IP(Adapter):
             port=port,
             transport=IPDescriptor.Transport(transport.upper()),
         )
-        self._socket: _socket.socket | None = None
+        #self._socket: _socket.socket | None = None
+        self._socket : socket.socket | None = None
 
         super().__init__(
             descriptor=descriptor,
@@ -194,21 +192,16 @@ class IP(Adapter):
                 )
 
     def _worker_open(self) -> None:
+        super()._worker_open()
         self._worker_check_descriptor()
 
         # Create the socket instance
         if self._worker_descriptor.transport == IPDescriptor.Transport.TCP:
-            self._socket = cast(
-                _socket.socket,
-                socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-            )
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         elif self._worker_descriptor.transport == IPDescriptor.Transport.UDP:
-            self._socket = cast(
-                _socket.socket, socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            )
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         else:
             raise AdapterOpenError("Invalid transport protocol")
-
         try:
             self._socket.settimeout(self.WorkerTimeout.OPEN.value)
             self._socket.connect(
@@ -224,9 +217,10 @@ class IP(Adapter):
         self._logger.info(f"IP Adapter {self._worker_descriptor} opened")
 
     def _worker_close(self) -> None:
+        super()._worker_close()
         if self._socket is not None:
             try:
-                self._socket.shutdown(_socket.SHUT_RDWR)
+                self._socket.shutdown(socket.SHUT_RDWR)
                 self._socket.close()
             except OSError:
                 pass

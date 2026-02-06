@@ -57,7 +57,7 @@ class Frame(Generic[T]):
     """
 
     stop_timestamp: float | None
-    stop_condition_type: StopConditionType | None  # None if it's a response timeout
+    stop_condition_type: StopConditionType
     previous_read_buffer_used: bool
     response_delay: float | None
 
@@ -133,7 +133,7 @@ class Component(ABC, Generic[T]):
     """
 
     def __init__(self, logger_alias: LoggerAlias) -> None:
-        super().__init__()
+        #super().__init__()
         self._logger = logging.getLogger(logger_alias.value)
 
     # ==== open ====

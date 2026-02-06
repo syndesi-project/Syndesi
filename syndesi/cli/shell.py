@@ -128,10 +128,9 @@ class AdapterShell:
         self._parser.add_argument(
             "-t",
             "--timeout",
-            nargs="+",
             type=float,
             required=False,
-            default=[2],
+            default=2.0,
             help="Adapter timeout (response)",
         )
         self._parser.add_argument(
@@ -202,7 +201,9 @@ class AdapterShell:
                 auto_open=False,
             )
         elif kind == AdapterType.VISA:
-            self.adapter = Visa(descriptor=args.descriptor, timeout=timeout)
+            self.adapter = Visa(
+                descriptor=args.descriptor, timeout=timeout, auto_open=False
+            )
 
         self.adapter.set_default_timeout(Timeout(action="return_empty"))
 
@@ -245,7 +246,8 @@ class AdapterShell:
         else:
             self.shell.run()
             self.shell.print(
-                f"Opened adapter {self.adapter.descriptor}", style=Shell.Style.NOTE
+                f"Opened adapter {self.adapter.get_descriptor()}",
+                style=Shell.Style.NOTE,
             )
 
     def on_command(self, command: str) -> None:
@@ -276,5 +278,4 @@ class AdapterShell:
             )
         elif isinstance(event, ProtocolFrameEvent):
             data = event.frame.get_payload()
-            # TODO : Catch data from delimited with formatting
             self.shell.print(data)

@@ -93,11 +93,12 @@ class Adapter(Component[bytes], AdapterWorker):
         event_callback: Callable[[AdapterEvent], None] | None = None,
         auto_open: bool = True,
     ) -> None:
-        super().__init__(LoggerAlias.ADAPTER)
-        self.encoding = encoding
+        Component.__init__(self, LoggerAlias.ADAPTER)
+        AdapterWorker.__init__(self, encoding)
+
         self._alias = alias
 
-        self.descriptor = descriptor
+        self._descriptor = descriptor
         self.auto_open = auto_open
 
         self._initial_event_callback = event_callback
@@ -141,22 +142,33 @@ class Adapter(Component[bytes], AdapterWorker):
         # Serialize read/write/query ordering for async callers.
         self._async_io_lock = asyncio.Lock()
 
-        self._logger.info(f"Setting up {self.descriptor} adapter ")
+        self._logger.info(f"Setting up {self._descriptor} adapter ")
         self._update_descriptor()
         self.set_stop_conditions(self._initial_stop_conditions)
         self.set_timeout(self._initial_timeout)
         self.set_event_callback(self._initial_event_callback)
 
-        if self.descriptor.is_initialized() and auto_open:
+        if self._descriptor.is_initialized() and auto_open:
             self.open()
 
         weakref.finalize(self, self._cleanup)
+
+    def get_descriptor(self) -> Descriptor:
+        """
+        Return the adapter's descriptor
+
+        Returns
+        -------
+        descriptor : Descriptor
+        """
+        return self._descriptor
 
     # ┌──────────────────────────┐
     # │ Defaults / configuration │
     # └──────────────────────────┘
 
     def _stop(self) -> None:
+        super()._stop()
         cmd = StopThreadCommand()
         self._worker_send_command(cmd)
         try:
@@ -165,7 +177,7 @@ class Adapter(Component[bytes], AdapterWorker):
             pass
 
     def _update_descriptor(self) -> None:
-        cmd = SetDescriptorCommand(self.descriptor)
+        cmd = SetDescriptorCommand(self._descriptor)
         self._worker_send_command(cmd)
         cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
 
@@ -178,26 +190,18 @@ class Adapter(Component[bytes], AdapterWorker):
         raise NotImplementedError
 
     def __str__(self) -> str:
-        return str(self.descriptor)
+        return str(self._descriptor)
 
     def __repr__(self) -> str:
         return self.__str__()
 
     def _cleanup(self) -> None:
-        # Be defensive: finalizers can run at interpreter shutdown.
         try:
             if self.is_open():
                 self.close()
         except AdapterError:
             pass
-
         self._stop()
-
-        try:
-            self._command_queue_r.close()
-            self._command_queue_w.close()
-        except AdapterError:
-            pass
 
     # ┌────────────┐
     # │ Public API │
@@ -344,9 +348,10 @@ class Adapter(Component[bytes], AdapterWorker):
         scope: str = ReadScope.BUFFERED.value,
     ) -> AdapterFrame:
         with self._sync_io_lock:
-            return self._read_detailed_future(
+            result = self._read_detailed_future(
                 timeout=timeout, stop_conditions=stop_conditions, scope=scope
             ).result(self.WorkerTimeout.READ.value)
+        return result
 
     async def aread_detailed(
         self,
@@ -433,10 +438,12 @@ class Adapter(Component[bytes], AdapterWorker):
         scope: str = ReadScope.BUFFERED.value,
     ) -> AdapterFrame:
         async with self._async_io_lock:
-            await self.aflush_read()
-            await self.awrite(payload)
-            return await self.aread_detailed(
-                timeout=timeout, stop_conditions=stop_conditions, scope=scope
+            await asyncio.wrap_future(self._flush_read_future())
+            await asyncio.wrap_future(self._write_future(payload))
+            return await asyncio.wrap_future(
+                self._read_detailed_future(
+                    timeout=timeout, stop_conditions=stop_conditions, scope=scope
+                )
             )
 
     def query_detailed(
@@ -448,11 +455,12 @@ class Adapter(Component[bytes], AdapterWorker):
     ) -> AdapterFrame:
 
         with self._sync_io_lock:
-            self.flush_read()
-            self.write(payload)
-            return self.read_detailed(
+            self._flush_read_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+            self._write_future(payload).result(self.WorkerTimeout.WRITE.value)
+            output = self._read_detailed_future(
                 timeout=timeout, stop_conditions=stop_conditions, scope=scope
-            )
+            ).result(self.WorkerTimeout.READ.value)
+        return output
 
     # ==== Other ====
 

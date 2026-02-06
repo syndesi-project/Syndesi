@@ -81,7 +81,7 @@ static void sleep_until_steady(Steady::time_point tp) {
 }
 
 static void schedule_tcp_echo(SendJobTCP job) {
-    std::cout << "Delayer:TCP Echo" << std::endl;
+    // std::cout << "Delayer:TCP Echo" << std::endl;
     auto delta = duration<double>(job.delay_s);
     auto tp = Steady::now() + duration_cast<Steady::duration>(delta);
     sleep_until_steady(tp);
@@ -94,7 +94,7 @@ static void schedule_tcp_echo(SendJobTCP job) {
 }
 
 static void schedule_udp_echo(SendJobUDP job) {
-    std::cout << "Delayer:UDP Echo" << std::endl;
+    //std::cout << "Delayer:UDP Echo" << std::endl;
     auto delta = duration<double>(job.delay_s);
     auto tp = Steady::now() + duration_cast<Steady::duration>(delta);
     sleep_until_steady(tp);
@@ -167,7 +167,7 @@ static void tcp_client_thread(socket_t csock) {
             }
         }
     }
-    std::cout << "Delayer:Closing socket (tcp client thread)" << std::endl;
+    //std::cout << "Delayer:Closing socket (tcp client thread)" << std::endl;
     closesock(csock);
 }
 
@@ -185,14 +185,14 @@ static void tcp_server_thread(uint16_t port) {
 
     sockaddr_in addr{}; addr.sin_family = AF_INET; addr.sin_addr.s_addr = htonl(INADDR_ANY); addr.sin_port = htons(port);
     if (bind(lsock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-        std::cout << "Delayer:Closing socket (tcp bind fail)" << std::endl;
-        std::cerr << "Delayer:TCP bind failed (port busy?)\n";
+        //std::cout << "Delayer:Closing socket (tcp bind fail)" << std::endl;
+        //std::cerr << "Delayer:TCP bind failed (port busy?)\n";
         closesock(lsock);
         return;
     }
     if (listen(lsock, 16) != 0) {
-        std::cout << "Delayer:Delayer:Closing socket (tcp listen fail)" << std::endl;
-        std::cerr << "Delayer:Delayer:listen failed\n";
+        //std::cout << "Delayer:Delayer:Closing socket (tcp listen fail)" << std::endl;
+        //std::cerr << "Delayer:Delayer:listen failed\n";
         closesock(lsock);
         return;
     }
@@ -203,7 +203,7 @@ static void tcp_server_thread(uint16_t port) {
         if (csock < 0) break;
         std::thread(tcp_client_thread, csock).detach();
     }
-    std::cout << "Delayer:Closing socket (tcp server thread)" << std::endl;
+    //std::cout << "Delayer:Closing socket (tcp server thread)" << std::endl;
     closesock(lsock);
 }
 
@@ -220,8 +220,8 @@ static void udp_server_thread(uint16_t port) {
 
     sockaddr_in addr{}; addr.sin_family = AF_INET; addr.sin_addr.s_addr = htonl(INADDR_ANY); addr.sin_port = htons(port);
     if (bind(usock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-        std::cout << "Delayer:Closing socket (udp fail)" << std::endl;
-        std::cerr << "Delayer:UDP bind failed (port busy?)\n";
+        //std::cout << "Delayer:Closing socket (udp fail)" << std::endl;
+        //std::cerr << "Delayer:UDP bind failed (port busy?)\n";
         closesock(usock);
         return;
     }
@@ -269,7 +269,7 @@ int main(int argc, char** argv) {
     }
     std::thread udp(udp_server_thread, port);
     std::thread tcp(tcp_server_thread, port);
-    std::cout << "Delayer:delayer listening on UDP/TCP port " << port << std::endl;
+    //std::cout << "Delayer:delayer listening on UDP/TCP port " << port << std::endl;
     udp.join(); tcp.join();
     return 0;
 }
