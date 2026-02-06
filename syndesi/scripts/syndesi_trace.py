@@ -15,10 +15,10 @@ Modes
 - interactive (default): tabs per adapter, switch with ←/→ (or h/l), quit with q.
 - flat: append-only timeline (stdout or --output file).
 """
-
 from __future__ import annotations
 
 from abc import abstractmethod
+from dataclasses import dataclass
 from enum import StrEnum
 from types import TracebackType
 import argparse
@@ -79,8 +79,11 @@ class TimeMode(StrEnum):
 # Terminal input (interactive)
 # -----------------------------
 
+#pylint: disable=too-many-instance-attributes
 class Trace:
     """Trace viewer base class"""
+    ADAPTER_STYLES = ["cyan", "magenta", "green", "yellow", "blue", "bright_cyan",
+            "bright_magenta", "bright_green"]
     def __init__(
             self,
             *,
@@ -109,11 +112,7 @@ class Trace:
 
         self._no_fragments = no_fragments
 
-        self._adapter_last_write : dict[str, float] = {}
-
-        #self.adapters: dict[str, AdapterState] = {}
-
-        self.max_events
+        self._adapters: OrderedDict[str, AdapterProperties] = OrderedDict()
 
         # Time
         self._time_mode = TimeMode(time_mode)
@@ -163,10 +162,18 @@ class Trace:
         raise ValueError(f"Invalid time mode : {self._time_mode}")
 
 
-    def _format_entry(self, descriptor : str, event : TraceEvent) -> Text | None:
+    def _format_entry(self, event : TraceEvent, display_descriptor : bool = False) -> Text | None:
         fragments = [Text(self._time_prefix(event), style="dim"), Text(" ")]
 
-        last_write : float | None = self._adapter_last_write.get(descriptor, None)
+        adapter = self._adapters[event.descriptor]
+
+        if display_descriptor:
+            fragments += [
+                Text(event.descriptor, style="dim"),
+                Text(" ")
+            ]
+
+        #last_write : float | None = None#self._adapter_last_write.get(event.descriptor, None)
 
         if isinstance(event, OpenEvent):
             fragments.append(
@@ -178,7 +185,8 @@ class Trace:
             )
 
         elif isinstance(event, WriteEvent):
-            self._adapter_last_write[descriptor] = event.timestamp
+            adapter.last_write_timestamp = event.timestamp
+            #self._adapter_last_write[event.descriptor] = event.timestamp
             fragments += [
                 Text("write →", style="bold dim"),
                 Text(f"{event.length:4d}B", style="dim"),
@@ -193,8 +201,8 @@ class Trace:
                 Text(event.data, style="dim"),
                 Text(" (frag)", style="dim")
             ]
-            if last_write is not None:
-                write_delta = event.timestamp - last_write
+            if adapter.last_write_timestamp is not None:
+                write_delta = event.timestamp - adapter.last_write_timestamp
                 fragments.append(
                     Text(f" {write_delta:+.3f}s", style="dim")
                 )
@@ -205,8 +213,8 @@ class Trace:
                 Text(f"{event.data} "),
                 Text(f'({event.stop_condition_indicator})', style="dim")
             ]
-            if last_write is not None:
-                write_delta = event.timestamp - last_write
+            if adapter.last_write_timestamp is not None:
+                write_delta = event.timestamp - adapter.last_write_timestamp
                 fragments.append(
                     Text(f" {write_delta:+.3f}s", style="dim")
                 )
@@ -219,11 +227,21 @@ class Trace:
             *fragments
         )
 
-    # def _get_state(self, adapter: str) -> AdapterState:
-    #     if adapter not in self.adapters:
-    #         self.adapters[adapter] = AdapterState(self.max_events)
-    #         self.adapter_order.append(adapter)
-    #     return self.adapters[adapter]
+    def _next_style(self) -> str:
+        color = self.ADAPTER_STYLES[len(self._adapters) % len(self.ADAPTER_STYLES)]
+        return color
+
+    def ingest(self, event : TraceEvent, max_events : int = 0) -> bool:
+        """Ingest event"""
+        if not self._allow_descriptor(event.descriptor):
+            return False
+
+        if event.descriptor not in self._adapters:
+            self._adapters[event.descriptor] = AdapterProperties(
+                blocks=deque([], max_events) if max_events > 0 else None,
+                style=self._next_style()
+            )
+        return True
 
 class FlatTrace(Trace):
     """Flat trace (stdout or file)"""
@@ -266,7 +284,7 @@ class FlatTrace(Trace):
                         file_event = self._format_file_entry(event)
                         if file_event is not None:
                             self._output_fh.write(file_event)
-                    self.print_event(event.descriptor, event)
+                    self.ingest(event)#self.print_event(event)
 
     def _format_file_entry(self, event : TraceEvent) -> str | None:
         columns : OrderedDict[FlatTrace.CSVColumn, str] = OrderedDict(
@@ -287,7 +305,6 @@ class FlatTrace(Trace):
             if isinstance(event, ReadEvent):
                 columns[self.CSVColumn.STOP_CONDITION] = event.stop_condition_indicator
 
-
         return ','.join(columns.values()) + '\n'
 
     def close(self) -> None:
@@ -304,16 +321,15 @@ class FlatTrace(Trace):
         hdr = f"# syndesi-trace flat mode | host={self.group} port={self.port}"
         print(hdr)
 
-    def print_event(self, descriptor : str, event : TraceEvent) -> None:
+    def print_event(self, event : TraceEvent) -> None:
         """Print event to the console"""
-        output = self._format_entry(descriptor, event)
+        output = self._format_entry(event, display_descriptor=True)
         if output is not None:
             self._console.print(output)
 
 class InteractiveTrace(Trace):
     """Interactive trace with tabs for each adapter"""
-    ADAPTER_COLORS = ["cyan", "magenta", "green", "yellow", "blue", "bright_cyan",
-            "bright_magenta", "bright_green"]
+
 
     def __init__(
             self,
@@ -341,34 +357,13 @@ class InteractiveTrace(Trace):
         if self._use_stdin:
             self._selector.register(sys.stdin, selectors.EVENT_READ, data="stdin")
 
-        self.selected_idx: int = 0
-
-        self.adapter_order: list[str] = []
-
-
-        ## Adapter colors
-        self._adapter_colors : dict [str, str] = {}
-        self._adapter_color_index : int = 0
+        self._selected_idx: int = 0
 
         self.max_events = max_events
-
-        self._adapter_blocks : dict[str, deque[Text]] = {}
 
         self._scroll_offset : int = 0
         self._auto_follow : bool = True
 
-    def selected_adapter(self) -> str | None:
-        """Return the current selected adapter"""
-        if not self.adapter_order:
-            return None
-        return self.adapter_order[self.selected_idx]
-
-    def _adapter_style(self, name : str) -> str:
-        # stable-ish per adapter
-        if name not in self._adapter_colors:
-            self._adapter_colors[name] = self.ADAPTER_COLORS[self._adapter_color_index]
-            self._adapter_color_index = (self._adapter_color_index + 1) % len(self.ADAPTER_COLORS)
-        return self._adapter_colors[name]
 
     def _handle_key(self, token: str) -> bool:
         # returns False to quit
@@ -377,23 +372,23 @@ class InteractiveTrace(Trace):
             return False
         if token in ("LEFT", "h"):
 
-            if self.adapter_order:
-                self.selected_idx = (self.selected_idx - 1) % len(self.adapter_order)
+            if self._adapters:
+                self._selected_idx = (self._selected_idx - 1) % len(self._adapters)
         if token in ("RIGHT", "l"):
-            if self.adapter_order:
-                self.selected_idx = (self.selected_idx + 1) % len(self.adapter_order)
+            if self._adapters:
+                self._selected_idx = (self._selected_idx + 1) % len(self._adapters)
         if token in ("UP", "k"):
-            if self.adapter_order:
-                st = self.adapters[self.adapter_order[self.selected_idx]]
-                st.auto_follow = False
-                st.scroll_offset += 1
+            if self._adapters:
+                #st = self.adapters[self.adapter_order[self.selected_idx]]
+                self._auto_follow = False
+                self._scroll_offset += 1
         if token in ("DOWN", "j"):
-            if self.adapter_order:
-                st = self.adapters[self.adapter_order[self.selected_idx]]
-                if st.scroll_offset > 0:
-                    st.scroll_offset -= 1
-                if st.scroll_offset == 0:
-                    st.auto_follow = True
+            if self._adapters:
+                #st = self.adapters[self.adapter_order[self.selected_idx]]
+                if self._scroll_offset > 0:
+                    self._scroll_offset -= 1
+                if self._scroll_offset == 0:
+                    self._auto_follow = True
         return True
 
     def run(self) -> None:
@@ -421,43 +416,48 @@ class InteractiveTrace(Trace):
                     if not running:
                         break
 
-    def ingest(self, event : TraceEvent) -> None:
+    def ingest(self, event : TraceEvent, max_events : int = 0) -> bool:
         """Manage an incoming event"""
-        adapter_id = event.descriptor
-        if not self._allow_descriptor(adapter_id):
-            return
+        if not super().ingest(event, self.max_events):
+            return False
 
-        adapter = self._get_state(adapter_id)
+        adapter = self._adapters[event.descriptor]
 
-        block = self._format_entry(adapter, event)
+        block = self._format_entry(event)
         if block is not None:
-            adapter.blocks.append(block)
+            if adapter.blocks is not None:
+                adapter.blocks.append(block)
+
+        return True
 
     def _render_tabs(self) -> Text:
-        names = self.adapter_order[:] or ["(no adapters)"]
         t = Text()
         t.append("Adapters: ", style="dim")
-        for i, name in enumerate(names):
-            sel = i == self.selected_idx
-            style = f"bold reverse {self._adapter_style(name)}" if sel else \
-                f"{self._adapter_style(name)}"
-            t.append(f" {name} ", style=style)
+        if self._adapters:
+            for i, (name, adapter) in enumerate(self._adapters.items()):
+                if i == self._selected_idx:
+                    style = f"bold reverse {adapter.style}"
+                else:
+                    style = f"{adapter.style}"
+                t.append(f" {name} ", style=style)
+        else:
+            t.append("(no adapters)")
+
         t.append("   ", style="dim")
         t.append("←/→ switch  ↑/↓ scroll  q quit  (h/j/k/l also)", style="dim")
         return t
 
     def _render_interactive(self) -> Panel:
-        if not self.adapter_order:
+        if not self._adapters:
             body = Text("Waiting for events…", style="dim")
             return Panel(Align.left(body), title="Syndesi Trace", border_style="dim")
 
-        selected = self.adapter_order[self.selected_idx]
-        st = self._adapter_blocks adapters[selected]
-
         # Compose recent blocks into lines
         lines: list[Text] = []
-        for block in st.blocks:
-            lines.append(block)
+        selected_adapter = list(self._adapters.values())[self._selected_idx]
+        if selected_adapter.blocks is not None:
+            for block in selected_adapter.blocks:
+                lines.append(block)
 
         if not lines:
             lines = [Text("No events yet for this adapter.", style="dim")]
@@ -519,7 +519,6 @@ class _TerminalRawMode:
             termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._old)
         except OSError:
             pass
-
 
 def _read_keys_nonblocking() -> list[str]:
     """
@@ -594,11 +593,13 @@ def _read_keys_nonblocking() -> list[str]:
 # Viewer state
 # -----------------------------
 
-# class AdapterState:
-#     """Adapter state class"""
-#     def __init__(self, max_events : int) -> None:
-#         self.last_write_timestamp: float | None = None
-#         self.blocks: deque[Text] = deque(maxlen=max_events)
+@dataclass
+class AdapterProperties:
+    """Adapter state class"""
+    blocks : deque[Text] | None
+    style : str
+    last_write_timestamp: float | None = None
+
 
 # -----------------------------
 # Main loop
