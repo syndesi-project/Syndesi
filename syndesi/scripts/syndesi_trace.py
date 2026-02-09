@@ -32,8 +32,7 @@ from collections import OrderedDict, deque
 from collections.abc import Generator
 from typing import Any, TYPE_CHECKING
 from fnmatch import fnmatchcase
-import termios
-import tty
+
 
 from syndesi.adapters.tracehub import (
     DEFAULT_MULTICAST_GROUP,
@@ -47,13 +46,19 @@ from syndesi.adapters.tracehub import (
     json_to_trace_event,
 )
 
+if os.name == "posix":
+    import termios
+    import tty
+elif os.name == "nt":
+    import msvcrt
+
 if TYPE_CHECKING:
     from rich.align import Align
     from rich.console import Console
     from rich.live import Live
     from rich.panel import Panel
     from rich.text import Text
-    rich_available = True
+    RICH_AVAILABLE = True
 else:
     try:
         from rich.align import Align
@@ -61,9 +66,9 @@ else:
         from rich.live import Live
         from rich.panel import Panel
         from rich.text import Text
-        rich_available = True
+        RICH_AVAILABLE = True
     except ImportError:
-        rich_available = False
+        RICH_AVAILABLE = False
 
 class TraceMode(StrEnum):
     """Trace mode"""
@@ -528,26 +533,21 @@ def _read_keys_nonblocking() -> list[str]:
     keys: list[str] = []
 
     if os.name == "nt":
-        raise NotImplementedError()
-        # try:
-        #     import msvcrt
-        #     while msvcrt.kbhit():
-        #         ch = msvcrt.getwch()
-        #         if ch in ("\x00", "\xe0"):  # special key prefix
-        #             ch2 = msvcrt.getwch()
-        #             if ch2 == "K":
-        #                 keys.append("LEFT")
-        #             elif ch2 == "M":
-        #                 keys.append("RIGHT")
-        #             elif ch2 == "H":
-        #                 keys.append("UP")
-        #             elif ch2 == "P":
-        #                 keys.append("DOWN")
-        #         else:
-        #             keys.append(ch)
-        # except Exception:
-        #     return keys
-        # return keys
+        while msvcrt.kbhit():
+            ch = msvcrt.getwch()
+            if ch in ("\x00", "\xe0"):  # special key prefix
+                ch2 = msvcrt.getwch()
+                if ch2 == "K":
+                    keys.append("LEFT")
+                elif ch2 == "M":
+                    keys.append("RIGHT")
+                elif ch2 == "H":
+                    keys.append("UP")
+                elif ch2 == "P":
+                    keys.append("DOWN")
+            else:
+                keys.append(ch)
+        return keys
 
     # POSIX: stdin will be readable via selectors. We still decode escape sequences here.
     try:
