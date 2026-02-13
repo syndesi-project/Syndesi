@@ -11,7 +11,7 @@ from argparse import ArgumentParser
 from enum import Enum
 from typing import Any
 
-from ..adapters.adapter import Adapter
+from ..adapters.adapter import BytesAdapter
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..adapters.timeout import Timeout
@@ -182,7 +182,7 @@ class AdapterShell:
 
         timeout = Timeout(args.timeout)
 
-        self.adapter: Adapter
+        self.adapter: BytesAdapter
         # Create the adapter
         if kind == AdapterType.IP:
             self.adapter = IP(

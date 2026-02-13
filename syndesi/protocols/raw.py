@@ -9,9 +9,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from types import EllipsisType
 
-from ..adapters.adapter import Adapter
+from ..adapters.adapter import BytesAdapter
 from ..adapters.timeout import Timeout
-from ..component import AdapterFrame
+from ..component import Frame
 from .protocol import Protocol, ProtocolEvent, ProtocolFrame
 
 
@@ -38,7 +38,7 @@ class Raw(Protocol[bytes]):
 
     def __init__(
         self,
-        adapter: Adapter,
+        adapter: BytesAdapter,
         timeout: Timeout | None | EllipsisType = ...,
         event_callback: Callable[[ProtocolEvent], None] | None = None,
     ) -> None:
@@ -63,7 +63,7 @@ class Raw(Protocol[bytes]):
     #         if output_event is not None:
     #             self._event_callback(output_event)
 
-    def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> RawFrame:
+    def _adapter_to_protocol(self, adapter_frame: Frame) -> RawFrame:
         payload = adapter_frame.get_payload()
 
         return RawFrame(

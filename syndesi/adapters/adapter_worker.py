@@ -16,11 +16,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from select import select
 from types import EllipsisType
-from typing import Any, Protocol
+from typing import Any, Generic, Protocol, TypeVar
 
 from syndesi.tools.log_settings import LoggerAlias
 
-from ..component import AdapterFrame, Descriptor, Event, ReadScope, ThreadCommand
+from ..component import Frame, Descriptor, Event, ReadScope, ThreadCommand, Frame
 from ..tools.errors import (
     AdapterDisconnected,
     AdapterError,
@@ -78,11 +78,13 @@ class AdapterEvent(Event):
 class AdapterDisconnectedEvent(AdapterEvent):
     """Adapter disconnected event"""
 
+T = TypeVar("T")
+
 @dataclass
-class AdapterFrameEvent(AdapterEvent):
+class AdapterFrameEvent(Generic[T], AdapterEvent):
     """Adapter frame event, emitted when new data is available"""
 
-    frame: AdapterFrame
+    frame: Frame[T]
 
 @dataclass
 class FirstFragmentEvent(AdapterEvent):
@@ -149,7 +151,7 @@ class IsOpenCommand(ThreadCommand[bool]):
     """Return True if the adapter is opened"""
 
 
-class ReadCommand(ThreadCommand[AdapterFrame]):
+class ReadCommand(ThreadCommand[Frame]):
     """
     Read a frame (detailed) from the adapter.
 
@@ -224,72 +226,42 @@ class _PendingRead:
         self.stop_override_applied = False
         self.prev_stop_conditions: list[StopCondition] | None = None
 
+FrameT = TypeVar("FrameT")
 
-# pylint: disable=too-many-instance-attributes
-class AdapterWorker:
+class AdapterWorker(Generic[FrameT]):
+    """Generic adapter worker
+    
+    The worker runs in the background to retrieve frames and send them asynchronously to the
+    adapter
     """
-    Adapter worker
-    """
-
-    # How many completed frames we keep for BUFFERED reads
     _FRAME_BUFFER_MAX = 256
     _COMMAND_READY = b"\x00"
-
-    def __init__(self, encoding : str) -> None:
-        self.encoding = encoding
-        # Command queue (worker input)
+    def __init__(self) -> None:
         self._command_queue_r, self._command_queue_w = socket.socketpair()
         self._command_queue_r.setblocking(False)
         self._command_queue_w.setblocking(False)
-
         self._command_queue: queue.Queue[ThreadCommand[Any]] = queue.Queue()
-
-        self._frame_buffer: deque[AdapterFrame] = deque(maxlen=self._FRAME_BUFFER_MAX)
-
+        self._frame_buffer: deque[Frame] = deque(maxlen=self._FRAME_BUFFER_MAX)
         self._worker_descriptor: Descriptor | None = None
-
         self._pending_read: _PendingRead | None = None
-
         self._timeout: Timeout | None = None
-
-        self._worker_logger = logging.getLogger(LoggerAlias.ADAPTER_WORKER.value)
-
-        self._stop_conditions: list[StopCondition] = []
-
+        self._timeout_origin: StopConditionType  = StopConditionType.TIMEOUT
         # Worker lifecycle and state
         self._thread_running = True
         self._opened = False
         self._first_opened = False
 
-        # Fragment assembly state
-        self._first_fragment: bool = True
-        self.fragments: list[Fragment] = []
-        self._previous_buffer = Fragment(b"", time.time())
-        self._first_fragment_timestamp: float | None = None
-        self._last_fragment_timestamp: float | None = None
-        self._last_write_timestamp: float | None = None
-        self._timeout_origin: StopConditionType  = StopConditionType.TIMEOUT
-        self._next_stop_condition_timeout_timestamp: float | None = None
-        self._read_start_timestamp: float | None = None
+        self._worker_logger = logging.getLogger(LoggerAlias.ADAPTER_WORKER.value)
 
         self._event_callback: Callable[[AdapterEvent], None] | None = None
 
-    def _stop(self) -> None:
-        self._command_queue_r.close()
-        self._command_queue_w.close()
+    @abstractmethod
+    def _selectable(self) -> HasFileno | None:
+        """Return an object with fileno() that becomes readable when device data is available."""
 
     # ┌─────────────────┐
     # │ Worker plumbing │
     # └─────────────────┘
-
-    def _worker_send_command(self, command: ThreadCommand[Any]) -> None:
-        self._command_queue.put(command)
-        # Wake up worker
-        try:
-            self._command_queue_w.send(self._COMMAND_READY)
-        except OSError:
-            # Worker may already be stopped
-            pass
 
     def _worker_drain_wakeup(self) -> None:
         # Drain all pending wakeup bytes (non-blocking)
@@ -302,6 +274,19 @@ class AdapterWorker:
                 return
             except OSError:
                 return
+            
+    def _worker_send_command(self, command: ThreadCommand[Any]) -> None:
+        self._command_queue.put(command)
+        # Wake up worker
+        try:
+            self._command_queue_w.send(self._COMMAND_READY)
+        except OSError:
+            # Worker may already be stopped
+            pass
+
+    def _stop(self) -> None:
+        self._command_queue_r.close()
+        self._command_queue_w.close()
 
     def _worker_check_descriptor(self) -> None:
         if (
@@ -309,12 +294,7 @@ class AdapterWorker:
             or not self._worker_descriptor.is_initialized()
         ):
             raise AdapterOpenError("Descriptor not initialized")
-
-    # Abstract worker methods, to be implemented in the adapter subclasses
-    @abstractmethod
-    def _selectable(self) -> HasFileno | None:
-        """Return an object with fileno() that becomes readable when device data is available."""
-
+        
     @abstractmethod
     def _worker_read(self, fragment_timestamp: float) -> Fragment:
         """Read one fragment from the low-level layer and return it."""
@@ -337,6 +317,40 @@ class AdapterWorker:
     def _worker_close(self) -> None:
         if self._worker_descriptor is not None:
             tracehub.emit_close(str(self._worker_descriptor))
+
+    def _worker_emit_event(self, event: AdapterEvent) -> None:
+        if self._event_callback is not None:
+            try:
+                self._event_callback(event)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Never let user callback break worker
+                self._worker_logger.exception(
+                    "Adapter event callback failed with error : %s", str(e)
+                )
+
+# pylint: disable=too-many-instance-attributes
+class BytesAdapterWorker(AdapterWorker[bytes]):
+    """
+    Adapter worker with bytes and fragment support
+    """
+    # How many completed frames we keep for BUFFERED reads
+
+    def __init__(self, encoding : str) -> None:
+        super().__init__()
+        self.encoding = encoding
+        # Command queue (worker input)
+
+        self._stop_conditions: list[StopCondition] = []
+        # Fragment assembly state
+        self._first_fragment: bool = True
+        self.fragments: list[Fragment] = []
+        self._previous_buffer = Fragment(b"", time.time())
+        self._first_fragment_timestamp: float | None = None
+        self._last_fragment_timestamp: float | None = None
+        self._last_write_timestamp: float | None = None
+        self._next_stop_condition_timeout_timestamp: float | None = None
+        self._read_start_timestamp: float | None = None
+        
 
     # ┌──────────────────────────┐
     # │ Worker: command handling │
@@ -459,17 +473,7 @@ class AdapterWorker:
     # │ Worker: event emission │
     # └────────────────────────┘
 
-    def _worker_emit_event(self, event: AdapterEvent) -> None:
-        if self._event_callback is not None:
-            try:
-                self._event_callback(event)
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                # Never let user callback break worker
-                self._worker_logger.exception(
-                    "Adapter event callback failed with error : %s", str(e)
-                )
-
-    def _worker_deliver_frame(self, frame: AdapterFrame) -> None:
+    def _worker_deliver_frame(self, frame: Frame) -> None:
         """
         Route a completed frame:
         - complete pending read if it matches scope/time rules
@@ -524,7 +528,7 @@ class AdapterWorker:
         match read_timeout.action:
             case TimeoutAction.RETURN_EMPTY:
                 pr.cmd.set_result(
-                    AdapterFrame(
+                    Frame(
                         fragments=[Fragment(b"", time.time())],
                         stop_timestamp=None,
                         stop_condition_type=StopConditionType.TIMEOUT,
@@ -670,7 +674,7 @@ class AdapterWorker:
                     self.fragments[0].timestamp - self._last_write_timestamp
                 )
 
-            frame = AdapterFrame(
+            frame = Frame(
                 fragments=self.fragments,
                 stop_timestamp=stop_timestamp,
                 stop_condition_type=stop_condition_type,
@@ -707,7 +711,7 @@ class AdapterWorker:
                     self.fragments[0].timestamp - self._last_write_timestamp
                 )
 
-            frame = AdapterFrame(
+            frame = Frame(
                 fragments=self.fragments,
                 stop_timestamp=timestamp,
                 stop_condition_type=self._timeout_origin,

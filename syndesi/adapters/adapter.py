@@ -32,6 +32,7 @@ Async facade:
 
 import asyncio
 import threading
+from typing import Generic, TypeVar
 import weakref
 from abc import abstractmethod
 from collections.abc import Callable
@@ -40,12 +41,12 @@ from types import EllipsisType
 
 from syndesi.tools.errors import AdapterError
 
-from ..component import AdapterFrame, Component, Descriptor, ReadScope
+from ..component import Frame, Component, Descriptor, ReadScope
 from ..tools.log_settings import LoggerAlias
 from ..tools.types import NumberLike, is_number
 from .adapter_worker import (
     AdapterEvent,
-    AdapterWorker,
+    BytesAdapterWorker,
     CloseCommand,
     FlushReadCommand,
     IsOpenCommand,
@@ -63,15 +64,15 @@ from .timeout import Timeout, TimeoutAction, any_to_timeout
 
 fragments: list[Fragment]
 
+FrameT = TypeVar("FrameT")
 
 # pylint: disable=too-many-public-methods, too-many-instance-attributes
-class Adapter(Component[bytes], AdapterWorker):
+class Adapter(Generic[FrameT], Component[FrameT]):
     """
     Adapter class
 
     An adapter manages communication with a hardware device.
     """
-
     class WorkerTimeout(Enum):
         """Timeout value for each worker command scenario"""
 
@@ -94,7 +95,7 @@ class Adapter(Component[bytes], AdapterWorker):
         auto_open: bool = True,
     ) -> None:
         Component.__init__(self, LoggerAlias.ADAPTER)
-        AdapterWorker.__init__(self, encoding)
+        BytesAdapterWorker.__init__(self, encoding)
 
         self._alias = alias
 
@@ -346,7 +347,7 @@ class Adapter(Component[bytes], AdapterWorker):
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> AdapterFrame:
+    ) -> Frame:
         with self._sync_io_lock:
             result = self._read_detailed_future(
                 timeout=timeout, stop_conditions=stop_conditions, scope=scope
@@ -358,7 +359,7 @@ class Adapter(Component[bytes], AdapterWorker):
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> AdapterFrame:
+    ) -> Frame:
         async with self._async_io_lock:
             return await asyncio.wrap_future(
                 self._read_detailed_future(
@@ -436,7 +437,7 @@ class Adapter(Component[bytes], AdapterWorker):
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> AdapterFrame:
+    ) -> Frame:
         async with self._async_io_lock:
             await asyncio.wrap_future(self._flush_read_future())
             await asyncio.wrap_future(self._write_future(payload))
@@ -452,7 +453,7 @@ class Adapter(Component[bytes], AdapterWorker):
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> AdapterFrame:
+    ) -> Frame:
 
         with self._sync_io_lock:
             self._flush_read_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)

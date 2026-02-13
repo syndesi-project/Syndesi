@@ -43,9 +43,9 @@ from math import ceil
 from types import EllipsisType
 from typing import cast
 
-from syndesi.component import AdapterFrame
+from syndesi.component import Frame
 
-from ..adapters.adapter import Adapter
+from ..adapters.adapter import BytesAdapter
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..adapters.timeout import Timeout
@@ -1393,7 +1393,7 @@ class Modbus(Protocol[ModbusSDU]):
 
     def __init__(
         self,
-        adapter: Adapter,
+        adapter: BytesAdapter,
         timeout: Timeout | None | EllipsisType = ...,
         _type: str = ModbusType.RTU.value,
         slave_address: int | None = None,
@@ -1455,7 +1455,7 @@ class Modbus(Protocol[ModbusSDU]):
         return output
 
     def _adapter_to_protocol(
-        self, adapter_frame: AdapterFrame
+        self, adapter_frame: Frame
     ) -> ProtocolFrame[ModbusSDU]:
         pdu = adapter_frame.get_payload()
 

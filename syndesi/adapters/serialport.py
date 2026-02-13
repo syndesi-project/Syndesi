@@ -22,7 +22,7 @@ from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
 from syndesi.tools.types import NumberLike
 
-from .adapter import Adapter
+from .adapter import BytesAdapter
 from .stop_conditions import Continuation, Fragment, StopCondition
 from .timeout import Timeout
 
@@ -83,7 +83,7 @@ class SerialPortDescriptor(Descriptor):
         return self.baudrate is not None
 
 
-class SerialPort(Adapter):
+class SerialPort(BytesAdapter):
     """
     Serial communication adapter
 
@@ -233,7 +233,7 @@ class SerialPort(Adapter):
     def _worker_write(self, data: bytes) -> None:
         super()._worker_write(data)
         if self._worker_descriptor.rts_cts:  # Experimental
-            self._port.setRTS(True)  # type: ignore
+            self._port.setRTS(True) # type: ignore
         if self._port is not None:
             try:
                 self._port.write(data)

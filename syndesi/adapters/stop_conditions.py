@@ -12,15 +12,18 @@ This is the frontend of the stop-conditions, the part that is imported by the us
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import Enum
+from typing import Generic, TypeVar
 
+
+FragmentT = TypeVar("FragmentT", bound=object)
 
 @dataclass
-class Fragment:
+class Fragment(Generic[FragmentT]):
     """
     Fragment class, holds a piece of data (bytes) and the time at which it was received
     """
 
-    data: bytes
+    data: FragmentT
     timestamp: float
 
     def __str__(self) -> str:

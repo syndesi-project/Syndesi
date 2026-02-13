@@ -9,10 +9,10 @@ command-like formats with specified delimiters (like \\n, \\r, \\r\\n, etc...)
 from collections.abc import Callable
 from types import EllipsisType
 
-from ..adapters.adapter import Adapter
+from ..adapters.adapter import BytesAdapter
 from ..adapters.stop_conditions import StopCondition, Termination
 from ..adapters.timeout import Timeout
-from ..component import AdapterFrame, ReadScope
+from ..component import Frame, ReadScope
 from .protocol import Protocol, ProtocolEvent, ProtocolFrame
 
 
@@ -49,7 +49,7 @@ class Delimited(Protocol[str]):
 
     def __init__(
         self,
-        adapter: Adapter,
+        adapter: BytesAdapter,
         termination: str = "\n",
         *,
         format_response: bool = True,
@@ -99,7 +99,7 @@ class Delimited(Protocol[str]):
 
     # ==== read_detailed ====
 
-    def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> DelimitedFrame:
+    def _adapter_to_protocol(self, adapter_frame: Frame) -> DelimitedFrame:
         data = adapter_frame.get_payload().decode(self._encoding)
         if data.endswith(self._receive_termination):
             data = data[: -len(self._receive_termination)]

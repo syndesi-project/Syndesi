@@ -28,7 +28,7 @@ from syndesi.adapters.stop_conditions import Continuation, Fragment, StopConditi
 from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterReadError
 
-from .adapter import Adapter
+from .adapter import BytesAdapter
 from .timeout import Timeout
 
 
@@ -104,7 +104,7 @@ class VisaDescriptor(Descriptor):
 
 
 # pylint: disable=too-many-instance-attributes
-class Visa(Adapter):
+class Visa(BytesAdapter):
     """
     VISA Adapter, allows for communication with VISA-compatible devices.
     It uses pyvisa under the hood

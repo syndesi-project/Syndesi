@@ -18,9 +18,9 @@ from syndesi.adapters.adapter_worker import (
     AdapterFrameEvent,
 )
 from syndesi.adapters.stop_conditions import StopCondition
-from syndesi.component import AdapterFrame, Component, Event, Frame, ReadScope
+from syndesi.component import Frame, Component, Event, Frame, ReadScope
 
-from ..adapters.adapter import Adapter
+from ..adapters.adapter import BytesAdapter
 from ..adapters.auto import auto_adapter
 from ..adapters.timeout import Timeout
 from ..tools.log_settings import LoggerAlias
@@ -69,7 +69,7 @@ class Protocol(Component[T], Generic[T]):
 
     def __init__(
         self,
-        adapter: Adapter,
+        adapter: BytesAdapter,
         timeout: ProtocolTimeoutType = ...,
         event_callback: Callable[[ProtocolEvent], None] | None = None,
     ) -> None:
@@ -105,7 +105,7 @@ class Protocol(Component[T], Generic[T]):
                 self._event_callback(output_event)
 
     @abstractmethod
-    def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> ProtocolFrame[T]: ...
+    def _adapter_to_protocol(self, adapter_frame: Frame) -> ProtocolFrame[T]: ...
 
     @abstractmethod
     def _protocol_to_adapter(self, protocol_payload: T) -> bytes: ...

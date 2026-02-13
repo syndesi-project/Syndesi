@@ -46,12 +46,10 @@ class Descriptor(ABC):
     def is_initialized(self) -> bool:
         """Return True if the descriptor is initialized"""
 
-
-T = TypeVar("T")
-
+FrameT = TypeVar("FrameT")
 
 @dataclass
-class Frame(Generic[T]):
+class Frame(Generic[FrameT]):
     """
     Adapter signal containing received data
     """
@@ -60,39 +58,40 @@ class Frame(Generic[T]):
     stop_condition_type: StopConditionType
     previous_read_buffer_used: bool
     response_delay: float | None
+    fragments: list[Fragment] = field(default_factory=lambda: [])
 
     @abstractmethod
-    def get_payload(self) -> T:
+    def get_payload(self) -> FrameT:
         """
         Return frame payload
         """
-
-    @abstractmethod
-    def __str__(self) -> str: ...
-
-
-@dataclass
-class AdapterFrame(Frame[bytes]):
-    """
-    Adapter frame
-    """
-
-    fragments: list[Fragment] = field(default_factory=lambda: [])
-
-    def get_payload(self) -> bytes:
-        """
-        Return all fragement data as a combined bytes array
-        """
-        return b"".join([f.data for f in self.fragments])
+        
 
     def __str__(self) -> str:
-        return f"AdapterFrame({self.get_payload()!r})"
+        return f"Frame({self.get_payload()!r})"
+    # @abstractmethod
+    # def __str__(self) -> str: ...
+
+    # def get_payload(self) -> bytes:
+    #     """
+    #     Return all fragement data as a combined bytes array
+    #     """
+    #     return b"".join([f.data for f in self.fragments])
+
+# @dataclass
+# class Frame(Frame[bytes]):
+#     """
+#     Adapter frame
+#     """
 
 
-R = TypeVar("R")
 
 
-class ThreadCommand(Future[R]):
+
+ThreadReturn = TypeVar("ThreadReturn")
+
+
+class ThreadCommand(Future[ThreadReturn]):
     """
     Command object completed by the worker thread.
 
@@ -101,7 +100,7 @@ class ThreadCommand(Future[R]):
       not on device read timeouts (those are handled in the worker and surfaced as Adapter* errors).
     """
 
-    def result(self, timeout: float | None = None) -> R:
+    def result(self, timeout: float | None = None) -> ThreadReturn:
         """
         Return the result of the thread command
         """
@@ -124,8 +123,7 @@ class ReadScope(StrEnum):
     NEXT = "next"
     BUFFERED = "buffered"
 
-
-class Component(ABC, Generic[T]):
+class Component(ABC, Generic[FrameT]):
     """Syndesi Component
 
     A Component is the elementary class of Syndesi. It is the base
@@ -133,7 +131,6 @@ class Component(ABC, Generic[T]):
     """
 
     def __init__(self, logger_alias: LoggerAlias) -> None:
-        #super().__init__()
         self._logger = logging.getLogger(logger_alias.value)
 
     # ==== open ====
@@ -196,7 +193,7 @@ class Component(ABC, Generic[T]):
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> Frame[T]:
+    ) -> Frame[FrameT]:
         """Asynchronously read data from the component and return a Frame object"""
 
     @abstractmethod
@@ -205,7 +202,7 @@ class Component(ABC, Generic[T]):
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> Frame[T]:
+    ) -> Frame[FrameT]:
         """Read data from the component and return a Frame object"""
 
     # ==== read ====
@@ -216,7 +213,7 @@ class Component(ABC, Generic[T]):
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> T:
+    ) -> FrameT:
         """Asynchronously read data from the component"""
 
     @abstractmethod
@@ -225,7 +222,7 @@ class Component(ABC, Generic[T]):
         timeout: Timeout | EllipsisType | None = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> T:
+    ) -> FrameT:
         """Read data from the component"""
 
     # ==== flush_read ====
@@ -241,11 +238,11 @@ class Component(ABC, Generic[T]):
     # ==== write ====
 
     @abstractmethod
-    async def awrite(self, data: T) -> None:
+    async def awrite(self, data: FrameT) -> None:
         """Asynchronously write data to the component"""
 
     @abstractmethod
-    def write(self, data: T) -> None:
+    def write(self, data: FrameT) -> None:
         """Synchronously write data to the component"""
 
     # ==== query_detailed ====
@@ -253,11 +250,11 @@ class Component(ABC, Generic[T]):
     @abstractmethod
     async def aquery_detailed(
         self,
-        payload: T,
+        payload: FrameT,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> Frame[T]:
+    ) -> Frame[FrameT]:
         """
         Asynchronously query the component and return a Frame object
         """
@@ -265,11 +262,11 @@ class Component(ABC, Generic[T]):
     @abstractmethod
     def query_detailed(
         self,
-        payload: T,
+        payload: FrameT,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> Frame[T]:
+    ) -> Frame[FrameT]:
         """
         Synchronously query the component and return a Frame object
         """
@@ -278,11 +275,11 @@ class Component(ABC, Generic[T]):
 
     async def aquery(
         self,
-        payload: T,
+        payload: FrameT,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> T:
+    ) -> FrameT:
         """Asynchronously query the component"""
         output_frame = await self.aquery_detailed(
             payload=payload,
@@ -294,11 +291,11 @@ class Component(ABC, Generic[T]):
 
     def query(
         self,
-        payload: T,
+        payload: FrameT,
         timeout: Timeout | None | EllipsisType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> T:
+    ) -> FrameT:
         """Query the component"""
         output_frame = self.query_detailed(
             payload=payload,
