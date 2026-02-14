@@ -296,11 +296,11 @@ class AdapterWorker(Generic[FrameT]):
             raise AdapterOpenError("Descriptor not initialized")
         
     @abstractmethod
-    def _worker_read(self, fragment_timestamp: float) -> Fragment:
+    def _worker_read(self, fragment_timestamp: float) -> Fragment[FrameT]:
         """Read one fragment from the low-level layer and return it."""
 
     @abstractmethod
-    def _worker_write(self, data: bytes) -> None:
+    def _worker_write(self, data: FrameT) -> None:
         if not self._opened and not self._first_opened:
             self._worker_open()
             if not self._opened:
@@ -350,7 +350,6 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
         self._last_write_timestamp: float | None = None
         self._next_stop_condition_timeout_timestamp: float | None = None
         self._read_start_timestamp: float | None = None
-        
 
     # ┌──────────────────────────┐
     # │ Worker: command handling │
@@ -483,7 +482,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
         self._worker_emit_event(AdapterFrameEvent(frame))
         if self._worker_descriptor is not None:
             payload = frame.get_payload()
-            tracehub.emit_read(str(self._worker_descriptor), payload, frame.stop_condition_type)
+            tracehub.emit_bytes_read(str(self._worker_descriptor), payload, frame.stop_condition_type)
 
         pr = self._pending_read
         if pr is not None:
@@ -659,7 +658,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
             if stop_condition_type is None:
                 # Only upload emit a fragment event if there's no frame
                 if self._worker_descriptor is not None:
-                    tracehub.emit_fragment(str(self._worker_descriptor), kept.data)
+                    tracehub.emit_fragment(str(self._worker_descriptor), kept)
 
 
                 break
@@ -813,10 +812,11 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                 continue
 
             if s is not None and s in readable:
-                if not self._opened and not self._first_opened:
-                    self._worker_open()
-                    if not self._opened:
-                        raise AdapterReadError("Adapter not opened")
+                # TODO : Check if this is of any use, probably made up by ChatGPT
+                # if not self._opened and not self._first_opened:
+                #     self._worker_open()
+                #     if not self._opened:
+                #         raise AdapterReadError("Adapter not opened")
 
                 frag = self._worker_read(t)
                 self._worker_manage_fragment(frag)
@@ -824,7 +824,6 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
 
             # Timeout wakeup: decide what timed out
             # 1) pending read response timeout (before qualifying first fragment)
-            print('Pending read')
             if (
                 self._pending_read is not None
                 and not self._pending_read.first_fragment_seen

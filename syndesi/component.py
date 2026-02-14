@@ -49,26 +49,35 @@ class Descriptor(ABC):
 FrameT = TypeVar("FrameT")
 
 @dataclass
-class Frame(Generic[FrameT]):
+class BaseFrame(Generic[FrameT]):
     """
-    Adapter signal containing received data
+    A complete frame of data
     """
 
     stop_timestamp: float | None
     stop_condition_type: StopConditionType
     previous_read_buffer_used: bool
     response_delay: float | None
-    fragments: list[Fragment] = field(default_factory=lambda: [])
 
     @abstractmethod
     def get_payload(self) -> FrameT:
         """
         Return frame payload
         """
-        
 
     def __str__(self) -> str:
         return f"Frame({self.get_payload()!r})"
+    
+@dataclass
+class Frame(BaseFrame)
+
+@dataclass
+class FragmentableFrame(Generic[FrameT], BaseFrame(FrameT)):
+    """
+    A complete frame of data, can be composed of multiple fragments
+    """
+    fragments: list[Fragment] = field(default_factory=lambda: [])
+
     # @abstractmethod
     # def __str__(self) -> str: ...
 
@@ -83,10 +92,6 @@ class Frame(Generic[FrameT]):
 #     """
 #     Adapter frame
 #     """
-
-
-
-
 
 ThreadReturn = TypeVar("ThreadReturn")
 

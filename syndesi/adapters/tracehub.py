@@ -17,7 +17,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from syndesi.adapters.stop_conditions import StopConditionType
+from syndesi.adapters.stop_conditions import StopConditionType, Fragment
 
 STOP_CONDITION_INDICATOR = {
     StopConditionType.CONTINUATION : "Cont",
@@ -62,14 +62,14 @@ class CloseEvent(TraceEvent):
     t : str = field(default="close", init=False)
 
 @dataclass(frozen=True)
-class ReadEvent(TraceEvent):
+class ReadBytesEvent(TraceEvent):
     """
     Adapter read trace event
     """
     data : str
-    t : str = field(default="read", init=False)
     length : int
     stop_condition_indicator : str
+    t : str = field(default="bytes_read", init=False)
 
 @dataclass(frozen=True)
 class WriteEvent(TraceEvent):
@@ -80,7 +80,15 @@ class WriteEvent(TraceEvent):
     length : int
     t : str = field(default="write", init=False)
 
-EVENTS : list[type[TraceEvent]] = [FragmentEvent, OpenEvent, CloseEvent, ReadEvent, WriteEvent]
+@dataclass(frozen=True)
+class ReadEvent(TraceEvent):
+    """
+    Generic read event
+    """
+    message : str
+    t : str = field(default="read", init=False)
+
+EVENTS : list[type[TraceEvent]] = [FragmentEvent, OpenEvent, CloseEvent, ReadBytesEvent, WriteEvent]
 
 EVENTS_MAP : dict[str, type[TraceEvent]]= {
     e.t : e for e in EVENTS
@@ -151,7 +159,7 @@ class _TraceHub:
         """
         self._emit_event(CloseEvent(descriptor, time.time()))
 
-    def _format_data(self, data : bytes) -> str:
+    def _format_bytes(self, data : bytes) -> str:
         if len(data) > 4*self.TRUNCATE_LENGTH:
             # Pre-truncate to avoid working with super long data
             data = data[:4*self.TRUNCATE_LENGTH]
@@ -164,29 +172,35 @@ class _TraceHub:
             return truncated_str[:-len(self.TRUNCATION_TERMINATION)] + self.TRUNCATION_TERMINATION
         return truncated_str
 
-    def emit_fragment(self, descriptor : str, data : bytes) -> None:
+    def emit_fragment(self, descriptor : str, fragment : Fragment) -> None:
         """
         Emit a fragment trace event
         """
-        self._emit_event(FragmentEvent(
-            descriptor,
-            time.time(),
-            self._format_data(data),
-            len(data)
-        ))
+        match fragment.data:
+            case bytes():
+                self._emit_event(FragmentEvent(
+                    descriptor,
+                    time.time(),
+                    self._format_bytes(fragment.data),
+                    len(fragment.data)
+                ))
 
-    def emit_write(self, descriptor : str, data : bytes) -> None:
+    def emit_write(self, descriptor : str, data : Any) -> None:
         """
         Emit a write trace event
         """
-        self._emit_event(WriteEvent(
-            descriptor,
-            time.time(),
-            self._format_data(data),
-            len(data)
-        ))
+        if isinstance(data, bytes):
+            self._emit_event(WriteEvent(
+                descriptor,
+                time.time(),
+                self._format_bytes(data),
+                len(data)
+            ))
+        else:
+            # TODO : Fix
+            print(f"Invalid data type for emit_write : {type(data)}")
 
-    def emit_read(
+    def emit_bytes_read(
             self,
             descriptor : str,
             data : bytes,
@@ -198,12 +212,23 @@ class _TraceHub:
 
         indicator = STOP_CONDITION_INDICATOR[stop_condition_type]
 
+        self._emit_event(ReadBytesEvent(
+            descriptor,
+            time.time(),
+            self._format_bytes(data),
+            len(data),
+            indicator
+        ))
+
+    def emit_generic_read(
+            self,
+            descriptor : str,
+            message : str
+    ):
         self._emit_event(ReadEvent(
             descriptor,
             time.time(),
-            self._format_data(data),
-            len(data),
-            indicator
+            message
         ))
 
     def _emit_event(self, ev: TraceEvent) -> None:

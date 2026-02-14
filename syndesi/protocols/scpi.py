@@ -9,7 +9,7 @@ provides extra functionalities
 
 from types import EllipsisType
 
-from ..adapters.adapter import BytesAdapter
+from ..adapters.adapter import Adapter
 from ..adapters.ip import IP
 from ..adapters.timeout import Timeout, TimeoutAction
 from .delimited import Delimited
@@ -34,7 +34,7 @@ class SCPI(Delimited):
 
     def __init__(
         self,
-        adapter: BytesAdapter,
+        adapter: Adapter[bytes],
         send_termination: str = "\n",
         receive_termination: str | None = None,
         *,

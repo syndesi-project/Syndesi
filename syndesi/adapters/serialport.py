@@ -22,7 +22,7 @@ from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
 from syndesi.tools.types import NumberLike
 
-from .adapter import BytesAdapter
+from .adapter import Adapter
 from .stop_conditions import Continuation, Fragment, StopCondition
 from .timeout import Timeout
 
@@ -83,7 +83,7 @@ class SerialPortDescriptor(Descriptor):
         return self.baudrate is not None
 
 
-class SerialPort(BytesAdapter):
+class SerialPort(Adapter[bytes]):
     """
     Serial communication adapter
 

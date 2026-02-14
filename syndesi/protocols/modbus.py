@@ -45,7 +45,7 @@ from typing import cast
 
 from syndesi.component import Frame
 
-from ..adapters.adapter import BytesAdapter
+from ..adapters.adapter import Adapter
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..adapters.timeout import Timeout
@@ -1376,7 +1376,7 @@ class ModbusFrame(ProtocolFrame[ModbusSDU]):
 
 
 # pylint: disable=too-many-public-methods
-class Modbus(Protocol[ModbusSDU]):
+class Modbus(Protocol[ModbusSDU, bytes]):
     """
     Modbus protocol
 
@@ -1393,7 +1393,7 @@ class Modbus(Protocol[ModbusSDU]):
 
     def __init__(
         self,
-        adapter: BytesAdapter,
+        adapter: Adapter[bytes],
         timeout: Timeout | None | EllipsisType = ...,
         _type: str = ModbusType.RTU.value,
         slave_address: int | None = None,

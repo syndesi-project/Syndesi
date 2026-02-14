@@ -175,7 +175,7 @@ class IP(Adapter[bytes]):
             fragment = Fragment(b"", fragment_timestamp)
         else:
             if data == b"":
-                self._logger.warning("Socket disconnected")
+                #self._logger.warning("Socket disconnected")
                 self._worker_close()
             fragment = Fragment(data, fragment_timestamp)
         return fragment
@@ -236,12 +236,12 @@ class IP(Adapter[bytes]):
 
 
 @dataclass
-class ClientFrame:
+class ClientFragment:
     """Data packet received or sent to an IPServer client"""
     address : str
     socket : socket.socket
 
-class IPServer(Adapter[ClientFrame]):
+class IPServer(Adapter[ClientFragment]):
     """
     IP server stack adapter. The IP Adapter reads and writes bytes units (frames)
 
@@ -283,12 +283,16 @@ class IPServer(Adapter[ClientFrame]):
     auto_open : bool, default to True
         Automatically open the adapter after instanciation
     """
+
+    DEFAULT_BACKLOG = 5
+
     def __init__(
         self,
         address: str,
         port: int | None = None,
         transport: str = IPDescriptor.Transport.TCP.value,
         *,
+        backlog : int = DEFAULT_BACKLOG,
         stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
         encoding: str = "utf-8",
         alias: str = "",
@@ -303,6 +307,11 @@ class IPServer(Adapter[ClientFrame]):
         )
         self._socket : socket.socket | None = None
 
+        self._descriptor: IPDescriptor
+        self._worker_descriptor: IPDescriptor
+
+        self._backlog = backlog
+        
         super().__init__(
             descriptor=descriptor,
             stop_conditions=stop_conditions,
@@ -312,8 +321,6 @@ class IPServer(Adapter[ClientFrame]):
             event_callback=event_callback,
             auto_open=auto_open,
         )
-        self._descriptor: IPDescriptor
-        self._worker_descriptor: IPDescriptor
 
         self.set_event_callback(self._on_event)
 
@@ -329,32 +336,30 @@ class IPServer(Adapter[ClientFrame]):
             self._descriptor.port = port
             self._update_descriptor()
 
-    def _worker_read(self, fragment_timestamp: float) -> Fragment:
+    def _worker_read(self, fragment_timestamp: float) -> Fragment[ClientFragment]:
+        print(f'IP server read')
         if self._socket is None:
+            print(f'Socket None')
             return Fragment(b"", fragment_timestamp)
-
         try:
-            data = self._socket.recv(BUFFER_SIZE)
+            socket, address = self._socket.accept()
         except (ConnectionRefusedError, OSError):
+            print('Connection refused error')
             fragment = Fragment(b"", fragment_timestamp)
         else:
-            if data == b"":
-                self._logger.warning("Socket disconnected")
-                self._worker_close()
-            fragment = Fragment(data, fragment_timestamp)
+            
+            fragment = Fragment(ClientFragment(address, socket), fragment_timestamp)
+            # if data == b"":
+            #     print('Empty data')
+            #     self._logger.warning("Socket disconnected")
+            #     self._worker_close()
+            #fragment = Fragment(data, fragment_timestamp)
         return fragment
     
 # Idea : The IPServer creates IP clients (instance of IP with the specific client address/port). The server would provide helper function to manage all of that.
 
     def _worker_write(self, data: bytes) -> None:
-        super()._worker_write(data)
-
-        if self._socket is not None:
-            if self._socket.send(data) != len(data):
-                raise AdapterWriteError(
-                    f"Adapter {self._worker_descriptor} couldn't write"
-                    " all of the data to the socket"
-                )
+        raise NotImplementedError()
 
     def _worker_open(self) -> None:
         super()._worker_open()
@@ -372,6 +377,7 @@ class IPServer(Adapter[ClientFrame]):
             self._socket.bind(
                 (self._worker_descriptor.address, self._worker_descriptor.port)
             )
+            self._socket.listen(self._backlog)
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:
             self._opened = False
             msg = f"Failed to open adapter {self._worker_descriptor} : {e}"
@@ -404,7 +410,9 @@ class IPServer(Adapter[ClientFrame]):
         return Timeout(response=1, action="error")
     
     def _on_event(self, event : AdapterEvent):
+        print(f'IP Server event : {event}')
         if isinstance(event, AdapterFrameEvent):
-            event.frame
+            ...
+            
 
 

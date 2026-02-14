@@ -41,6 +41,7 @@ from syndesi.adapters.tracehub import (
     CloseEvent,
     FragmentEvent,
     OpenEvent,
+    ReadBytesEvent,
     ReadEvent,
     TraceEvent,
     WriteEvent,
@@ -206,12 +207,22 @@ class Trace:
                 fragments.append(
                     Text(f" {write_delta:+.3f}s", style="dim")
                 )
-        elif isinstance(event, ReadEvent):
+        elif isinstance(event, ReadBytesEvent):
             fragments += [
                 Text("read  ←", style="bold dim"),
                 Text(f"{event.length:4d}B ", style="dim"),
                 Text(f"{event.data} "),
                 Text(f'({event.stop_condition_indicator})', style="dim")
+            ]
+            if adapter.last_write_timestamp is not None:
+                write_delta = event.timestamp - adapter.last_write_timestamp
+                fragments.append(
+                    Text(f" {write_delta:+.3f}s", style="dim")
+                )
+        elif isinstance(event, ReadEvent):
+            fragments += [
+                Text("read  ←", style="bold dim"),
+                Text(f"{event.message} "),
             ]
             if adapter.last_write_timestamp is not None:
                 write_delta = event.timestamp - adapter.last_write_timestamp
@@ -298,12 +309,14 @@ class FlatTrace(Trace):
         columns[self.CSVColumn.TIME] = f"{event.timestamp:.6f}"
         columns[self.CSVColumn.EVENT] = event.t
 
-        if isinstance(event, (WriteEvent, ReadEvent, FragmentEvent)):
+        if isinstance(event, (WriteEvent, ReadBytesEvent, FragmentEvent)):
             columns[self.CSVColumn.DATA] = event.data
             columns[self.CSVColumn.SIZE] = str(event.length)
 
-            if isinstance(event, ReadEvent):
+            if isinstance(event, ReadBytesEvent):
                 columns[self.CSVColumn.STOP_CONDITION] = event.stop_condition_indicator
+        elif isinstance(event, ReadEvent):
+            columns[self.CSVColumn.DATA] = event.message
 
         return ','.join(columns.values()) + '\n'
 

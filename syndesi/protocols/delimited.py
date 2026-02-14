@@ -9,7 +9,7 @@ command-like formats with specified delimiters (like \\n, \\r, \\r\\n, etc...)
 from collections.abc import Callable
 from types import EllipsisType
 
-from ..adapters.adapter import BytesAdapter
+from ..adapters.adapter import Adapter
 from ..adapters.stop_conditions import StopCondition, Termination
 from ..adapters.timeout import Timeout
 from ..component import Frame, ReadScope
@@ -25,7 +25,7 @@ class DelimitedFrame(ProtocolFrame[str]):
         return f"DelimitedFrame({self.payload})"
 
 
-class Delimited(Protocol[str]):
+class Delimited(Protocol[str, bytes]):
     """
     Protocol with delimiter, like LF, CR, etc... LF is used by default
 
@@ -49,7 +49,7 @@ class Delimited(Protocol[str]):
 
     def __init__(
         self,
-        adapter: BytesAdapter,
+        adapter: Adapter[bytes],
         termination: str = "\n",
         *,
         format_response: bool = True,

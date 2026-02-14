@@ -2,7 +2,7 @@
 Syndesi module
 """
 
-from .adapters.ip import IP
+from .adapters.ip import IP, IPServer
 from .adapters.serialport import SerialPort
 from .adapters.stop_conditions import Continuation, Length, Termination, Total
 from .adapters.timeout import Timeout
@@ -15,6 +15,7 @@ from .tools.logmanager import log
 
 __all__ = [
     "IP",
+    "IPServer",
     "SerialPort",
     "Visa",
     "Delimited",

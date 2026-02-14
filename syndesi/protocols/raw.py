@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from types import EllipsisType
 
-from ..adapters.adapter import BytesAdapter
+from ..adapters.adapter import Adapter
 from ..adapters.timeout import Timeout
 from ..component import Frame
 from .protocol import Protocol, ProtocolEvent, ProtocolFrame
@@ -27,7 +27,7 @@ class RawFrame(ProtocolFrame[bytes]):
         return f"ProtocolFrame({self.payload!r})"
 
 
-class Raw(Protocol[bytes]):
+class Raw(Protocol[bytes, bytes]):
     """
     Raw device, no presentation and application layers, data is returned as bytes directly
 
@@ -38,7 +38,7 @@ class Raw(Protocol[bytes]):
 
     def __init__(
         self,
-        adapter: BytesAdapter,
+        adapter: Adapter[bytes],
         timeout: Timeout | None | EllipsisType = ...,
         event_callback: Callable[[ProtocolEvent], None] | None = None,
     ) -> None:

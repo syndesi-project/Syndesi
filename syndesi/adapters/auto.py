@@ -20,7 +20,7 @@ import re
 
 from syndesi.component import Descriptor
 
-from .adapter import BytesAdapter
+from .adapter import Adapter
 from .ip import IP, IPDescriptor
 from .serialport import SerialPort, SerialPortDescriptor
 from .visa import Visa, VisaDescriptor
@@ -51,7 +51,7 @@ def adapter_descriptor_by_string(string_descriptor: str) -> Descriptor:
     raise ValueError(f"Could not parse descriptor string : {string_descriptor}")
 
 
-def auto_adapter(adapter_or_string: BytesAdapter | str) -> BytesAdapter:
+def auto_adapter(adapter_or_string: Adapter | str) -> Adapter:
     """
     Create an adapter from a string or an adapter
 
@@ -61,7 +61,7 @@ def auto_adapter(adapter_or_string: BytesAdapter | str) -> BytesAdapter:
     - /dev/tty[ACM|USB]<int> -> SerialPort
 
     """
-    if isinstance(adapter_or_string, BytesAdapter):
+    if isinstance(adapter_or_string, Adapter):
         # Simply return it
         return adapter_or_string
 

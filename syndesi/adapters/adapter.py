@@ -67,7 +67,7 @@ fragments: list[Fragment]
 FrameT = TypeVar("FrameT")
 
 # pylint: disable=too-many-public-methods, too-many-instance-attributes
-class Adapter(Generic[FrameT], Component[FrameT]):
+class Adapter(BytesAdapterWorker, Generic[FrameT], Component[FrameT]):
     """
     Adapter class
 
@@ -299,7 +299,10 @@ class Adapter(Generic[FrameT], Component[FrameT]):
         """
         Open adapter communication with the target (blocking)
         """
-        return self._open_future().result(self.WorkerTimeout.OPEN.value)
+        try:
+            return self._open_future().result(self.WorkerTimeout.OPEN.value)
+        except AdapterError as e:
+            raise AdapterError(str(e)) from None
 
     async def aopen(self) -> None:
         """
