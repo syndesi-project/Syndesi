@@ -78,7 +78,7 @@ class Protocol(Component[ProtocolFrameT], Generic[ProtocolFrameT, AdapterFrameT]
         self._adapter = auto_adapter(adapter)
         self._event_callback = event_callback
 
-        self._adapter.set_event_callback(self._on_event)
+        self._adapter.register_event_callback(self._on_event)
 
         if timeout is not ...:
             self._adapter.set_default_timeout(timeout)

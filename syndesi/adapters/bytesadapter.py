@@ -1,86 +1,26 @@
-# File : adapter.py
+# File : bytesadapter.py
 # Author : Sébastien Deriaz
 # License : GPL
-
 """
-Adapters provide a common abstraction for the media layers (physical + data link + network)
-
-The user calls methods of the Adapter class synchronously.
-
-An adapter is meant to work with bytes objects but it can accept strings.
-Strings will automatically be converted to bytes using utf-8 encoding
-
-Each adapter contains a worker thread that monitors the low-level communication layers.
-This approach allows for precise time management (when each fragment is sent/received) and allows
-for asynchronous events (fragment received).
-
-Async facade:
-- aopen/awrite/aread/aread_detailed simply await the SAME underlying worker-thread commands
-  using asyncio.wrap_future (no extra threads are spawned).
+Adapter with bytes data type
 """
-
-# NOTE:
-# This version removes the "worker publishes events into a queue that read_detailed consumes".
-# Instead:
-# - The worker continuously assembles AdapterFrame from fragments (as before).
-# - A read_detailed command registers a "pending read" inside the worker.
-# - When a frame completes, the worker either:
-#     * completes the pending read future, OR
-#     * buffers the frame for later buffered reads, and optionally calls the callback.
-#
-# This avoids having a sync queue AND an async queue, and makes async wrappers trivial.
-
-import asyncio
-import threading
-from typing import Generic, TypeVar
-import weakref
-from abc import abstractmethod
-from collections.abc import Callable
-from enum import Enum
 from types import EllipsisType
+from syndesi.adapters.stop_conditions import StopCondition
+from syndesi.adapters.timeout import Timeout
+from syndesi.component import Frame, ReadScope
+from .adapter import Adapter
 
-from syndesi.tools.errors import AdapterError
 
-from ..component import Frame, Component, Descriptor, ReadScope
-from ..tools.log_settings import LoggerAlias
-from ..tools.types import NumberLike, is_number
-from .adapter_worker import (
-    AdapterEvent,
-    AdapterWorker,
-    CloseCommand,
-    FlushReadCommand,
-    IsOpenCommand,
-    OpenCommand,
-    ReadCommand,
-    SetDescriptorCommand,
-    AddEventCallbackCommand,
-    SetTimeoutCommand,
-    StopThreadCommand,
-    WriteCommand,
-)
+class BytesAdapter(Adapter[bytes]):
+    """Bytes adapter"""
 
-from .timeout import Timeout, TimeoutAction, any_to_timeout
 
-#fragments: list[Fragment]
 
-FrameT = TypeVar("FrameT")
-
-# pylint: disable=too-many-public-methods, too-many-instance-attributes
-class Adapter(Generic[FrameT], AdapterWorker[FrameT], Component[FrameT]):
     """
     Adapter class
 
     An adapter manages communication with a hardware device.
     """
-    class WorkerTimeout(Enum):
-        """Timeout value for each worker command scenario"""
-
-        OPEN = 2
-        STOP = 1
-        IMMEDIATE_COMMAND = 0.2
-        CLOSE = 0.5
-        WRITE = 0.5
-        READ = None
 
     def __init__(
         self,
@@ -92,29 +32,27 @@ class Adapter(Generic[FrameT], AdapterWorker[FrameT], Component[FrameT]):
         encoding: str = "utf-8",
         auto_open: bool = True,
     ) -> None:
-        Component.__init__(self, LoggerAlias.ADAPTER)
-        AdapterWorker.__init__(self, encoding)
-
-        self._alias = alias
-
-        self._descriptor = descriptor
-        self.auto_open = auto_open
-
-        self._event_callbacks : list[Callable[[AdapterEvent], None]] = []
+        super().__init__(
+            descriptor=descriptor,
+            timeout=timeout,
+            alias=alias,
+            encoding=encoding,
+            auto_open=auto_open
+        )
 
         # Default stop conditions
-        #self._initial_stop_conditions: list[StopCondition]
-        # if stop_conditions is ...:
-        #     self._is_default_stop_condition = True
-        #     self._initial_stop_conditions = self._default_stop_conditions()
-        # else:
-        #     self._is_default_stop_condition = False
-        #     if isinstance(stop_conditions, StopCondition):
-        #         self._initial_stop_conditions = [stop_conditions]
-        #     elif isinstance(stop_conditions, list):
-        #         self._initial_stop_conditions = stop_conditions
-        #     else:
-        #         raise ValueError("Invalid stop_conditions")
+        self._initial_stop_conditions: list[StopCondition]
+        if stop_conditions is ...:
+            self._is_default_stop_condition = True
+            self._initial_stop_conditions = self._default_stop_conditions()
+        else:
+            self._is_default_stop_condition = False
+            if isinstance(stop_conditions, StopCondition):
+                self._initial_stop_conditions = [stop_conditions]
+            elif isinstance(stop_conditions, list):
+                self._initial_stop_conditions = stop_conditions
+            else:
+                raise ValueError("Invalid stop_conditions")
 
         # Default timeout
         self.is_default_timeout = timeout is Ellipsis
@@ -478,3 +416,40 @@ class Adapter(Generic[FrameT], AdapterWorker[FrameT], Component[FrameT]):
     async def ais_open(self) -> bool:
         """Asynchronously check if the adapter is open"""
         return await asyncio.wrap_future(self._is_open_future())
+    
+
+    # ==== query_detailed ====
+    
+    async def aquery(
+        self,
+        payload: bytes,
+        timeout: Timeout | None | EllipsisType = ...,
+        scope: str = ReadScope.BUFFERED.value,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
+    ) -> bytes:
+        """Asynchronously query the component"""
+        output_frame = await self.aquery_detailed(
+            payload=payload,
+            timeout=timeout,
+            scope=scope,
+        )
+        return output_frame.data
+
+    def query(
+        self,
+        payload: bytes,
+        timeout: Timeout | None | EllipsisType = ...,
+        scope: str = ReadScope.BUFFERED.value,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
+    ) -> bytes:
+        """Query the component"""
+        output_frame = self.query_detailed(
+            payload=payload,
+            timeout=timeout,
+            scope=scope,
+        )
+        return output_frame.data
+    
+
+I think it works, it should be possible to add arguments to query_detailed (stop-conditions in that case). It would mean that
+it could be possible to have stop-conditions only in bytes adapter. The standard adapter would work with "i received something it's automatically validated" like a Fragment stop-condition

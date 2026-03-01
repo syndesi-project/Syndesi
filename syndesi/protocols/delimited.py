@@ -77,7 +77,7 @@ class Delimited(Protocol[str, bytes]):
         )
         super().__init__(adapter, timeout=timeout, event_callback=event_callback)
 
-        self._adapter.set_event_callback(self._on_event)
+        self._adapter.register_event_callback(self._on_event)
 
     def __str__(self) -> str:
         if self._receive_termination == self._termination:

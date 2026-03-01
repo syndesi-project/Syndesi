@@ -5,6 +5,7 @@
 IP Adapter, used to communicate with IP targets using the socket module
 """
 
+import queue
 import socket
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterOpenError, AdapterWriteError
 
 from .adapter import Adapter
-from .stop_conditions import Fragment
+from .stop_conditions import Fragment, FragmentStopCondition
 
 
 @dataclass
@@ -123,14 +124,13 @@ class IP(Adapter[bytes]):
         address: str,
         port: int | None = None,
         transport: str = IPDescriptor.Transport.TCP.value,
-        server : bool = False,
         *,
         timeout: Timeout | float | EllipsisType = ...,
         stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
         encoding: str = "utf-8",
         alias: str = "",
-        event_callback: Callable[[AdapterEvent], None] | None = None,
         auto_open: bool = True,
+        server_socket : socket.socket | None = None
     ):
 
         descriptor = IPDescriptor(
@@ -138,8 +138,15 @@ class IP(Adapter[bytes]):
             port=port,
             transport=IPDescriptor.Transport(transport.upper()),
         )
-        #self._socket: _socket.socket | None = None
         self._socket : socket.socket | None = None
+        
+        self._is_server = server_socket is not None
+        if self._is_server:
+            self._opened = True
+            auto_open = False
+            self._socket = server_socket
+
+            
 
         super().__init__(
             descriptor=descriptor,
@@ -147,8 +154,7 @@ class IP(Adapter[bytes]):
             timeout=timeout,
             encoding=encoding,
             alias=alias,
-            event_callback=event_callback,
-            auto_open=auto_open,
+            auto_open=auto_open
         )
         self._descriptor: IPDescriptor
         self._worker_descriptor: IPDescriptor
@@ -236,12 +242,13 @@ class IP(Adapter[bytes]):
 
 
 @dataclass
-class ClientFragment:
+class Client:
     """Data packet received or sent to an IPServer client"""
     address : str
+    port : int
     socket : socket.socket
 
-class IPServer(Adapter[ClientFragment]):
+class IPServer(Adapter[Client]):
     """
     IP server stack adapter. The IP Adapter reads and writes bytes units (frames)
 
@@ -291,12 +298,11 @@ class IPServer(Adapter[ClientFragment]):
         address: str,
         port: int | None = None,
         transport: str = IPDescriptor.Transport.TCP.value,
+        stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
         *,
         backlog : int = DEFAULT_BACKLOG,
-        stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
         encoding: str = "utf-8",
         alias: str = "",
-        event_callback: Callable[[AdapterEvent], None] | None = None,
         auto_open : bool = True
     ):
 
@@ -309,20 +315,28 @@ class IPServer(Adapter[ClientFragment]):
 
         self._descriptor: IPDescriptor
         self._worker_descriptor: IPDescriptor
+        self._client_adapters : dict[str, IP] = {}
 
         self._backlog = backlog
         
+        self._on_client_callbacks : list[Callable[[IP, AdapterEvent], None]] = []
+
         super().__init__(
             descriptor=descriptor,
-            stop_conditions=stop_conditions,
+            stop_conditions=FragmentStopCondition(),
             timeout=None,
             encoding=encoding,
             alias=alias,
-            event_callback=event_callback,
             auto_open=auto_open,
         )
 
-        self.set_event_callback(self._on_event)
+        self.register_event_callback(self._on_event)
+
+        self._new_client_adapter_queue : queue.Queue[IP] = queue.Queue()
+
+        # Attributes applied to each client
+        self._client_stop_conditions = stop_conditions
+
 
     def set_default_port(self, port: int) -> None:
         """
@@ -336,27 +350,22 @@ class IPServer(Adapter[ClientFragment]):
             self._descriptor.port = port
             self._update_descriptor()
 
-    def _worker_read(self, fragment_timestamp: float) -> Fragment[ClientFragment]:
-        print(f'IP server read')
+    def _worker_read(self, fragment_timestamp: float) -> Fragment[Client]:
         if self._socket is None:
-            print(f'Socket None')
             return Fragment(b"", fragment_timestamp)
         try:
-            socket, address = self._socket.accept()
+            socket, (address, port) = self._socket.accept()
         except (ConnectionRefusedError, OSError):
-            print('Connection refused error')
             fragment = Fragment(b"", fragment_timestamp)
         else:
             
-            fragment = Fragment(ClientFragment(address, socket), fragment_timestamp)
+            fragment = Fragment(Client(address, port, socket), fragment_timestamp)
             # if data == b"":
             #     print('Empty data')
             #     self._logger.warning("Socket disconnected")
             #     self._worker_close()
             #fragment = Fragment(data, fragment_timestamp)
         return fragment
-    
-# Idea : The IPServer creates IP clients (instance of IP with the specific client address/port). The server would provide helper function to manage all of that.
 
     def _worker_write(self, data: bytes) -> None:
         raise NotImplementedError()
@@ -409,10 +418,40 @@ class IPServer(Adapter[ClientFragment]):
     def _default_timeout(self) -> Timeout:
         return Timeout(response=1, action="error")
     
+    def get_client(self, timeout : float | None = None) -> IP:
+        """
+        Return a new client
+
+        Parameters
+        ----------
+        timeout : float or None
+        """
+        try:
+            return self._new_client_adapter_queue.get(block=True, timeout=timeout)
+        except queue.Empty:
+            raise TimeoutError("No client connected before the specified timeout")
+    
+    def register_client_callback(self, func : Callable[[IP, AdapterEvent], None]):
+        self._on_client_callbacks.append(func)
+
+    def _on_client_event(self, client : IP, event : AdapterEvent):
+        for callback in self._on_client_callbacks:
+            callback(client, event)
+    
     def _on_event(self, event : AdapterEvent):
-        print(f'IP Server event : {event}')
         if isinstance(event, AdapterFrameEvent):
-            ...
-            
-
-
+            for fragment in event.frame.fragments:
+                client = fragment.data
+                if isinstance(client, Client):
+                    client : Client
+                    client_adapter = IP(
+                        address=client.address,
+                        port=client.port,
+                        transport=self._descriptor.transport,
+                        server_socket=client.socket,
+                        stop_conditions=self._client_stop_conditions
+                    )
+                    client_adapter.register_event_callback(lambda event : self._on_client_event(client_adapter, event))
+                    self._client_adapters[client.address] = client_adapter
+                    self._new_client_adapter_queue.put(client_adapter)
+                    

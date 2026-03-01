@@ -18,9 +18,12 @@ from select import select
 from types import EllipsisType
 from typing import Any, Generic, Protocol, TypeVar
 
+from colorama import Fore
+
 from syndesi.tools.log_settings import LoggerAlias
 
-from ..component import Frame, Descriptor, Event, ReadScope, ThreadCommand, Frame
+from ..component import Descriptor, Event, ReadScope, ThreadCommand, Frame
+
 from ..tools.errors import (
     AdapterDisconnected,
     AdapterError,
@@ -32,13 +35,15 @@ from ..tools.errors import (
 )
 from .stop_conditions import (
     Continuation,
-    Fragment,
     StopCondition,
     StopConditionType,
     Total,
 )
+
+from .utils import Fragment
+
 from .timeout import Timeout, TimeoutAction, any_to_timeout
-from .tracehub import tracehub
+from .tracehub import frame_trace, tracehub
 
 
 def nmin(a: float | None, b: float | None) -> float | None:
@@ -115,18 +120,18 @@ class FlushReadCommand(ThreadCommand[None]):
     """Clear buffered frames and reset worker read state"""
 
 
-class SetEventCallbackCommand(ThreadCommand[None]):
+class AddEventCallbackCommand(ThreadCommand[None]):
     """Configure the callback event"""
 
-    def __init__(self, callback: Callable[[AdapterEvent], None] | None) -> None:
+    def __init__(self, callback: Callable[[AdapterEvent], None]) -> None:
         super().__init__()
         self.event_callback = callback
 
+DataT = TypeVar("DataT")
 
-class WriteCommand(ThreadCommand[None]):
+class WriteCommand(ThreadCommand[None], Generic[DataT]):
     """Write data to the adapter"""
-
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: DataT) -> None:
         super().__init__()
         self.data = data
 
@@ -169,8 +174,8 @@ class ReadCommand(ThreadCommand[Frame]):
     def __init__(
         self,
         timeout: Timeout | EllipsisType | None,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition],
         scope: ReadScope,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
     ) -> None:
         super().__init__()
         self.timeout = timeout
@@ -228,15 +233,32 @@ class _PendingRead:
 
 FrameT = TypeVar("FrameT")
 
+# pylint: disable=too-many-instance-attributes
 class AdapterWorker(Generic[FrameT]):
-    """Generic adapter worker
-    
-    The worker runs in the background to retrieve frames and send them asynchronously to the
-    adapter
     """
+    Adapter worker with bytes and fragment support
+    """
+
     _FRAME_BUFFER_MAX = 256
     _COMMAND_READY = b"\x00"
-    def __init__(self) -> None:
+    # How many completed frames we keep for BUFFERED reads
+
+    def __init__(self, encoding : str) -> None:
+        #super().__init__()
+        self.encoding = encoding
+        # Command queue (worker input)
+
+        self._stop_conditions: list[StopCondition] = []
+        # Fragment assembly state
+        self._first_fragment: bool = True
+        self.fragments: list[Fragment] = []
+        self._previous_buffer = Fragment(b"", time.time())
+        self._first_fragment_timestamp: float | None = None
+        self._last_fragment_timestamp: float | None = None
+        self._last_write_timestamp: float | None = None
+        self._next_stop_condition_timeout_timestamp: float | None = None
+        self._read_start_timestamp: float | None = None
+
         self._command_queue_r, self._command_queue_w = socket.socketpair()
         self._command_queue_r.setblocking(False)
         self._command_queue_w.setblocking(False)
@@ -253,103 +275,7 @@ class AdapterWorker(Generic[FrameT]):
 
         self._worker_logger = logging.getLogger(LoggerAlias.ADAPTER_WORKER.value)
 
-        self._event_callback: Callable[[AdapterEvent], None] | None = None
-
-    @abstractmethod
-    def _selectable(self) -> HasFileno | None:
-        """Return an object with fileno() that becomes readable when device data is available."""
-
-    # ┌─────────────────┐
-    # │ Worker plumbing │
-    # └─────────────────┘
-
-    def _worker_drain_wakeup(self) -> None:
-        # Drain all pending wakeup bytes (non-blocking)
-        while True:
-            try:
-                _ = self._command_queue_r.recv(1024)
-                if not _:
-                    return
-            except BlockingIOError:
-                return
-            except OSError:
-                return
-            
-    def _worker_send_command(self, command: ThreadCommand[Any]) -> None:
-        self._command_queue.put(command)
-        # Wake up worker
-        try:
-            self._command_queue_w.send(self._COMMAND_READY)
-        except OSError:
-            # Worker may already be stopped
-            pass
-
-    def _stop(self) -> None:
-        self._command_queue_r.close()
-        self._command_queue_w.close()
-
-    def _worker_check_descriptor(self) -> None:
-        if (
-            self._worker_descriptor is None
-            or not self._worker_descriptor.is_initialized()
-        ):
-            raise AdapterOpenError("Descriptor not initialized")
-        
-    @abstractmethod
-    def _worker_read(self, fragment_timestamp: float) -> Fragment[FrameT]:
-        """Read one fragment from the low-level layer and return it."""
-
-    @abstractmethod
-    def _worker_write(self, data: FrameT) -> None:
-        if not self._opened and not self._first_opened:
-            self._worker_open()
-            if not self._opened:
-                raise AdapterWriteError("Adapter not opened")
-        if self._worker_descriptor is not None:
-            tracehub.emit_write(str(self._worker_descriptor), data)
-
-    @abstractmethod
-    def _worker_open(self) -> None:
-        if self._worker_descriptor is not None:
-            tracehub.emit_open(str(self._worker_descriptor))
-
-    @abstractmethod
-    def _worker_close(self) -> None:
-        if self._worker_descriptor is not None:
-            tracehub.emit_close(str(self._worker_descriptor))
-
-    def _worker_emit_event(self, event: AdapterEvent) -> None:
-        if self._event_callback is not None:
-            try:
-                self._event_callback(event)
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                # Never let user callback break worker
-                self._worker_logger.exception(
-                    "Adapter event callback failed with error : %s", str(e)
-                )
-
-# pylint: disable=too-many-instance-attributes
-class BytesAdapterWorker(AdapterWorker[bytes]):
-    """
-    Adapter worker with bytes and fragment support
-    """
-    # How many completed frames we keep for BUFFERED reads
-
-    def __init__(self, encoding : str) -> None:
-        super().__init__()
-        self.encoding = encoding
-        # Command queue (worker input)
-
-        self._stop_conditions: list[StopCondition] = []
-        # Fragment assembly state
-        self._first_fragment: bool = True
-        self.fragments: list[Fragment] = []
-        self._previous_buffer = Fragment(b"", time.time())
-        self._first_fragment_timestamp: float | None = None
-        self._last_fragment_timestamp: float | None = None
-        self._last_write_timestamp: float | None = None
-        self._next_stop_condition_timeout_timestamp: float | None = None
-        self._read_start_timestamp: float | None = None
+        self._event_callbacks: list[Callable[[AdapterEvent], None]] = []
 
     # ┌──────────────────────────┐
     # │ Worker: command handling │
@@ -360,6 +286,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
         try:
             match command:
                 case WriteCommand():
+                    command : WriteCommand[FrameT]
                     self._last_write_timestamp = time.time()
                     self._worker_write(command.data)
                     command.set_result(None)
@@ -394,8 +321,8 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                     command.set_result(None)
                 case IsOpenCommand():
                     command.set_result(self._opened)
-                case SetEventCallbackCommand():
-                    self._event_callback = command.event_callback
+                case AddEventCallbackCommand():
+                    self._event_callbacks.append(command.event_callback)
                     command.set_result(None)
                 case ReadCommand():
                     self._worker_begin_read(command)
@@ -481,8 +408,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
         """
         self._worker_emit_event(AdapterFrameEvent(frame))
         if self._worker_descriptor is not None:
-            payload = frame.get_payload()
-            tracehub.emit_bytes_read(str(self._worker_descriptor), payload, frame.stop_condition_type)
+            tracehub.emit_frame(str(self._worker_descriptor), frame)
 
         pr = self._pending_read
         if pr is not None:
@@ -651,7 +577,6 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                     stop_condition_type = stop_condition.type()
                     stop_timestamp = kept.timestamp
                     break
-
             self.fragments.append(kept)
 
             # If there's no stop, break here
@@ -659,8 +584,6 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                 # Only upload emit a fragment event if there's no frame
                 if self._worker_descriptor is not None:
                     tracehub.emit_fragment(str(self._worker_descriptor), kept)
-
-
                 break
 
             # frame complete
@@ -751,6 +674,81 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                     self._timeout_origin = stop_condition.type()
 
         return next_timestamp
+    
+    @abstractmethod
+    def _selectable(self) -> HasFileno | None:
+        """Return an object with fileno() that becomes readable when device data is available."""
+
+    # ┌─────────────────┐
+    # │ Worker plumbing │
+    # └─────────────────┘
+
+    def _worker_drain_wakeup(self) -> None:
+        # Drain all pending wakeup bytes (non-blocking)
+        while True:
+            try:
+                _ = self._command_queue_r.recv(1024)
+                if not _:
+                    return
+            except BlockingIOError:
+                return
+            except OSError:
+                return
+            
+    def _worker_send_command(self, command: ThreadCommand[Any]) -> None:
+        self._command_queue.put(command)
+        # Wake up worker
+        try:
+            self._command_queue_w.send(self._COMMAND_READY)
+        except OSError:
+            # Worker may already be stopped
+            pass
+
+    def _stop(self) -> None:
+        self._command_queue_r.close()
+        self._command_queue_w.close()
+
+    def _worker_check_descriptor(self) -> None:
+        if (
+            self._worker_descriptor is None
+            or not self._worker_descriptor.is_initialized()
+        ):
+            raise AdapterOpenError("Descriptor not initialized")
+        
+    @abstractmethod
+    def _worker_read(self, fragment_timestamp: float) -> Fragment[FrameT]:
+        """Read one fragment from the low-level layer and return it."""
+
+    @abstractmethod
+    def _worker_write(self, data: FrameT) -> None:
+        if not self._opened and not self._first_opened:
+            self._worker_open()
+            if not self._opened:
+                raise AdapterWriteError("Adapter not opened")
+        if self._worker_descriptor is not None:
+            tracehub.emit_write(str(self._worker_descriptor), data)
+
+    @abstractmethod
+    def _worker_open(self) -> None:
+        if self._worker_descriptor is not None:
+            tracehub.emit_open(str(self._worker_descriptor))
+
+    @abstractmethod
+    def _worker_close(self) -> None:
+        if self._worker_descriptor is not None:
+            tracehub.emit_close(str(self._worker_descriptor))
+
+    def _worker_emit_event(self, event: AdapterEvent) -> None:
+        for callback in self._event_callbacks:
+            try:
+                print(f'Execute callback {callback} with event {event}')
+                callback(event)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Never let user callback break worker
+                self._worker_logger.exception(
+                    "Adapter event callback failed with error : %s", str(e)
+                )
+                print(f'Error : {e}')
 
     # ┌───────────────────┐
     # │ Worker: main loop │
@@ -797,7 +795,12 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
             if s is not None:
                 selectables.append(s)
 
-            readable, _, _ = select(selectables, [], [], select_timeout)
+            try:
+                readable, _, _ = select(selectables, [], [], select_timeout)
+            except ValueError: # Negative file descriptor
+                self._worker_close()
+
+
             t = time.time()
 
             if self._command_queue_r in readable:

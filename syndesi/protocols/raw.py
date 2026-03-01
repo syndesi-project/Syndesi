@@ -15,17 +15,18 @@ from ..component import Frame
 from .protocol import Protocol, ProtocolEvent, ProtocolFrame
 
 
-@dataclass
-class RawFrame(ProtocolFrame[bytes]):
-    """
-    Adapter signal containing received data
-    """
+# @dataclass
+# class RawFrame(ProtocolFrame[bytes]):
+#     """
+#     Adapter signal containing received data
+#     """
 
-    payload: bytes
+#     payload: bytes
 
-    def __str__(self) -> str:
-        return f"ProtocolFrame({self.payload!r})"
+#     def __str__(self) -> str:
+#         return f"ProtocolFrame({self.payload!r})"
 
+RawFrame = ProtocolFrame[bytes]
 
 class Raw(Protocol[bytes, bytes]):
     """

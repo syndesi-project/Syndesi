@@ -41,7 +41,7 @@ from syndesi.adapters.tracehub import (
     CloseEvent,
     FragmentEvent,
     OpenEvent,
-    ReadBytesEvent,
+    ReadEventBytes,
     ReadEvent,
     TraceEvent,
     WriteEvent,
@@ -207,7 +207,7 @@ class Trace:
                 fragments.append(
                     Text(f" {write_delta:+.3f}s", style="dim")
                 )
-        elif isinstance(event, ReadBytesEvent):
+        elif isinstance(event, ReadEventBytes):
             fragments += [
                 Text("read  ←", style="bold dim"),
                 Text(f"{event.length:4d}B ", style="dim"),
@@ -309,11 +309,11 @@ class FlatTrace(Trace):
         columns[self.CSVColumn.TIME] = f"{event.timestamp:.6f}"
         columns[self.CSVColumn.EVENT] = event.t
 
-        if isinstance(event, (WriteEvent, ReadBytesEvent, FragmentEvent)):
+        if isinstance(event, (WriteEvent, ReadEventBytes, FragmentEvent)):
             columns[self.CSVColumn.DATA] = event.data
             columns[self.CSVColumn.SIZE] = str(event.length)
 
-            if isinstance(event, ReadBytesEvent):
+            if isinstance(event, ReadEventBytes):
                 columns[self.CSVColumn.STOP_CONDITION] = event.stop_condition_indicator
         elif isinstance(event, ReadEvent):
             columns[self.CSVColumn.DATA] = event.message

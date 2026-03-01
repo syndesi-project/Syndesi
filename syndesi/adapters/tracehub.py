@@ -17,7 +17,9 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from syndesi.adapters.stop_conditions import StopConditionType, Fragment
+from syndesi.adapters.stop_conditions import StopConditionType
+from syndesi.adapters.utils import Fragment
+from ..component import Frame
 
 STOP_CONDITION_INDICATOR = {
     StopConditionType.CONTINUATION : "Cont",
@@ -27,6 +29,22 @@ STOP_CONDITION_INDICATOR = {
     StopConditionType.TOTAL : "Tot",
     StopConditionType.TIMEOUT : "Time"
 }
+
+def frame_trace(frame : Frame[Any]) -> str | bytes:
+    """Convert a frame's fragments to a str or bytes object (used for trace)"""
+    # if len(frame.fragments) == 0:
+    #     raise ValueError("Cannot build payload from empty frame")
+    
+    output = str(frame.data)
+
+    # if isinstance(frame.fragments[0], bytes):
+    #     output = b""
+    #     for fragment in frame.fragments:
+    #         output += fragment.data
+    # else:
+    #     output = str(frame.fragments[0])
+    
+    return output
 
 
 @dataclass(frozen=True)
@@ -62,7 +80,7 @@ class CloseEvent(TraceEvent):
     t : str = field(default="close", init=False)
 
 @dataclass(frozen=True)
-class ReadBytesEvent(TraceEvent):
+class ReadEventBytes(TraceEvent):
     """
     Adapter read trace event
     """
@@ -81,14 +99,14 @@ class WriteEvent(TraceEvent):
     t : str = field(default="write", init=False)
 
 @dataclass(frozen=True)
-class ReadEvent(TraceEvent):
+class ReadEventMessage(TraceEvent):
     """
     Generic read event
     """
     message : str
-    t : str = field(default="read", init=False)
+    t : str = field(default="read_bytes", init=False)
 
-EVENTS : list[type[TraceEvent]] = [FragmentEvent, OpenEvent, CloseEvent, ReadBytesEvent, WriteEvent]
+EVENTS : list[type[TraceEvent]] = [FragmentEvent, OpenEvent, CloseEvent, ReadEventBytes, WriteEvent, ReadEventMessage]
 
 EVENTS_MAP : dict[str, type[TraceEvent]]= {
     e.t : e for e in EVENTS
@@ -196,40 +214,35 @@ class _TraceHub:
                 self._format_bytes(data),
                 len(data)
             ))
-        else:
-            # TODO : Fix
-            print(f"Invalid data type for emit_write : {type(data)}")
+        # else:
+        #     # TODO : Fix
+        #     print(f"Invalid data type for emit_write : {type(data)}")
 
-    def emit_bytes_read(
+        
+        
+    def emit_frame(
             self,
             descriptor : str,
-            data : bytes,
-            stop_condition_type : StopConditionType
-        ) -> None:
-        """
-        Emit a read trace event
-        """
+            frame : Frame[Any]
+    ) -> None:
+        trace_message = frame_trace(frame)
+        
+        if isinstance(trace_message, bytes):
+            sc_indicator = STOP_CONDITION_INDICATOR[frame.stop_condition_type] if frame.stop_condition_type is not None else "(x)"
+            self._emit_event(ReadEventBytes(
+                descriptor=descriptor,
+                timestamp=time.time(),
+                data=self._format_bytes(trace_message),
+                length=len(trace_message),
+                stop_condition_indicator=sc_indicator
+            ))
+        elif isinstance(trace_message, str):
+            self._emit_event(ReadEventMessage(
+                descriptor,
+                time.time(),
+                trace_message
+            ))
 
-        indicator = STOP_CONDITION_INDICATOR[stop_condition_type]
-
-        self._emit_event(ReadBytesEvent(
-            descriptor,
-            time.time(),
-            self._format_bytes(data),
-            len(data),
-            indicator
-        ))
-
-    def emit_generic_read(
-            self,
-            descriptor : str,
-            message : str
-    ):
-        self._emit_event(ReadEvent(
-            descriptor,
-            time.time(),
-            message
-        ))
 
     def _emit_event(self, ev: TraceEvent) -> None:
         d = asdict(ev)

@@ -8,22 +8,20 @@ Stop-condition module
 This is the frontend of the stop-conditions, the part that is imported by the user
 """
 
+from __future__ import annotations
+
 # from abc import abstractmethod
 from abc import abstractmethod
-from dataclasses import dataclass
 from enum import Enum
-from typing import Generic, TypeVar
-
-
-FragmentT = TypeVar("FragmentT", bound=object)
+#from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from dataclasses import dataclass
 
 @dataclass
-class Fragment(Generic[FragmentT]):
+class Fragment:
     """
-    Fragment class, holds a piece of data (bytes) and the time at which it was received
+    Fragment class, holds a piece of data (generic) and the time at which it was received
     """
-
-    data: FragmentT
+    data: bytes
     timestamp: float
 
     def __str__(self) -> str:
@@ -32,11 +30,13 @@ class Fragment(Generic[FragmentT]):
     def __repr__(self) -> str:
         return f"Fragment({self.data!r}@{self.timestamp})"
 
-    def __getitem__(self, key: slice) -> "Fragment":
+    # def __getitem__(self: FragmentSelfT, key: slice) -> FragmentSelfT:
+    #     return type(self)(cast(Any, self.data)[key], self.timestamp)
+    
+    def __getitem__(self, key: slice) -> Fragment:
         # if self.data is None:
         #     raise IndexError('Cannot index invalid fragment')
         return Fragment(self.data[key], self.timestamp)
-
 
 class StopConditionType(Enum):
     """
@@ -49,6 +49,7 @@ class StopConditionType(Enum):
     FRAGMENT = "fragment"
     TIMEOUT = "timeout"
 
+#FragmentT = TypeVar("FragmentT")
 
 class StopCondition:
     """
@@ -76,7 +77,7 @@ class StopCondition:
     @abstractmethod
     def type(self) -> StopConditionType:
         """
-        Helper function to determine the which type of stop-condition generated a stop
+        Helper function to determine which type of stop-condition generated a stop
         """
 
     @abstractmethod
@@ -84,7 +85,6 @@ class StopCondition:
         """
         Reset read operation
         """
-
 
 class Termination(StopCondition):
     """
@@ -124,8 +124,6 @@ class Termination(StopCondition):
     def evaluate(
         self, raw_fragment: Fragment
     ) -> tuple[bool, Fragment, Fragment, float | None]:
-        if raw_fragment.data is None:
-            raise RuntimeError("Trying to evaluate an invalid fragment")
 
         position, length = termination_in_data(
             self._sequence[self._sequence_found_length :], raw_fragment.data
