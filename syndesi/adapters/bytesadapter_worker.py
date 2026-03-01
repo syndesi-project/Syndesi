@@ -18,6 +18,7 @@ from select import select
 from types import EllipsisType
 from typing import Any, Generic, Protocol, TypeVar
 
+from syndesi.adapters.adapter_worker import AdapterEvent, AdapterWorker
 from syndesi.tools.log_settings import LoggerAlias
 
 from ..component import Descriptor, Event, ReadScope, ThreadCommand, Frame
@@ -31,6 +32,12 @@ from ..tools.errors import (
     AdapterWriteError,
     WorkerThreadError,
 )
+from .stop_conditions import (
+    Continuation,
+    StopCondition,
+    StopConditionType,
+    Total,
+)
 
 from .utils import Fragment, nmin
 
@@ -41,20 +48,6 @@ from .tracehub import tracehub
 # │ Adapter events │
 # └────────────────┘
 
-class AdapterEvent(Event):
-    """Adapter event"""
-
-class AdapterDisconnectedEvent(AdapterEvent):
-    """Adapter disconnected event"""
-
-T = TypeVar("T")
-
-@dataclass
-class AdapterFrameEvent(Generic[T], AdapterEvent):
-    """Adapter frame event, emitted when new data is available"""
-
-    frame: Frame[T]
-
 @dataclass
 class FirstFragmentEvent(AdapterEvent):
     """Adapter first fragment event"""
@@ -62,54 +55,16 @@ class FirstFragmentEvent(AdapterEvent):
     timestamp: float
     next_timeout_timestamp: float | None
 
-
 # ┌───────────────────────────────┐
 # │ Worker commands (composition) │
 # └───────────────────────────────┘
 
+class SetStopConditionsCommand(ThreadCommand[None]):
+    """Configure adapter stop conditions"""
 
-class OpenCommand(ThreadCommand[None]):
-    """Open the adapter"""
-
-
-class CloseCommand(ThreadCommand[None]):
-    """Close the adapter"""
-
-
-class StopThreadCommand(ThreadCommand[None]):
-    """Stop the worker thread"""
-
-
-class FlushReadCommand(ThreadCommand[None]):
-    """Clear buffered frames and reset worker read state"""
-
-
-class AddEventCallbackCommand(ThreadCommand[None]):
-    """Configure the callback event"""
-
-    def __init__(self, callback: Callable[[AdapterEvent], None]) -> None:
+    def __init__(self, stop_conditions: list[StopCondition]) -> None:
         super().__init__()
-        self.event_callback = callback
-
-DataT = TypeVar("DataT")
-
-class WriteCommand(ThreadCommand[None], Generic[DataT]):
-    """Write data to the adapter"""
-    def __init__(self, data: DataT) -> None:
-        super().__init__()
-        self.data = data
-
-
-class SetTimeoutCommand(ThreadCommand[None]):
-    """Configure adapter timeout"""
-
-    def __init__(self, timeout: Timeout) -> None:
-        super().__init__()
-        self.timeout = timeout
-
-
-class IsOpenCommand(ThreadCommand[bool]):
-    """Return True if the adapter is opened"""
+        self.stop_conditions = stop_conditions
 
 
 class ReadCommand(ThreadCommand[Frame]):
@@ -121,29 +76,22 @@ class ReadCommand(ThreadCommand[Frame]):
         - None => wait indefinitely for first fragment (response timeout disabled)
         - Timeout => as provided
 
-    scope:
-        - ``ReadScope.NEXT`` => Only read data after the read command
-        - ``ReadScope.BUFFERED`` => Accept data that was already in the buffer
+    stop_conditions:
+        - ... => use current worker stop conditions
+        - StopCondition/list => override for the *next* frame that satisfies this read
+                               (applied at frame boundary; not mid-frame)
     """
 
     def __init__(
         self,
         timeout: Timeout | EllipsisType | None,
-        scope: ReadScope
+        scope: ReadScope,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
     ) -> None:
         super().__init__()
         self.timeout = timeout
+        self.stop_conditions = stop_conditions
         self.scope = scope
-
-
-class SetDescriptorCommand(ThreadCommand[None]):
-    """
-    Command to configure the worker descriptor (sync with the adapter subclass descriptor)
-    """
-
-    def __init__(self, descriptor: Descriptor) -> None:
-        super().__init__()
-        self.descriptor = descriptor
 
 
 # pylint: disable=too-many-instance-attributes
@@ -160,6 +108,7 @@ class _PendingRead:
         "scope",
         "stop_override",
         "stop_override_applied",
+        "prev_stop_conditions",
     )
 
     def __init__(
@@ -169,6 +118,7 @@ class _PendingRead:
         start_time: float,
         response_deadline: float | None,
         scope: ReadScope,
+        stop_override: list[StopCondition] | None,
     ) -> None:
         self.cmd = cmd
         self.start_time = start_time
@@ -178,109 +128,50 @@ class _PendingRead:
         self.first_fragment_seen = False
         self.scope = scope
 
+        self.stop_override = stop_override
         self.stop_override_applied = False
+        self.prev_stop_conditions: list[StopCondition] | None = None
 
-FrameT = TypeVar("FrameT")
 
 # pylint: disable=too-many-instance-attributes
-class AdapterWorker(Generic[FrameT]):
+class BytesAdapterWorker(AdapterWorker):
     """
     Adapter worker with bytes and fragment support
     """
-
-    _FRAME_BUFFER_MAX = 256
-    _COMMAND_READY = b"\x00"
     # How many completed frames we keep for BUFFERED reads
 
     def __init__(self, encoding : str) -> None:
         self.encoding = encoding
         # Command queue (worker input)
 
+        self._stop_conditions: list[StopCondition] = []
         # Fragment assembly state
-        
-        self._last_fragment_timestamp: float | None = None
+        self._first_fragment_timestamp: float | None = None
+        self._first_fragment: bool = True
+        self.fragments: list[Fragment] = []
+        self._previous_buffer = Fragment(b"", time.time())
         self._last_write_timestamp: float | None = None
+        self._next_stop_condition_timeout_timestamp: float | None = None
         self._read_start_timestamp: float | None = None
 
-        self._command_queue_r, self._command_queue_w = socket.socketpair()
-        self._command_queue_r.setblocking(False)
-        self._command_queue_w.setblocking(False)
-        self._command_queue: queue.Queue[ThreadCommand[Any]] = queue.Queue()
         self._frame_buffer: deque[Frame] = deque(maxlen=self._FRAME_BUFFER_MAX)
-        self._worker_descriptor: Descriptor | None = None
+
         self._pending_read: _PendingRead | None = None
-        self._timeout: Timeout | None = None
+
+
+        self._timeout_origin: StopConditionType  = StopConditionType.TIMEOUT
         # Worker lifecycle and state
-        self._thread_running = True
-        self._opened = False
-        self._first_opened = False
-
-        self._worker_logger = logging.getLogger(LoggerAlias.ADAPTER_WORKER.value)
-
-        self._event_callbacks: list[Callable[[AdapterEvent], None]] = []
 
     # ┌──────────────────────────┐
     # │ Worker: command handling │
     # └──────────────────────────┘
-    
-    def _worker_run_command(self, command: ThreadCommand[Any]) -> None:
-        try:
-            match command:
-                case WriteCommand():
-                    command : WriteCommand[FrameT]
-                    self._last_write_timestamp = time.time()
-                    self._worker_write(command.data)
-                    command.set_result(None)
-                case OpenCommand():
-                    self._worker_open()
-                    self._opened = True
-                    self._first_opened = True
-                    command.set_result(None)
-                case CloseCommand():
-                    self._worker_close()
-                    self._opened = False
-                    # Closing should also reset read assembly
-                    self._worker_reset_read()
-                    self._frame_buffer.clear()
-                    # Cancel any pending read
-                    if self._pending_read is not None:
-                        self._pending_read.cmd.set_exception(AdapterDisconnected())
-                        self._pending_read = None
-                    command.set_result(None)
-                case StopThreadCommand():
-                    self._thread_running = False
-                    command.set_result(None)
-                case FlushReadCommand():
-                    self._frame_buffer.clear()
-                    self._worker_reset_read()
-                    command.set_result(None)
-                case SetTimeoutCommand():
-                    self._timeout = command.timeout
-                    command.set_result(None)
-                case IsOpenCommand():
-                    command.set_result(self._opened)
-                case AddEventCallbackCommand():
-                    self._event_callbacks.append(command.event_callback)
-                    command.set_result(None)
-                case ReadCommand():
-                    self._worker_begin_read(command)
-                case SetDescriptorCommand():
-                    self._worker_descriptor = command.descriptor
-                    command.set_result(None)
-        except AdapterError as e:
-            command.set_exception(e)
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            command.set_exception(WorkerThreadError(str(e)))
-
 
     def _worker_manage_command(self, command: ThreadCommand[Any]) -> None:
         # pylint: disable=too-many-branches
-        self._worker_run_command(command)
-
         try:
             match command:
                 case WriteCommand():
-                    command : WriteCommand[FrameT]
+                    command : WriteCommand[bytes]
                     self._last_write_timestamp = time.time()
                     self._worker_write(command.data)
                     command.set_result(None)
@@ -306,6 +197,9 @@ class AdapterWorker(Generic[FrameT]):
                 case FlushReadCommand():
                     self._frame_buffer.clear()
                     self._worker_reset_read()
+                    command.set_result(None)
+                case SetStopConditionsCommand():
+                    self._stop_conditions = command.stop_conditions
                     command.set_result(None)
                 case SetTimeoutCommand():
                     self._timeout = command.timeout
@@ -368,11 +262,22 @@ class AdapterWorker(Generic[FrameT]):
         resp = read_timeout.response()
         response_deadline = None if resp is None else (start + resp)
 
+        # Resolve stop-condition override (applied at next qualifying frame boundary)
+        stop_override: list[StopCondition] | None = None
+        if cmd.stop_conditions is not ...:
+            if isinstance(cmd.stop_conditions, StopCondition):
+                stop_override = [cmd.stop_conditions]
+            elif isinstance(cmd.stop_conditions, list):
+                stop_override = cmd.stop_conditions
+            else:
+                raise ValueError("Invalid stop_conditions override")
+
         self._pending_read = _PendingRead(
             cmd=cmd,
             start_time=start,
             response_deadline=response_deadline,
-            scope=cmd.scope
+            scope=cmd.scope,
+            stop_override=stop_override,
         )
 
     # ┌────────────────────────┐
@@ -396,6 +301,8 @@ class AdapterWorker(Generic[FrameT]):
             qualifies = (first_ts > pr.start_time) or (pr.scope == ReadScope.BUFFERED)
             if qualifies:
                 # Restore stop conditions if we had applied an override
+                if pr.stop_override_applied and pr.prev_stop_conditions is not None:
+                    self._stop_conditions = pr.prev_stop_conditions
 
                 pr.cmd.set_result(frame)
                 self._pending_read = None
@@ -434,6 +341,7 @@ class AdapterWorker(Generic[FrameT]):
                     Frame(
                         fragments=[Fragment(b"", time.time())],
                         stop_timestamp=None,
+                        stop_condition_type=StopConditionType.TIMEOUT,
                         previous_read_buffer_used=False,
                         response_delay=None,
                     )
@@ -477,6 +385,11 @@ class AdapterWorker(Generic[FrameT]):
         pr.response_deadline = (
             None  # disable response timeout once we have a qualifying first fragment
         )
+
+        if pr.stop_override is not None and not pr.stop_override_applied:
+            pr.prev_stop_conditions = self._stop_conditions
+            self._stop_conditions = pr.stop_override
+            pr.stop_override_applied = True
 
     def _worker_manage_fragment(self, fragment: Fragment) -> None:
         # pylint: disable=too-many-branches, too-many-statements
@@ -527,7 +440,36 @@ class AdapterWorker(Generic[FrameT]):
                 # Notify pending read (and apply stop override at boundary)
                 self._worker_on_first_fragment(fragment)
 
+                for stop_condition in self._stop_conditions:
+                    stop_condition.initiate_read(initiate_timestamp)
+
             stop = False
+            stop_condition_type: StopConditionType | None = None
+
+            for stop_condition in self._stop_conditions:
+                (
+                    stop,
+                    kept,
+                    self._previous_buffer,
+                    next_stop_condition_timeout_timestamp,
+                ) = stop_condition.evaluate(kept)
+
+                self._next_stop_condition_timeout_timestamp = nmin(
+                    next_stop_condition_timeout_timestamp,
+                    self._next_stop_condition_timeout_timestamp,
+                )
+                if stop:
+                    stop_condition_type = stop_condition.type()
+                    stop_timestamp = kept.timestamp
+                    break
+            self.fragments.append(kept)
+
+            # If there's no stop, break here
+            if stop_condition_type is None:
+                # Only upload emit a fragment event if there's no frame
+                if self._worker_descriptor is not None:
+                    tracehub.emit_fragment(str(self._worker_descriptor), kept)
+                break
 
             # frame complete
             self._first_fragment = True
@@ -542,12 +484,14 @@ class AdapterWorker(Generic[FrameT]):
             frame = Frame(
                 fragments=self.fragments,
                 stop_timestamp=stop_timestamp,
+                stop_condition_type=stop_condition_type,
                 previous_read_buffer_used=False,
                 response_delay=response_delay,
             )
             self._worker_logger.debug(
                 "Frame %s (%s)",
                 "+".join(repr(f.data) for f in self.fragments),
+                stop_condition_type.value if stop_condition_type is not None else "---",
             )
 
             self._worker_deliver_frame(frame)
@@ -561,12 +505,60 @@ class AdapterWorker(Generic[FrameT]):
             else:
                 break
 
+    def _worker_on_stop_condition_timeout(self, timestamp: float) -> None:
+        """
+        Called when a stop-condition timeout expires (Continuation/Total),
+        producing a frame if we have accumulated fragments.
+        """
+        if len(self.fragments) > 0:
+            if self._last_write_timestamp is None:
+                response_delay = None
+            else:
+                response_delay = (
+                    self.fragments[0].timestamp - self._last_write_timestamp
+                )
+
+            frame = Frame(
+                fragments=self.fragments,
+                stop_timestamp=timestamp,
+                stop_condition_type=self._timeout_origin,
+                previous_read_buffer_used=False,
+                response_delay=response_delay,
+            )
+            self._worker_deliver_frame(frame)
+
+        self._worker_reset_read()
+
     def _worker_reset_read(self) -> None:
         self._last_fragment_timestamp = None
         self._first_fragment_timestamp = None
         self._first_fragment = True
         self._last_write_timestamp = None
         self.fragments = []
+        self._next_stop_condition_timeout_timestamp = None
+        self._timeout_origin = StopConditionType.TIMEOUT
+
+    def _worker_next_timeout_timestamp(self) -> float | None:
+        stop_conditions = self._stop_conditions
+        next_timestamp = None
+
+        for stop_condition in stop_conditions:
+            if isinstance(stop_condition, Continuation):
+                if self._last_fragment_timestamp is not None:
+                    next_timestamp = nmin(
+                        next_timestamp,
+                        self._last_fragment_timestamp + stop_condition.continuation,
+                    )
+                    self._timeout_origin = stop_condition.type()
+            elif isinstance(stop_condition, Total):
+                if self._first_fragment_timestamp is not None:
+                    next_timestamp = nmin(
+                        next_timestamp,
+                        self._first_fragment_timestamp + stop_condition.total,
+                    )
+                    self._timeout_origin = stop_condition.type()
+
+        return next_timestamp
     
     @abstractmethod
     def _selectable(self) -> HasFileno | None:
@@ -609,11 +601,11 @@ class AdapterWorker(Generic[FrameT]):
             raise AdapterOpenError("Descriptor not initialized")
         
     @abstractmethod
-    def _worker_read(self, fragment_timestamp: float) -> Fragment[FrameT]:
+    def _worker_read(self, fragment_timestamp: float) -> Fragment:
         """Read one fragment from the low-level layer and return it."""
 
     @abstractmethod
-    def _worker_write(self, data: FrameT) -> None:
+    def _worker_write(self, data: bytes) -> None:
         if not self._opened and not self._first_opened:
             self._worker_open()
             if not self._opened:
@@ -663,6 +655,9 @@ class AdapterWorker(Generic[FrameT]):
             now = time.time()
 
             # Refresh next stop-condition timeout from current fragment state
+            self._next_stop_condition_timeout_timestamp = (
+                self._worker_next_timeout_timestamp()
+            )
 
             # Compute pending read response deadline (only before first qualifying fragment)
             pr_deadline = None
@@ -725,3 +720,10 @@ class AdapterWorker(Generic[FrameT]):
                 if dl is not None and t >= dl:
                     self._worker_fail_pending_read_timeout()
                     # do NOT return; stop-condition timeout might also be due
+
+            # 2) stop-condition timeout (Continuation/Total)
+            if (
+                self._next_stop_condition_timeout_timestamp is not None
+                and t >= self._next_stop_condition_timeout_timestamp
+            ):
+                self._worker_on_stop_condition_timeout(t)

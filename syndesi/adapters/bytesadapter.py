@@ -7,26 +7,19 @@ Adapter with bytes data type
 from types import EllipsisType
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.adapters.timeout import Timeout
-from syndesi.component import Frame, ReadScope
+from syndesi.component import Descriptor, Frame, ReadScope
+from syndesi.tools.types import NumberLike
 from .adapter import Adapter
 
 
 class BytesAdapter(Adapter[bytes]):
     """Bytes adapter"""
 
-
-
-    """
-    Adapter class
-
-    An adapter manages communication with a hardware device.
-    """
-
     def __init__(
         self,
         *,
         descriptor: Descriptor,
-        #stop_conditions: StopCondition | EllipsisType | list[StopCondition],
+        stop_conditions : StopCondition | list[StopCondition] | EllipsisType,
         timeout: Timeout | EllipsisType | NumberLike | None,
         alias: str,
         encoding: str = "utf-8",
@@ -53,26 +46,6 @@ class BytesAdapter(Adapter[bytes]):
                 self._initial_stop_conditions = stop_conditions
             else:
                 raise ValueError("Invalid stop_conditions")
-
-        # Default timeout
-        self.is_default_timeout = timeout is Ellipsis
-
-        if timeout is Ellipsis:
-            self._initial_timeout = self._default_timeout()
-        elif isinstance(timeout, Timeout):
-            self._initial_timeout = timeout
-        elif is_number(timeout):
-            self._initial_timeout = Timeout(timeout, action=TimeoutAction.ERROR)
-        elif timeout is None:
-            self._initial_timeout = Timeout(None)
-        else:
-            raise ValueError(f"Invalid timeout : {timeout}")
-
-        # Worker thread
-        self._worker_thread = threading.Thread(
-            target=self._worker_thread_method, daemon=True
-        )
-        self._worker_thread.start()
 
         # Serialize read/write/query ordering for sync callers.
         self._sync_io_lock = threading.Lock()
