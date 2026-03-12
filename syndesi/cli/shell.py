@@ -11,7 +11,8 @@ from argparse import ArgumentParser
 from enum import Enum
 from typing import Any
 
-from ..adapters.adapter import Adapter
+from syndesi.adapters.bytesadapter import BytesAdapter
+
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..adapters.timeout import Timeout
@@ -182,7 +183,7 @@ class AdapterShell:
 
         timeout = Timeout(args.timeout)
 
-        self.adapter: Adapter
+        self.adapter: BytesAdapter
         # Create the adapter
         if kind == AdapterType.IP:
             self.adapter = IP(
@@ -205,11 +206,11 @@ class AdapterShell:
                 descriptor=args.descriptor, timeout=timeout, auto_open=False
             )
 
-        self.adapter.set_default_timeout(Timeout(action="return_empty"))
+        self.adapter.set_default_timeout(Timeout())
 
         # Add the protocol
         _format = Format(args.format)
-        self.protocol: Protocol[Any]
+        self.protocol: Protocol[Any, Any]
         if _format == Format.HEX:
             self.protocol = Raw(self.adapter, event_callback=self.event)
         elif _format == Format.TEXT:
@@ -240,6 +241,7 @@ class AdapterShell:
         """
 
         try:
+            print("Run open")
             self.protocol.open()
         except AdapterOpenError:
             self.shell.print(f"Failed to open {self.adapter}")
@@ -277,5 +279,5 @@ class AdapterShell:
                 "Adapter disconnected, reconnect ? [y/n]: ", self._open_answer
             )
         elif isinstance(event, ProtocolFrameEvent):
-            data = event.frame.get_payload()
+            data = event.frame.data
             self.shell.print(data)

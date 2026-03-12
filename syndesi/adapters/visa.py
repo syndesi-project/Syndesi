@@ -11,7 +11,6 @@ import re
 import socket
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from types import EllipsisType
@@ -20,16 +19,13 @@ from typing import cast
 import pyvisa
 from pyvisa.resources import MessageBasedResource
 
-from syndesi.adapters.adapter_worker import (
-    AdapterEvent,
-    HasFileno,
-)
-from syndesi.adapters.stop_conditions import Continuation, Fragment, StopCondition
+from syndesi.adapters.bytesadapter import BytesAdapter
+from syndesi.adapters.stop_conditions import BytesFragment, Continuation, StopCondition
+from syndesi.adapters.utils import Fragment, HasFileno
 from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterReadError
 
-from .adapter import Adapter
-from .timeout import Timeout
+from .timeout import Timeout, TimeoutType
 
 
 class QueueEvent:
@@ -44,7 +40,7 @@ class DisconnectedEvent(QueueEvent):
 class FragmentEvent(QueueEvent):
     """VISA queue new fragment event"""
 
-    fragment: Fragment
+    fragment: BytesFragment
 
 
 @dataclass
@@ -104,7 +100,7 @@ class VisaDescriptor(Descriptor):
 
 
 # pylint: disable=too-many-instance-attributes
-class Visa(Adapter):
+class Visa(BytesAdapter):
     """
     VISA Adapter, allows for communication with VISA-compatible devices.
     It uses pyvisa under the hood
@@ -118,13 +114,11 @@ class Visa(Adapter):
         *,
         alias: str = "",
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-        timeout: None | float | Timeout | EllipsisType = ...,
-        encoding: str = "utf-8",
-        event_callback: Callable[[AdapterEvent], None] | None = None,
+        timeout: TimeoutType = ...,
+        # encoding: str = "utf-8",
         auto_open: bool = False,
     ) -> None:
 
-        self._worker_descriptor: VisaDescriptor
         self._descriptor: VisaDescriptor
 
         if pyvisa is None:
@@ -156,15 +150,15 @@ class Visa(Adapter):
             alias=alias,
             stop_conditions=stop_conditions,
             timeout=timeout,
-            encoding=encoding,
-            event_callback=event_callback,
+            # encoding=encoding,
             auto_open=auto_open,
         )
 
     def _default_timeout(self) -> Timeout:
-        return Timeout(response=5, action="error")
+        return Timeout(response=5)
 
-    def _default_stop_conditions(self) -> list[StopCondition]:
+    @staticmethod
+    def _default_stop_conditions() -> list[StopCondition]:
         return [Continuation(0.1)]
 
     @classmethod
@@ -202,10 +196,8 @@ class Visa(Adapter):
 
         # if self._inst is not None:
         #     self._inst.close()
-        self._opened = False
 
     def _worker_write(self, data: bytes) -> None:
-        super()._worker_write(data)
         # TODO : Add try around write
         # TODO : We assume that the instance is thread safe because
         # it would slow things down to have a lock because the internal thread
@@ -215,7 +207,7 @@ class Visa(Adapter):
         if self._inst is not None:
             self._inst.write_raw(data)
 
-    def _worker_read(self, fragment_timestamp: float) -> Fragment:
+    def _worker_read(self, fragment_timestamp: float) -> BytesFragment:
         self._notify_recv.recv(1)
         event = self._event_queue.get(block=False, timeout=None)
 
@@ -228,9 +220,6 @@ class Visa(Adapter):
         raise AdapterReadError("Invalid queue event")
 
     def _worker_open(self) -> None:
-        super()._worker_open()
-        self._worker_check_descriptor()
-
         if self._thread is not None:
             self.close()
 
@@ -239,12 +228,10 @@ class Visa(Adapter):
 
         self._inst = cast(
             MessageBasedResource,
-            self._rm.open_resource(self._worker_descriptor.descriptor),
+            self._rm.open_resource(self._descriptor.descriptor),
         )
         self._inst.write_termination = ""
         self._inst.read_termination = None
-
-        self._opened = True
 
         self._thread = threading.Thread(
             target=self._internal_thread,
@@ -257,7 +244,7 @@ class Visa(Adapter):
         timeout = 50e-3
         while True:
             payload = b""
-            fragment: Fragment | None = None
+            fragment: BytesFragment | None = None
             try:
                 instance.timeout = timeout
             except pyvisa.InvalidSession:

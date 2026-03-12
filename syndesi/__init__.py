@@ -2,7 +2,14 @@
 Syndesi module
 """
 
+from .adapters.adapterworkerbase import (
+    AdapterDisconnectedEvent,
+    AdapterEvent,
+    AdapterFirstFragmentEvent,
+    AdapterFrameEvent,
+)
 from .adapters.ip import IP
+from .adapters.ipserver import IPServer
 from .adapters.serialport import SerialPort
 from .adapters.stop_conditions import Continuation, Length, Termination, Total
 from .adapters.timeout import Timeout
@@ -15,6 +22,7 @@ from .tools.logmanager import log
 
 __all__ = [
     "IP",
+    "IPServer",
     "SerialPort",
     "Visa",
     "Delimited",
@@ -27,4 +35,8 @@ __all__ = [
     "Length",
     "Termination",
     "Total",
+    "AdapterEvent",
+    "AdapterDisconnectedEvent",
+    "AdapterFrameEvent",
+    "AdapterFirstFragmentEvent",
 ]

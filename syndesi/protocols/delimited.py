@@ -9,23 +9,23 @@ command-like formats with specified delimiters (like \\n, \\r, \\r\\n, etc...)
 from collections.abc import Callable
 from types import EllipsisType
 
-from ..adapters.adapter import Adapter
+from syndesi.adapters.bytesadapter import BytesAdapter
+
 from ..adapters.stop_conditions import StopCondition, Termination
 from ..adapters.timeout import Timeout
-from ..component import AdapterFrame, ReadScope
+from ..component import Frame, ReadScope
 from .protocol import Protocol, ProtocolEvent, ProtocolFrame
 
+# class DelimitedFrame(ProtocolFrame[str]):
+#     """Delimited frame"""
 
-class DelimitedFrame(ProtocolFrame[str]):
-    """Delimited frame"""
+#     payload: str
 
-    payload: str
-
-    def __str__(self) -> str:
-        return f"DelimitedFrame({self.payload})"
+#     def __str__(self) -> str:
+#         return f"DelimitedFrame({self.payload})"
 
 
-class Delimited(Protocol[str]):
+class Delimited(Protocol[str, bytes]):
     """
     Protocol with delimiter, like LF, CR, etc... LF is used by default
 
@@ -49,7 +49,7 @@ class Delimited(Protocol[str]):
 
     def __init__(
         self,
-        adapter: Adapter,
+        adapter: BytesAdapter,
         termination: str = "\n",
         *,
         format_response: bool = True,
@@ -77,7 +77,7 @@ class Delimited(Protocol[str]):
         )
         super().__init__(adapter, timeout=timeout, event_callback=event_callback)
 
-        self._adapter.set_event_callback(self._on_event)
+        self._adapter.register_event_callback(self._on_event)
 
     def __str__(self) -> str:
         if self._receive_termination == self._termination:
@@ -91,7 +91,7 @@ class Delimited(Protocol[str]):
         return self.__str__()
 
     def _default_timeout(self) -> Timeout | None:
-        return Timeout(response=2, action="error")
+        return Timeout(response=2)
 
     # ┌────────────┐
     # │ Public API │
@@ -99,13 +99,13 @@ class Delimited(Protocol[str]):
 
     # ==== read_detailed ====
 
-    def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> DelimitedFrame:
-        data = adapter_frame.get_payload().decode(self._encoding)
+    def _adapter_to_protocol(self, adapter_frame: Frame[bytes]) -> ProtocolFrame[str]:
+        data = adapter_frame.data.decode(self._encoding)
         if data.endswith(self._receive_termination):
             data = data[: -len(self._receive_termination)]
 
-        return DelimitedFrame(
-            payload=data,
+        return ProtocolFrame(
+            data=data,
             stop_timestamp=adapter_frame.stop_timestamp,
             stop_condition_type=adapter_frame.stop_condition_type,
             previous_read_buffer_used=adapter_frame.previous_read_buffer_used,
@@ -134,12 +134,11 @@ class Delimited(Protocol[str]):
             If True, Return data and read information in a additionnal BackendReadOutput class
             If False, Return data only
         """
-
         # Send up to the termination
         frame = self._adapter.read_detailed(
             timeout=timeout, stop_conditions=stop_conditions, scope=scope
         )
-        return frame.get_payload()
+        return frame.data
 
     # def _on_event(self, event: AdapterEvent) -> None:
 

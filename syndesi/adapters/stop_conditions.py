@@ -8,37 +8,22 @@ Stop-condition module
 This is the frontend of the stop-conditions, the part that is imported by the user
 """
 
-# from abc import abstractmethod
+from __future__ import annotations
+
 from abc import abstractmethod
-from dataclasses import dataclass
 from enum import Enum
+from typing import TypeAlias
 
+from .utils import Fragment
 
-@dataclass
-class Fragment:
-    """
-    Fragment class, holds a piece of data (bytes) and the time at which it was received
-    """
-
-    data: bytes
-    timestamp: float
-
-    def __str__(self) -> str:
-        return f"{self.data!r}@{self.timestamp}"
-
-    def __repr__(self) -> str:
-        return f"Fragment({self.data!r}@{self.timestamp})"
-
-    def __getitem__(self, key: slice) -> "Fragment":
-        # if self.data is None:
-        #     raise IndexError('Cannot index invalid fragment')
-        return Fragment(self.data[key], self.timestamp)
+BytesFragment: TypeAlias = Fragment[bytes]
 
 
 class StopConditionType(Enum):
     """
     Stop-condition type
     """
+
     TERMINATION = "termination"
     LENGTH = "length"
     CONTINUATION = "continuation"
@@ -46,15 +31,10 @@ class StopConditionType(Enum):
     FRAGMENT = "fragment"
     TIMEOUT = "timeout"
 
-
 class StopCondition:
     """
     Stop-condition base class, cannot be used on its own
     """
-
-    # @abstractmethod
-    # def type(self) -> StopConditionType:
-    #     pass
 
     @abstractmethod
     def initiate_read(self, timestamp: float) -> None:
@@ -64,8 +44,8 @@ class StopCondition:
 
     @abstractmethod
     def evaluate(
-        self, raw_fragment: Fragment
-    ) -> tuple[bool, Fragment, Fragment, float | None]:
+        self, raw_fragment: BytesFragment
+    ) -> tuple[bool, BytesFragment, BytesFragment, float | None]:
         """
         Evaluate incoming fragment and return read information for the next fragment
         """
@@ -73,7 +53,7 @@ class StopCondition:
     @abstractmethod
     def type(self) -> StopConditionType:
         """
-        Helper function to determine the which type of stop-condition generated a stop
+        Helper function to determine which type of stop-condition generated a stop
         """
 
     @abstractmethod
@@ -119,16 +99,14 @@ class Termination(StopCondition):
         self._sequence_found_length = 0
 
     def evaluate(
-        self, raw_fragment: Fragment
-    ) -> tuple[bool, Fragment, Fragment, float | None]:
-        if raw_fragment.data is None:
-            raise RuntimeError("Trying to evaluate an invalid fragment")
+        self, raw_fragment: BytesFragment
+    ) -> tuple[bool, BytesFragment, BytesFragment, float | None]:
 
         position, length = termination_in_data(
             self._sequence[self._sequence_found_length :], raw_fragment.data
         )
         stop = False
-        deferred = Fragment(b"", raw_fragment.timestamp)
+        deferred = BytesFragment(b"", raw_fragment.timestamp)
 
         if position is None:
             # Nothing was found, keep everything
@@ -144,7 +122,7 @@ class Termination(StopCondition):
             elif position + length == len(raw_fragment.data):
                 # Part of the sequence was found at the end
                 # Return what's before the sequence
-                deferred = Fragment(b"", raw_fragment.timestamp)
+                deferred = BytesFragment(b"", raw_fragment.timestamp)
 
             kept = raw_fragment[: position + length]
 
@@ -187,15 +165,14 @@ class Length(StopCondition):
         self._counter = 0
 
     def evaluate(
-        self, raw_fragment: Fragment
-    ) -> tuple[bool, Fragment, Fragment, float | None]:
+        self, raw_fragment: BytesFragment
+    ) -> tuple[bool, BytesFragment, BytesFragment, float | None]:
         remaining_bytes = self._n - self._counter
         kept_fragment = raw_fragment[:remaining_bytes]
         deferred_fragment = raw_fragment[remaining_bytes:]
         self._counter += len(kept_fragment.data)
         remaining_bytes = self._n - self._counter
         return remaining_bytes == 0, kept_fragment, deferred_fragment, None
-
 
 class Continuation(StopCondition):
     """
@@ -225,9 +202,9 @@ class Continuation(StopCondition):
         self._last_fragment = None
 
     def evaluate(
-        self, raw_fragment: Fragment
-    ) -> tuple[bool, Fragment, Fragment, float | None]:
-        deferred = Fragment(b"", raw_fragment.timestamp)
+        self, raw_fragment: BytesFragment
+    ) -> tuple[bool, BytesFragment, BytesFragment, float | None]:
+        deferred = BytesFragment(b"", raw_fragment.timestamp)
         kept = raw_fragment
 
         # if raw_fragment.timestamp is None:
@@ -274,10 +251,10 @@ class Total(StopCondition):
         self._start_time = None
 
     def evaluate(
-        self, raw_fragment: Fragment
-    ) -> tuple[bool, Fragment, Fragment, float | None]:
+        self, raw_fragment: BytesFragment
+    ) -> tuple[bool, BytesFragment, BytesFragment, float | None]:
         kept = raw_fragment
-        deferred = Fragment(b"", raw_fragment.timestamp)
+        deferred = BytesFragment(b"", raw_fragment.timestamp)
 
         # if raw_fragment.timestamp is None:
         #     raise RuntimeError("Cannot evaluate fragment with no timestamp")
@@ -315,10 +292,10 @@ class FragmentStopCondition(StopCondition):
         pass
 
     def evaluate(
-        self, raw_fragment: Fragment
-    ) -> tuple[bool, Fragment, Fragment, float | None]:
+        self, raw_fragment: BytesFragment
+    ) -> tuple[bool, BytesFragment, BytesFragment, float | None]:
 
-        return True, raw_fragment, Fragment(b"", raw_fragment.timestamp), None
+        return True, raw_fragment, BytesFragment(b"", raw_fragment.timestamp), None
 
     def type(self) -> StopConditionType:
         return StopConditionType.FRAGMENT

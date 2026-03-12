@@ -9,7 +9,6 @@ the OS layers (COMx, /dev/ttyUSBx or /dev/ttyACMx)
 """
 
 import threading
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
@@ -17,20 +16,20 @@ from types import EllipsisType
 import serial
 from serial.serialutil import PortNotOpenError
 
-from syndesi.adapters.adapter_worker import AdapterEvent, HasFileno
+from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
-from syndesi.tools.types import NumberLike
 
-from .adapter import Adapter
-from .stop_conditions import Continuation, Fragment, StopCondition
-from .timeout import Timeout
+from .stop_conditions import BytesFragment, Continuation, StopCondition
+from .timeout import Timeout, TimeoutType
+from .utils import Fragment, HasFileno
 
 
 class Parity(StrEnum):
     """
     SerialPort parity setting, copied from pyserial
     """
+
     NONE = "N"
     EVEN = "E"
     ODD = "O"
@@ -83,7 +82,7 @@ class SerialPortDescriptor(Descriptor):
         return self.baudrate is not None
 
 
-class SerialPort(Adapter):
+class SerialPort(BytesAdapter):
     """
     Serial communication adapter
 
@@ -103,7 +102,7 @@ class SerialPort(Adapter):
         port: str,
         baudrate: int | None = None,
         *,
-        timeout: Timeout | NumberLike | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
         alias: str = "",
         bytesize: int = 8,
@@ -112,7 +111,6 @@ class SerialPort(Adapter):
         rts_cts: bool = False,
         xon_xoff: bool = False,
         dsr_dtr: bool = False,
-        event_callback: Callable[[AdapterEvent], None] | None = None,
         auto_open: bool = True,
     ) -> None:
         """
@@ -134,34 +132,24 @@ class SerialPort(Adapter):
             timeout=timeout,
             stop_conditions=stop_conditions,
             alias=alias,
-            event_callback=event_callback,
             auto_open=auto_open,
         )
         self._descriptor: SerialPortDescriptor
-        self._worker_descriptor: SerialPortDescriptor
 
         self._logger.info(
             f"Setting up SerialPort adapter {self._descriptor}, \
-                timeout={timeout} and stop_conditions={self._stop_conditions}"
+                timeout={timeout} and stop_conditions={stop_conditions}"
         )
 
-        # self._bytesize = bytesize
-        # self._stopbits = stopbits
-        # self._parity = Parity(parity)
-        # self._xonxoff = xon_xoff
-        # self._dsrdtr = dsr_dtr
-
     def _default_timeout(self) -> Timeout:
-        return Timeout(response=2, action="error")
+        return Timeout(response=2)
 
-    def _default_stop_conditions(self) -> list[StopCondition]:
+    @staticmethod
+    def _default_stop_conditions() -> list[StopCondition]:
         return [Continuation(0.1)]
 
     def _worker_open(self) -> None:
-        super()._worker_open()
-        self._worker_check_descriptor()
-
-        if self._worker_descriptor.baudrate is None:
+        if self._descriptor.baudrate is None:
             raise AdapterOpenError(
                 "Descriptor must be fully initialized to open the adapter"
             )
@@ -169,48 +157,43 @@ class SerialPort(Adapter):
         if self._port is not None:
             self.close()
 
-        port_name = self._worker_descriptor.port
-        with self._open_ports_lock:
-            if port_name in self._open_ports:
-                raise AdapterOpenError(f"Port '{port_name}' is already in use")
-            self._open_ports.add(port_name)
-
         try:
             self._port = serial.Serial(
-                port=self._worker_descriptor.port,
-                baudrate=self._worker_descriptor.baudrate,
-                rtscts=self._worker_descriptor.rts_cts,
-                bytesize=self._worker_descriptor.bytesize,
-                parity=self._worker_descriptor.parity,
-                stopbits=self._worker_descriptor.stopbits,
-                xonxoff=self._worker_descriptor.xon_xoff,
-                dsrdtr=self._worker_descriptor.dsr_dtr
+                port=self._descriptor.port,
+                baudrate=self._descriptor.baudrate,
+                rtscts=self._descriptor.rts_cts,
+                bytesize=self._descriptor.bytesize,
+                parity=self._descriptor.parity,
+                stopbits=self._descriptor.stopbits,
+                xonxoff=self._descriptor.xon_xoff,
+                dsrdtr=self._descriptor.dsr_dtr,
+                exclusive=True,
             )
         except serial.SerialException as e:
-            with self._open_ports_lock:
-                self._open_ports.discard(port_name)
+            # with self._open_ports_lock:
+            #    self._open_ports.discard(self._descriptor.port)
             if "No such file" in str(e):
                 raise AdapterOpenError(
-                    f"Port '{self._worker_descriptor.port}' was not found"
+                    f"Port '{self._descriptor.port}' was not found"
                 ) from e
-            raise AdapterOpenError("Unknown error") from e
+            raise AdapterOpenError(f"SerialPort open error : {str(e)}") from None
 
         if self._port.isOpen():  # type: ignore
-            self._logger.info(f"Adapter {self._worker_descriptor} opened")
+            self._logger.info(f"Adapter {self._descriptor} opened")
         else:
-            with self._open_ports_lock:
-                self._open_ports.discard(port_name)
-            self._logger.error(f"Failed to open adapter {self._worker_descriptor}")
+            # with self._open_ports_lock:
+            #    self._open_ports.discard(self._descriptor.port)
+            self._logger.error(f"Failed to open adapter {self._descriptor}")
             raise AdapterOpenError("Unknown error")
 
     def _worker_close(self) -> None:
         super()._worker_close()
         if self._port is not None:
             self._port.close()
-            self._logger.info(f"Adapter {self._worker_descriptor} closed")
+            self._logger.info(f"Adapter {self._descriptor} closed")
             self._port = None
             with self._open_ports_lock:
-                self._open_ports.discard(self._worker_descriptor.port)
+                self._open_ports.discard(self._descriptor.port)
 
     async def aflush_read(self) -> None:
         await super().aflush_read()
@@ -226,13 +209,11 @@ class SerialPort(Adapter):
         baudrate : int
         """
         if self._descriptor.set_default_baudrate(baudrate):
-            self._update_descriptor()
             self.close()
             self.open()
 
     def _worker_write(self, data: bytes) -> None:
-        super()._worker_write(data)
-        if self._worker_descriptor.rts_cts:  # Experimental
+        if self._descriptor.rts_cts:  # Experimental
             self._port.setRTS(True)  # type: ignore
         if self._port is not None:
             try:
@@ -240,7 +221,7 @@ class SerialPort(Adapter):
             except (OSError, PortNotOpenError):
                 pass
 
-    def _worker_read(self, fragment_timestamp: float) -> Fragment:
+    def _worker_read(self, fragment_timestamp: float) -> BytesFragment:
         if self._port is None:
             raise AdapterReadError("Cannot read from non-initialized port")
 
@@ -250,9 +231,7 @@ class SerialPort(Adapter):
             data = None
 
         if data is None or data == b"":
-            raise AdapterReadError(
-                f"Error while reading from {self._worker_descriptor}"
-            )
+            raise AdapterReadError(f"Error while reading from {self._descriptor}")
 
         return Fragment(data, fragment_timestamp)
 

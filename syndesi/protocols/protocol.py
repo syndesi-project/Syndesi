@@ -12,36 +12,35 @@ from dataclasses import dataclass
 from types import EllipsisType
 from typing import Generic, TypeVar
 
-from syndesi.adapters.adapter_worker import (
+from syndesi.adapters.adapterworkerbase import (
     AdapterDisconnectedEvent,
     AdapterEvent,
     AdapterFrameEvent,
 )
 from syndesi.adapters.stop_conditions import StopCondition
-from syndesi.component import AdapterFrame, Component, Event, Frame, ReadScope
+from syndesi.component import Component, Event, Frame, ReadScope
 
-from ..adapters.adapter import Adapter
-from ..adapters.auto import auto_adapter
-from ..adapters.timeout import Timeout
+from ..adapters.adapterbase import AdapterBase
+from ..adapters.timeout import Timeout, TimeoutType
 from ..tools.log_settings import LoggerAlias
 
-T = TypeVar("T")
+ProtocolFrameT = TypeVar("ProtocolFrameT")
+
+AdapterDataT = TypeVar("AdapterDataT")
+# AdapterT = TypeVar("AdapterT", bound=AdapterBase[AdapterDataT])
 
 
 @dataclass
-class ProtocolFrame(Frame[T]):
+class ProtocolFrame(Generic[ProtocolFrameT], Frame[ProtocolFrameT]):
     """
     Adapter signal containing received data
     """
 
-    payload: T
+    # payload: ProtocolFrameT
 
-    def get_payload(self) -> T:
-        return self.payload
-
-    @abstractmethod
+    # @abstractmethod
     def __str__(self) -> str:
-        return f"ProtocolFrame({self.payload!r})"
+        return f"ProtocolFrame({self.data!r})"
 
 
 class ProtocolEvent(Event):
@@ -53,31 +52,32 @@ class ProtocolDisconnectedEvent(ProtocolEvent):
 
 
 @dataclass
-class ProtocolFrameEvent(ProtocolEvent, Generic[T]):
+class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
     """Protocol frame event"""
 
-    frame: ProtocolFrame[T]
+    frame: ProtocolFrame[ProtocolFrameT]
 
 
 ProtocolTimeoutType = Timeout | None | EllipsisType
 
 
-class Protocol(Component[T], Generic[T]):
+class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT]):
     """
     Protocol base class
     """
 
     def __init__(
         self,
-        adapter: Adapter,
+        adapter: AdapterBase[AdapterDataT],
         timeout: ProtocolTimeoutType = ...,
         event_callback: Callable[[ProtocolEvent], None] | None = None,
     ) -> None:
         super().__init__(LoggerAlias.PROTOCOL)
-        self._adapter = auto_adapter(adapter)
+        self._adapter = adapter
+        # self._adapter : AdapterT = auto_adapter(adapter)
         self._event_callback = event_callback
 
-        self._adapter.set_event_callback(self._on_event)
+        self._adapter.register_event_callback(self._on_event)
 
         if timeout is not ...:
             self._adapter.set_default_timeout(timeout)
@@ -105,10 +105,14 @@ class Protocol(Component[T], Generic[T]):
                 self._event_callback(output_event)
 
     @abstractmethod
-    def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> ProtocolFrame[T]: ...
+    def _adapter_to_protocol(
+        self, adapter_frame: Frame[AdapterDataT]
+    ) -> ProtocolFrame[ProtocolFrameT]: ...
 
     @abstractmethod
-    def _protocol_to_adapter(self, protocol_payload: T) -> bytes: ...
+    def _protocol_to_adapter(
+        self, protocol_payload: ProtocolFrameT
+    ) -> AdapterDataT: ...
 
     # ┌────────────┐
     # │ Public API │
@@ -146,10 +150,10 @@ class Protocol(Component[T], Generic[T]):
 
     async def aread_detailed(
         self,
-        timeout: Timeout | EllipsisType | None = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> ProtocolFrame[T]:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> ProtocolFrame[ProtocolFrameT]:
         adapter_frame = await self._adapter.aread_detailed(
             timeout=timeout, stop_conditions=stop_conditions, scope=scope
         )
@@ -157,36 +161,38 @@ class Protocol(Component[T], Generic[T]):
 
     def read_detailed(
         self,
-        timeout: Timeout | EllipsisType | None = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> ProtocolFrame[T]:
-        adapter_frame = self._adapter.read_detailed()
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> ProtocolFrame[ProtocolFrameT]:
+        adapter_frame = self._adapter.read_detailed(
+            timeout=timeout, scope=scope, stop_conditions=stop_conditions
+        )
         return self._adapter_to_protocol(adapter_frame)
 
     # ==== read ====
 
     async def aread(
         self,
-        timeout: Timeout | EllipsisType | None = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> T:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> ProtocolFrameT:
         frame = await self.aread_detailed(
             timeout=timeout, stop_conditions=stop_conditions, scope=scope
         )
-        return frame.get_payload()
+        return frame.data
 
     def read(
         self,
-        timeout: Timeout | EllipsisType | None = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> T:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> ProtocolFrameT:
         frame = self.read_detailed(
             timeout=timeout, stop_conditions=stop_conditions, scope=scope
         )
-        return frame.get_payload()
+        return frame.data
 
     # ==== flush_read ====
 
@@ -204,21 +210,21 @@ class Protocol(Component[T], Generic[T]):
 
     # ==== write ====
 
-    async def awrite(self, data: T) -> None:
+    async def awrite(self, data: ProtocolFrameT) -> None:
         await self._adapter.awrite(self._protocol_to_adapter(data))
 
-    def write(self, data: T) -> None:
+    def write(self, data: ProtocolFrameT) -> None:
         self._adapter.write(self._protocol_to_adapter(data))
 
     # ==== query_detailed ====
 
     async def aquery_detailed(
         self,
-        payload: T,
+        payload: ProtocolFrameT,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> ProtocolFrame[T]:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> ProtocolFrame[ProtocolFrameT]:
         await self.aflush_read()
         await self.awrite(payload)
         return await self.aread_detailed(
@@ -227,11 +233,11 @@ class Protocol(Component[T], Generic[T]):
 
     def query_detailed(
         self,
-        payload: T,
+        payload: ProtocolFrameT,
         timeout: Timeout | None | EllipsisType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> ProtocolFrame[T]:
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> ProtocolFrame[ProtocolFrameT]:
         self.flush_read()
         self.write(payload)
         return self.read_detailed(

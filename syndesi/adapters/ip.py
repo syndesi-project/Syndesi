@@ -6,19 +6,23 @@ IP Adapter, used to communicate with IP targets using the socket module
 """
 
 import socket
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
 
-from syndesi.adapters.adapter_worker import AdapterEvent, HasFileno
+from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
 from syndesi.adapters.timeout import Timeout
 from syndesi.component import Descriptor
-from syndesi.tools.errors import AdapterOpenError, AdapterWriteError
+from syndesi.tools.errors import (
+    AdapterDisconnected,
+    AdapterOpenError,
+    AdapterWriteError,
+)
 
-from .adapter import Adapter
-from .stop_conditions import Fragment
+from .stop_conditions import BytesFragment
+from .tracehub import tracehub
+from .utils import Fragment, HasFileno
 
 
 @dataclass
@@ -49,10 +53,11 @@ class IPDescriptor(Descriptor):
                     return member  # type: ignore # TODO : Check this
             raise ValueError(f"{transport} is not a valid {cls.__name__}")
 
-    DETECTION_PATTERN = r"(\d+.\d+.\d+.\d+|[\w\.]+):\d+:(UDP|TCP)"
+    DETECTION_PATTERN = r"(\d+.\d+.\d+.\d+|[\w\.]+):\d+:(UDP|TCP)(:server)?"
     address: str
     transport: Transport
     port: int | None = None
+    server: bool = False
 
     @staticmethod
     def from_string(string: str) -> "IPDescriptor":
@@ -60,10 +65,14 @@ class IPDescriptor(Descriptor):
         address = parts[0]
         port = int(parts[1])
         transport = IPDescriptor.Transport(parts[2])
-        return IPDescriptor(address, transport, port)
+        server = len(parts) >= 4 and parts[3] == "server"
+
+        return IPDescriptor(address, transport, port, server)
 
     def __str__(self) -> str:
-        return f"{self.address}:{self.port}:{self.Transport(self.transport).value}"
+        return f"{self.address}:{self.port}:{self.Transport(self.transport).value}" + (
+            "(server)" if self.server else ""
+        )
 
     def is_initialized(self) -> bool:
         """
@@ -73,7 +82,10 @@ class IPDescriptor(Descriptor):
         return self.port is not None and self.transport is not None
 
 
-class IP(Adapter):
+BUFFER_SIZE = 65535
+
+
+class IP(BytesAdapter):
     """
     IP stack adapter. The IP Adapter reads and writes bytes units (frames)
 
@@ -104,7 +116,7 @@ class IP(Adapter):
 
         Multiple stop conditions can be used to create more complex behaviours
     encoding : str
-        Used to convert str to bytes if the user chooses to send
+        Used to convert str to bytes if the user chooses to send str
     alias : str
         Name of the adapter, may be removed in the future
     event_callback : f(event : AdapterEvent)
@@ -118,8 +130,6 @@ class IP(Adapter):
         Automatically open the adapter after instanciation
     """
 
-    BUFFER_SIZE = 65507
-
     def __init__(
         self,
         address: str,
@@ -128,10 +138,9 @@ class IP(Adapter):
         *,
         timeout: Timeout | float | EllipsisType = ...,
         stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
-        encoding: str = "utf-8",
         alias: str = "",
-        event_callback: Callable[[AdapterEvent], None] | None = None,
         auto_open: bool = True,
+        server_socket: socket.socket | None = None,
     ):
 
         descriptor = IPDescriptor(
@@ -139,20 +148,22 @@ class IP(Adapter):
             port=port,
             transport=IPDescriptor.Transport(transport.upper()),
         )
-        #self._socket: _socket.socket | None = None
-        self._socket : socket.socket | None = None
+        self._socket: socket.socket | None = None
+
+        if server_socket is not None:
+            self._opened = True
+            auto_open = False
+            tracehub.emit_open(str(descriptor))
+            self._socket = server_socket
 
         super().__init__(
             descriptor=descriptor,
             stop_conditions=stop_conditions,
             timeout=timeout,
-            encoding=encoding,
             alias=alias,
-            event_callback=event_callback,
             auto_open=auto_open,
         )
         self._descriptor: IPDescriptor
-        self._worker_descriptor: IPDescriptor
 
     def set_default_port(self, port: int) -> None:
         """
@@ -164,57 +175,47 @@ class IP(Adapter):
         """
         if self._descriptor.port is None:
             self._descriptor.port = port
-            self._update_descriptor()
 
-    def _worker_read(self, fragment_timestamp: float) -> Fragment:
+    def _worker_read(self, fragment_timestamp: float) -> BytesFragment:
         if self._socket is None:
             return Fragment(b"", fragment_timestamp)
 
         try:
-            data = self._socket.recv(self.BUFFER_SIZE)
+            data = self._socket.recv(BUFFER_SIZE)
         except (ConnectionRefusedError, OSError):
             fragment = Fragment(b"", fragment_timestamp)
         else:
             if data == b"":
-                self._logger.warning("Socket disconnected")
-                self._worker_close()
+                raise AdapterDisconnected()
             fragment = Fragment(data, fragment_timestamp)
         return fragment
 
     def _worker_write(self, data: bytes) -> None:
-        super()._worker_write(data)
-
         if self._socket is not None:
             if self._socket.send(data) != len(data):
                 raise AdapterWriteError(
-                    f"Adapter {self._worker_descriptor} couldn't write"
+                    f"Adapter {self._descriptor} couldn't write"
                     " all of the data to the socket"
                 )
 
     def _worker_open(self) -> None:
-        super()._worker_open()
-        self._worker_check_descriptor()
-
         # Create the socket instance
-        if self._worker_descriptor.transport == IPDescriptor.Transport.TCP:
+        if self._descriptor.transport == IPDescriptor.Transport.TCP:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        elif self._worker_descriptor.transport == IPDescriptor.Transport.UDP:
+        elif self._descriptor.transport == IPDescriptor.Transport.UDP:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         else:
             raise AdapterOpenError("Invalid transport protocol")
         try:
             self._socket.settimeout(self.WorkerTimeout.OPEN.value)
-            self._socket.connect(
-                (self._worker_descriptor.address, self._worker_descriptor.port)
-            )
+            self._socket.connect((self._descriptor.address, self._descriptor.port))
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:
             self._opened = False
-            msg = f"Failed to open adapter {self._worker_descriptor} : {e}"
+            msg = f"Failed to open adapter {self._descriptor} : {e}"
             self._logger.error(msg)
             raise AdapterOpenError(msg) from None
 
-        self._opened = True
-        self._logger.info(f"IP Adapter {self._worker_descriptor} opened")
+        self._logger.info(f"IP Adapter {self._descriptor} opened")
 
     def _worker_close(self) -> None:
         super()._worker_close()
@@ -229,8 +230,9 @@ class IP(Adapter):
     def _selectable(self) -> HasFileno | None:
         return self._socket
 
-    def _default_stop_conditions(self) -> list[StopCondition]:
+    @staticmethod
+    def _default_stop_conditions() -> list[StopCondition]:
         return [Continuation(continuation=0.2)]
 
     def _default_timeout(self) -> Timeout:
-        return Timeout(response=1, action="error")
+        return Timeout(response=1)

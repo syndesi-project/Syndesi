@@ -43,9 +43,9 @@ from math import ceil
 from types import EllipsisType
 from typing import cast
 
-from syndesi.component import AdapterFrame
+from syndesi.component import Frame
 
-from ..adapters.adapter import Adapter
+from ..adapters.adapterbase import AdapterBase
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..adapters.timeout import Timeout
@@ -1376,7 +1376,7 @@ class ModbusFrame(ProtocolFrame[ModbusSDU]):
 
 
 # pylint: disable=too-many-public-methods
-class Modbus(Protocol[ModbusSDU]):
+class Modbus(Protocol[ModbusSDU, bytes]):
     """
     Modbus protocol
 
@@ -1393,7 +1393,7 @@ class Modbus(Protocol[ModbusSDU]):
 
     def __init__(
         self,
-        adapter: Adapter,
+        adapter: AdapterBase[bytes],
         timeout: Timeout | None | EllipsisType = ...,
         _type: str = ModbusType.RTU.value,
         slave_address: int | None = None,
@@ -1401,8 +1401,8 @@ class Modbus(Protocol[ModbusSDU]):
         super().__init__(adapter, timeout)
         self._logger.debug("Initializing Modbus protocol...")
 
-        if isinstance(adapter, IP):
-            self._adapter: IP
+        if isinstance(self._adapter, IP):
+            # self._adapter: IP
             self._adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
             self._modbus_type = ModbusType.TCP
         elif isinstance(adapter, SerialPort):
@@ -1419,7 +1419,7 @@ class Modbus(Protocol[ModbusSDU]):
         self._transaction_id = 0
 
     def _default_timeout(self) -> Timeout | None:
-        return Timeout(response=1, action="error")
+        return Timeout(response=1)
 
     def _protocol_to_adapter(self, protocol_payload: ModbusSDU) -> bytes:
         if isinstance(protocol_payload, SerialLineOnlySDU):
@@ -1455,9 +1455,9 @@ class Modbus(Protocol[ModbusSDU]):
         return output
 
     def _adapter_to_protocol(
-        self, adapter_frame: AdapterFrame
+        self, adapter_frame: Frame[bytes]
     ) -> ProtocolFrame[ModbusSDU]:
-        pdu = adapter_frame.get_payload()
+        pdu = adapter_frame.data
 
         if self._modbus_type == ModbusType.TCP:
             # transaction_id, protocol_id, length, unit_id = struct.unpack(
@@ -1489,7 +1489,7 @@ class Modbus(Protocol[ModbusSDU]):
             stop_condition_type=adapter_frame.stop_condition_type,
             previous_read_buffer_used=adapter_frame.previous_read_buffer_used,
             response_delay=adapter_frame.response_delay,
-            payload=sdu,
+            data=sdu,
         )
 
     # ┌────────────┐

@@ -6,28 +6,15 @@ Raw protocol layer, data is returned as bytes "as-is"
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from types import EllipsisType
 
-from ..adapters.adapter import Adapter
+from ..adapters.adapterbase import AdapterBase
 from ..adapters.timeout import Timeout
-from ..component import AdapterFrame
+from ..component import Frame
 from .protocol import Protocol, ProtocolEvent, ProtocolFrame
 
 
-@dataclass
-class RawFrame(ProtocolFrame[bytes]):
-    """
-    Adapter signal containing received data
-    """
-
-    payload: bytes
-
-    def __str__(self) -> str:
-        return f"ProtocolFrame({self.payload!r})"
-
-
-class Raw(Protocol[bytes]):
+class Raw(Protocol[bytes, bytes]):
     """
     Raw device, no presentation and application layers, data is returned as bytes directly
 
@@ -38,14 +25,14 @@ class Raw(Protocol[bytes]):
 
     def __init__(
         self,
-        adapter: Adapter,
+        adapter: AdapterBase[bytes],
         timeout: Timeout | None | EllipsisType = ...,
         event_callback: Callable[[ProtocolEvent], None] | None = None,
     ) -> None:
         super().__init__(adapter, timeout, event_callback)
 
     def _default_timeout(self) -> Timeout | None:
-        return Timeout(response=2, action="error")
+        return Timeout(response=2)
 
     def __str__(self) -> str:
         return f"Raw({self._adapter})"
@@ -63,11 +50,11 @@ class Raw(Protocol[bytes]):
     #         if output_event is not None:
     #             self._event_callback(output_event)
 
-    def _adapter_to_protocol(self, adapter_frame: AdapterFrame) -> RawFrame:
-        payload = adapter_frame.get_payload()
+    def _adapter_to_protocol(self, adapter_frame: Frame[bytes]) -> ProtocolFrame[bytes]:
+        payload = adapter_frame.data
 
-        return RawFrame(
-            payload=payload,
+        return ProtocolFrame(
+            data=payload,
             stop_timestamp=adapter_frame.stop_timestamp,
             stop_condition_type=adapter_frame.stop_condition_type,
             previous_read_buffer_used=adapter_frame.previous_read_buffer_used,

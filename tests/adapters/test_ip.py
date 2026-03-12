@@ -4,7 +4,7 @@ from time import sleep
 import time
 
 from syndesi import IP
-from syndesi.adapters.adapter import AdapterFrame
+from syndesi.adapters.adapterbase import Frame
 from syndesi.adapters.stop_conditions import *
 from syndesi.adapters.timeout import Timeout
 import socket
@@ -140,7 +140,7 @@ def test_response_A():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(delay + TIME_DELTA, action="error"),
+        timeout=Timeout(delay + TIME_DELTA),
         stop_conditions=Continuation(0.1),
     )
     client.write(encode_sequences([(sequence, delay)]))
@@ -157,11 +157,15 @@ def test_response_B():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA, action="return_empty"),
+        timeout=Timeout(response=delay - TIME_DELTA),
         stop_conditions=Continuation(0.1),
     )
-    data = client.query(encode_sequences([(sequence, delay)]))
-    assert data == b''
+    try:
+        data = client.query(encode_sequences([(sequence, delay)]))
+    except AdapterTimeoutError:
+        ...
+    else:
+        raise RuntimeError("No timeout error")
     sleep(2 * TIME_DELTA)
     data = client.read()
     assert data == sequence
@@ -275,11 +279,15 @@ def test_length_short_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA, action="return_empty"),
+        timeout=Timeout(response=delay - TIME_DELTA),
         stop_conditions=[Length(10), Continuation(0.1)],
     )
-    data = client.query(encode_sequences([(sequence, delay)]))
-    assert data == b''
+    try:
+        data = client.query(encode_sequences([(sequence, delay)]))
+    except AdapterTimeoutError:
+        ...
+    else:
+        raise RuntimeError("No timeout error")
     data = client.read()
     assert data == sequence[:N]
     data = client.read()
@@ -298,7 +306,7 @@ def test_length_long_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA, action="return_empty"),
+        timeout=Timeout(response=delay + TIME_DELTA),
         stop_conditions=[Length(10), Continuation(0.1)],
     )
     client.write(encode_sequences([(sequence, delay)]))
@@ -405,13 +413,17 @@ def test_timeout_on_return():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA, action="return_empty"),
+        timeout=Timeout(response=delay - TIME_DELTA),
         stop_conditions=Termination(termination),
         transport="UDP",
     )
     client.write(encode_sequences([(A, delay)]))
-    data = client.read()
-    assert data == b''
+    try:
+        data = client.read()
+    except AdapterTimeoutError:
+        ...
+    else:
+        raise RuntimeError("No timeout error")
     sleep(TIME_DELTA*2)
     client.flush_read()
     client.close()
@@ -473,7 +485,7 @@ def test_continuation_return():
         HOST,
         port=PORT,
         timeout=Timeout(
-            response=delay + TIME_DELTA, action="return_empty"
+            response=delay + TIME_DELTA
         ),
         stop_conditions=[
             Termination(termination),
@@ -514,12 +526,16 @@ def test_read_timeout_reconfiguration():
     )
     assert data == A + termination
     client.write(encode_sequences([(B+termination, delay)]))
-    data = client.read(
-        timeout=Timeout(
-            response=delay-TIME_DELTA, action="return_empty"
+    try:
+        data = client.read(
+            timeout=Timeout(
+                response=delay-TIME_DELTA
+            )
         )
-    )
-    assert data == b''
+    except AdapterTimeoutError:
+        ...
+    else:
+        raise RuntimeError("No timeout error")
     client.flush_read()
     client.close()
 
@@ -544,14 +560,14 @@ def _test_delayer(ip_delayer_port):
     client = IP(
         HOST,
         port=ip_delayer_port,
-        timeout=Timeout(1 + TIME_DELTA, action='error'),
+        timeout=Timeout(1 + TIME_DELTA),
         stop_conditions=Continuation(0.005),
         transport='UDP')
     for _ in range(N):
         delay = random.random()*0.5
         frame = client.query_detailed(encode_sequences([(sequence, delay)]))
-        data = frame.get_payload()
-        frame : AdapterFrame
+        data = frame.data
+        frame : Frame
         assert data == sequence
         assert abs(frame.response_delay - delay) < TIME_DELTA
     client.flush_read()

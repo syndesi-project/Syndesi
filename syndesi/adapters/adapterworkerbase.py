@@ -1,0 +1,529 @@
+# File : adapter_worker.py
+# Author : Sébastien Deriaz
+# License : GPL
+
+"""
+Adapter worker mixin and worker command types.
+"""
+
+import logging
+import queue
+import socket
+import threading
+import time
+from abc import abstractmethod
+from collections import deque
+from collections.abc import Callable
+from dataclasses import dataclass
+from select import select
+from types import EllipsisType
+from typing import Any, Generic, TypeVar
+
+from syndesi.adapters.stop_conditions import StopCondition
+from syndesi.tools.log_settings import LoggerAlias
+
+from ..component import Descriptor, Event, Frame, ReadScope, ThreadCommand
+from ..tools.errors import (
+    AdapterDisconnected,
+    AdapterOpenError,
+    AdapterReadError,
+    AdapterTimeoutError,
+    WorkerThreadError,
+)
+from .timeout import Timeout, TimeoutType, any_to_timeout
+from .tracehub import tracehub
+from .utils import Fragment, HasFileno
+
+DataT = TypeVar("DataT")
+
+# ┌────────────────┐
+# │ Adapter events │
+# └────────────────┘
+
+
+class AdapterEvent(Event):
+    """Adapter event"""
+
+
+class AdapterDisconnectedEvent(AdapterEvent):
+    """Adapter disconnected event"""
+
+
+@dataclass
+class AdapterFrameEvent(Generic[DataT], AdapterEvent):
+    """Adapter frame event, emitted when new data is available"""
+
+    frame: Frame[DataT]
+
+
+@dataclass
+class AdapterFirstFragmentEvent(AdapterEvent):
+    """Adapter first fragment event"""
+
+    timestamp: float
+    next_timeout_timestamp: float | None
+
+
+# ┌───────────────────────────────┐
+# │ Worker commands (composition) │
+# └───────────────────────────────┘
+
+
+class SetStopConditionsCommand(ThreadCommand[None]):
+    """Configure adapter stop conditions"""
+
+    def __init__(self, stop_conditions: list[StopCondition]) -> None:
+        super().__init__()
+        self.stop_conditions = stop_conditions
+
+
+class OpenCommand(ThreadCommand[None]):
+    """Open the adapter"""
+
+
+class CloseCommand(ThreadCommand[None]):
+    """Close the adapter"""
+
+
+class StopThreadCommand(ThreadCommand[None]):
+    """Stop the worker thread"""
+
+
+class FlushReadCommand(ThreadCommand[None]):
+    """Clear buffered frames and reset worker read state"""
+
+
+class AddEventCallbackCommand(ThreadCommand[None]):
+    """Configure the callback event"""
+
+    def __init__(self, callback: Callable[[AdapterEvent], None]) -> None:
+        super().__init__()
+        self.event_callback = callback
+
+
+class WriteCommand(Generic[DataT], ThreadCommand[None]):
+    """Write data to the adapter"""
+
+    def __init__(self, data: DataT) -> None:
+        super().__init__()
+        self.data = data
+
+
+class SetTimeoutCommand(ThreadCommand[None]):
+    """Configure adapter timeout"""
+
+    def __init__(self, timeout: Timeout) -> None:
+        super().__init__()
+        self.timeout = timeout
+
+
+class IsOpenCommand(ThreadCommand[bool]):
+    """Return True if the adapter is opened"""
+
+
+class ReadCommand(Generic[DataT], ThreadCommand[Frame[DataT]]):
+    """
+    Read a frame (detailed) from the adapter.
+
+    timeout:
+        - ... => use adapter default timeout
+        - None => wait indefinitely for first fragment (response timeout disabled)
+        - Timeout => as provided
+
+    scope:
+        - ``ReadScope.NEXT`` => Only read data after the read command
+        - ``ReadScope.BUFFERED`` => Accept data that was already in the buffer
+    """
+
+    def __init__(
+        self,
+        timeout: TimeoutType,
+        scope: ReadScope,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> None:
+        super().__init__()
+        self.timeout = timeout
+        self.scope = scope
+        self.stop_conditions = stop_conditions
+
+
+# pylint: disable=too-many-instance-attributes
+@dataclass
+class PendingRead(Generic[DataT]):
+    """
+    Worker-thread state for one outstanding read.
+    """
+
+    cmd: ReadCommand[DataT]
+    start_time: float
+    scope: ReadScope
+    response_deadline: float | None
+    # Stop-condition only
+    stop_override: list[StopCondition] | None = None
+    first_fragment_seen: bool = False
+    stop_override_applied: bool = False
+    prev_stop_conditions: list[StopCondition] | None = None
+
+
+class AdapterWorkerInterface(Generic[DataT]):
+    """Adapter base class for worker interface.
+    The worker will call these methods that the final adapter will implement"""
+
+    def __init__(self, descriptor: Descriptor) -> None:
+        self._descriptor = descriptor
+
+    @property
+    def descriptor(self) -> Descriptor:
+        """Return the adapter descriptor"""
+        return self._descriptor
+
+    @abstractmethod
+    def _worker_read(self, fragment_timestamp: float) -> Fragment[DataT]: ...
+
+    @abstractmethod
+    def _worker_write(self, data: DataT) -> None: ...
+
+    @abstractmethod
+    def _worker_open(self) -> None:
+        """Open the adapter, should raise a AdapterOpenError if the open failed"""
+
+    @abstractmethod
+    def _worker_close(self) -> None:
+        if self.descriptor is not None:
+            tracehub.emit_close(str(self.descriptor))
+
+    @abstractmethod
+    def _selectable(self) -> HasFileno | None:
+        """Return an object with fileno() that becomes readable when device data is available."""
+
+
+# pylint: disable=too-many-instance-attributes
+class AdapterWorkerBase(Generic[DataT]):
+    """Base Adapter worker"""
+
+    _FRAME_BUFFER_MAX = 256
+    _COMMAND_READY = b"\x00"
+
+    def __init__(self, adapter_interface: AdapterWorkerInterface[DataT]) -> None:
+        self._interface = adapter_interface
+        self._worker_logger = logging.getLogger(LoggerAlias.ADAPTER_WORKER.value)
+
+        # Frames
+        self._frame_buffer: deque[Frame[DataT]] = deque(maxlen=self._FRAME_BUFFER_MAX)
+
+        # Stop-conditions
+        self._stop_conditions: list[StopCondition] = []
+
+        # Timing
+        self._last_write_timestamp: float | None = None
+        self._timeout: Timeout = Timeout(response=None)
+        self._current_timeout: Timeout = Timeout(response=None)
+
+        # Adapter status
+        self._opened = False
+        self._first_opened = False
+
+        # Command management
+        self._pending_read: PendingRead[DataT] | None = None
+
+        # Thread
+        self._thread_running: bool = True
+        self._command_queue_r, self._command_queue_w = socket.socketpair()
+        self._command_queue_r.setblocking(False)
+        self._command_queue_w.setblocking(False)
+        self._command_queue: queue.Queue[ThreadCommand[Any]] = queue.Queue()
+        self._worker_thread = threading.Thread(
+            target=self._worker_thread_method, daemon=True
+        )
+        self._worker_thread.start()
+
+        # Events
+        self._event_callbacks: list[Callable[[AdapterEvent], None]] = []
+
+    # ┌─────────────────┐
+    # │ Worker plumbing │
+    # └─────────────────┘
+
+    def send_command(self, command: ThreadCommand[Any]) -> None:
+        """Send command to the worker thread"""
+        self._command_queue.put(command)
+        # Wake up worker
+        try:
+            self._command_queue_w.send(self._COMMAND_READY)
+        except OSError:
+            # Worker may already be stopped
+            pass
+
+    @abstractmethod
+    def _on_select_timeout(self, timestamp: float) -> None: ...
+
+    @abstractmethod
+    def _select_timeout(self) -> float | None: ...
+
+    # pylint: disable=too-many-branches
+    def _worker_thread_method(self) -> None:
+        """
+        Main worker thread loop (select-based reactor)
+
+        - Always waits on:
+            * command wakeup socket
+            * device selectable (if any)
+        - Also wakes up on the earliest deadline among:
+            * stop-condition timeout (Continuation/Total)
+            * pending read response deadline (before first qualifying fragment)
+        """
+        while self._thread_running:
+            select_timeout = self._select_timeout()
+
+            # Selectables
+            selectables: list[HasFileno] = [self._command_queue_r]
+            s = self._interface._selectable()  # pylint: disable=protected-access
+            if s is not None:
+                selectables.append(s)
+
+            try:
+                readable, _, _ = select(selectables, [], [], select_timeout)
+                t = time.time()
+            except ValueError:  # Negative file descriptor
+                self._interface._worker_close()  # pylint: disable=protected-access
+            else:
+                # Manage command
+                if self._command_queue_r in readable:
+                    self._worker_drain_wakeup()
+                    # Drain all commands currently queued
+                    while True:
+                        try:
+                            cmd = self._command_queue.get(block=False)
+                        except queue.Empty:
+                            break
+                        self._worker_manage_command(cmd)
+                    continue
+
+                if s is not None and s in readable:
+                    # pylint: disable=protected-access
+                    try:
+                        frag = self._interface._worker_read(t)
+                    except AdapterDisconnected:
+                        self._interface._worker_close()
+                    else:
+                        self._worker_manage_fragment(frag)
+                    continue
+
+                # Timeout
+                self._on_select_timeout(t)
+
+    def _worker_drain_wakeup(self) -> None:
+        # Drain all pending wakeup bytes (non-blocking)
+        while True:
+            try:
+                _ = self._command_queue_r.recv(1024)
+                if not _:
+                    return
+            except BlockingIOError:
+                return
+            except OSError:
+                return
+
+    def stop(self) -> None:
+        """Stop the worker"""
+        self._thread_running = False
+        self._command_queue_r.close()
+        self._command_queue_w.close()
+
+    def _worker_check_descriptor(self) -> None:
+        if (
+            self._interface.descriptor is None
+            or not self._interface.descriptor.is_initialized()
+        ):
+            raise AdapterOpenError("Descriptor not initialized")
+
+    def _worker_emit_event(self, event: AdapterEvent) -> None:
+        for callback in self._event_callbacks:
+            try:
+                callback(event)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Never let user callback break worker
+                self._worker_logger.exception(
+                    "Adapter event callback failed with error : %s", str(e)
+                )
+
+    def _worker_manage_command(self, command: ThreadCommand[Any]) -> None:
+        # pylint: disable=too-many-branches
+        try:
+            match command:
+                case WriteCommand():
+                    self._last_write_timestamp = time.time()
+                    if self._interface.descriptor is not None:
+                        tracehub.emit_write(
+                            str(self._interface.descriptor), command.data
+                        )
+                    # pylint: disable=protected-access
+                    self._interface._worker_write(command.data)
+                    command.set_result(None)
+                case OpenCommand():
+                    if self._opened:
+                        self._worker_logger.warning("Adapter already opened")
+                    else:
+                        self._worker_check_descriptor()
+                        try:
+                            self._interface._worker_open()  # pylint: disable=protected-access
+                        except AdapterOpenError as e:
+                            self._opened = False
+                            raise e
+                        if self._interface.descriptor is not None:
+                            tracehub.emit_open(str(self._interface.descriptor))
+                        self._opened = True
+                        self._first_opened = True
+                    command.set_result(None)
+                case CloseCommand():
+                    self._interface._worker_close()  # pylint: disable=protected-access
+                    self._opened = False
+                    self._frame_buffer.clear()
+                    # Cancel any pending read
+                    if self._pending_read is not None:
+                        self._pending_read.cmd.set_exception(AdapterDisconnected())
+                        self._pending_read = None
+                    command.set_result(None)
+                case StopThreadCommand():
+                    self.stop()
+                    command.set_result(None)
+                case FlushReadCommand():
+                    self._frame_buffer.clear()
+                    command.set_result(None)
+                case SetTimeoutCommand():
+                    self._timeout = command.timeout
+                    command.set_result(None)
+                case IsOpenCommand():
+                    command.set_result(self._opened)
+                case AddEventCallbackCommand():
+                    self._event_callbacks.append(command.event_callback)
+                    command.set_result(None)
+                case ReadCommand():
+                    self._worker_begin_read(command)
+                case SetStopConditionsCommand():
+                    self._stop_conditions = command.stop_conditions
+                    command.set_result(None)
+                case _:
+                    command.set_exception(
+                        WorkerThreadError(f"Invalid command {command!r}")
+                    )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            command.set_exception(e)
+
+    def _worker_begin_read(self, cmd: ReadCommand[DataT]) -> None:
+        """
+        Register a pending read in the worker.
+
+        - If scope is BUFFERED and we have buffered frames, complete immediately.
+        - Otherwise store pending read and let the fragment/frame pipeline satisfy it.
+        """
+        t = time.time()
+
+        if self._pending_read is not None:
+            cmd.set_exception(
+                WorkerThreadError("Concurrent read_detailed is not supported")
+            )
+            return
+
+        # If buffered scope, serve immediately from buffer if available
+        if cmd.scope == ReadScope.BUFFERED and len(self._frame_buffer) > 0:
+            frame = self._frame_buffer.popleft()
+            cmd.set_result(frame)
+            return
+
+        # Resolve timeout
+        if cmd.timeout is ...:
+            read_timeout = self._timeout
+        elif cmd.timeout is None:
+            read_timeout = Timeout(response=None)
+        elif isinstance(cmd.timeout, Timeout):
+            read_timeout = cmd.timeout
+        else:
+            read_timeout = any_to_timeout(cmd.timeout)
+
+        if read_timeout is None:
+            raise RuntimeError("Cannot read without setting a timeout")
+        if not read_timeout.is_initialized():
+            raise RuntimeError("Timeout needs to be initialized")
+
+        resp = read_timeout.response()
+        response_deadline = None if resp is None else (t + resp)
+
+        # Resolve stop-condition override (applied at next qualifying frame boundary)
+        stop_override: list[StopCondition] | None = None
+        if cmd.stop_conditions is not ...:
+            if isinstance(cmd.stop_conditions, StopCondition):
+                stop_override = [cmd.stop_conditions]
+            elif isinstance(cmd.stop_conditions, list):
+                stop_override = cmd.stop_conditions
+            else:
+                raise ValueError("Invalid stop_conditions override")
+
+        self._pending_read = PendingRead(
+            cmd=cmd,
+            start_time=t,
+            scope=cmd.scope,
+            response_deadline=response_deadline,
+            stop_override=stop_override,
+        )
+
+    @abstractmethod
+    def _worker_manage_fragment(self, fragment: Fragment[DataT]) -> None: ...
+
+    def _worker_deliver_frame(self, frame: Frame[DataT]) -> None:
+        """
+        Route a completed frame:
+        - complete pending read if it matches scope/time rules
+        - else buffer it
+        - always emit callback event (if configured)
+        """
+        self._worker_emit_event(AdapterFrameEvent(frame))
+        if self._interface.descriptor is not None:
+            tracehub.emit_frame(str(self._interface.descriptor), frame)
+
+        pr = self._pending_read
+        if pr is not None:
+            qualifies = (
+                frame.stop_timestamp is not None
+                and frame.stop_timestamp > pr.start_time
+            ) or (pr.scope == ReadScope.BUFFERED)
+            if qualifies:
+                # Restore stop conditions if we had applied an override
+                pr.cmd.set_result(frame)
+                self._pending_read = None
+                return
+
+        # Not consumed by a pending read => buffer it
+        self._frame_buffer.append(frame)
+
+    def _worker_fail_pending_read_timeout(self) -> None:
+        """
+        Called when the pending read response timeout expires BEFORE a qualifying first fragment.
+        """
+        pr = self._pending_read
+        if pr is None:
+            return
+
+        # Resolve timeout again the same way as begin_read did
+        cmd = pr.cmd
+        if cmd.timeout is ...:
+            read_timeout = self._timeout
+        elif cmd.timeout is None:
+            read_timeout = Timeout(response=None)
+        elif isinstance(cmd.timeout, Timeout):
+            read_timeout = cmd.timeout
+        else:
+            read_timeout = any_to_timeout(cmd.timeout)
+
+        if read_timeout is None:
+            pr.cmd.set_exception(AdapterReadError("Read timeout configuration invalid"))
+            self._pending_read = None
+            return
+
+        timeout_value = read_timeout.response()
+        pr.cmd.set_exception(
+            AdapterTimeoutError(
+                float("nan") if timeout_value is None else timeout_value
+            )
+        )
+        self._pending_read = None
