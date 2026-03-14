@@ -32,12 +32,10 @@ HISTORY_FILE_NAME = "syndesi"
 
 logging.basicConfig(level=logging.CRITICAL + 1)
 
-
 class Format(Enum):
     """
     Display format
     """
-
     TEXT = "text"
     HEX = "hex"
     BYTES = "bytes"
@@ -49,7 +47,6 @@ FORMAT_DESCRIPTION = {
     Format.BYTES: "Use Python bytes display syntax",
 }
 
-
 class AdapterType(Enum):
     """
     Adapter type enum
@@ -58,7 +55,6 @@ class AdapterType(Enum):
     IP = "ip"
     SERIAL = "serial"
     VISA = "visa"
-
 
 class SpecialLineEnding(Enum):
     """
@@ -69,13 +65,11 @@ class SpecialLineEnding(Enum):
     LF = "lf"
     CRLF = "crlf"
 
-
 LINE_ENDING_CHARS = {
     SpecialLineEnding.CR: "\r",
     SpecialLineEnding.LF: "\n",
     SpecialLineEnding.CRLF: "\r\n",
 }
-
 
 def hex2array(raw: str) -> bytes:
     """
@@ -92,7 +86,6 @@ def hex2array(raw: str) -> bytes:
     except ValueError as err:
         raise ValueError(f"Cannot parse hex string : {raw}") from err
     return array
-
 
 def array2hex(array: bytes) -> str:
     """
@@ -114,7 +107,6 @@ def parse_end_argument(arg: str | None) -> str | None:
             return t
     # Otherwise parse "\\n" -> "\n"
     return arg.replace("\\n", "\n").replace("\\r", "\r")
-
 
 class AdapterShell:
     """

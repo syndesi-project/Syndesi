@@ -19,7 +19,6 @@ class Driver(Generic[DataT]):
     def __init__(self) -> None:
         pass
 
-    @shell_command()
     @abstractmethod
     def open(self) -> None:
         """

@@ -8,6 +8,8 @@ Main syndesi CLI script
 import argparse
 from enum import Enum
 
+from syndesi.ui.ui import main as start_ui
+
 from ..cli.shell import AdapterShell, AdapterType
 from ..tools.logmanager import log
 from ..version import __version__
@@ -17,12 +19,11 @@ class SyndesiCommands(Enum):
     """
     Syndesi script commands enum
     """
-
     SERIAL = "serial"
     IP = "ip"
     MODBUS = "modbus"
     VISA = "visa"
-
+    UI = "ui"
 
 def main() -> None:
     """
@@ -52,6 +53,8 @@ def main() -> None:
         AdapterShell(AdapterType.IP, remaining_args).run()
     elif command == SyndesiCommands.VISA:
         AdapterShell(AdapterType.VISA, remaining_args).run()
+    elif command == SyndesiCommands.UI:
+        start_ui(remaining_args)
     else:
         raise NotImplementedError(f"Command '{command.value}' is not supported yet")
 
