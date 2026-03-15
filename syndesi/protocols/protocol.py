@@ -7,10 +7,9 @@ of incoming data
 """
 
 from abc import abstractmethod
-from collections.abc import Callable
 from dataclasses import dataclass
 from types import EllipsisType
-from typing import Generic, TypeVar
+from typing import Callable, Generic, TypeVar
 
 from syndesi.adapters.adapterworkerbase import (
     AdapterDisconnectedEvent,

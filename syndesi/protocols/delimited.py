@@ -5,8 +5,6 @@
 Delimited protocol, formats data when communicating with devices expecting
 command-like formats with specified delimiters (like \\n, \\r, \\r\\n, etc...)
 """
-
-from collections.abc import Callable
 from types import EllipsisType
 
 from syndesi.adapters.bytesadapter import BytesAdapter
@@ -136,17 +134,3 @@ class Delimited(Protocol[str, bytes]):
             timeout=timeout, stop_conditions=stop_conditions, scope=scope
         )
         return frame.data
-
-    # def _on_event(self, event: AdapterEvent) -> None:
-
-    #     if self._event_callback is not None:
-    #         output_event: ProtocolEvent | None = None
-    #         if isinstance(event, AdapterDisconnectedEvent):
-    #             output_event = ProtocolDisconnectedEvent()
-    #         if isinstance(event, AdapterFrameEvent):
-    #             output_event = ProtocolFrameEvent(
-    #                 frame=self._adapter_to_protocol(event.frame)
-    #             )
-
-    #         if output_event is not None:
-    #             self._event_callback(output_event)

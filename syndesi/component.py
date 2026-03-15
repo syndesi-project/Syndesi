@@ -285,9 +285,14 @@ class Component(ABC, Generic[DataT]):
 
     @abstractmethod
     def register_event_callback(self, event_callback: Callable[[Any], None]) -> None:
-        ...
+        """
+        Register an event callback
+        
+        Parameters
+        ----------
+        event_callback : Callable[[Event], None]
+        """
 
     @abstractmethod
     def clear_event_callbacks(self) -> None:
-        ...
-        
+        """Remove all event callbacks"""

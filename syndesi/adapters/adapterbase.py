@@ -39,6 +39,7 @@ from .adapterworkerbase import (  # SetDescriptorCommand,
     AdapterWorkerBase,
     AdapterWorkerInterface,
     AddEventCallbackCommand,
+    ClearEventCallbacksCommand,
     CloseCommand,
     FlushReadCommand,
     IsOpenCommand,
@@ -190,7 +191,7 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
             self._logger.debug(f"Setting default timeout to {new_timeout}")
             self.set_timeout(new_timeout)
 
-    def register_event_callback(self, callback: Callable[[AdapterEvent], None]) -> None:
+    def register_event_callback(self, event_callback: Callable[[AdapterEvent], None]) -> None:
         """
         Configure event callback. Event callback is called as such :
 
@@ -198,15 +199,17 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
 
         Parameters
         ----------
-        callback : callable
+        event_callback : Callable[[AdapterEvent], None]
 
         """
-        cmd = AddEventCallbackCommand(callback)
+        cmd = AddEventCallbackCommand(event_callback)
         self._worker.send_command(cmd)
         cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
 
     def clear_event_callbacks(self) -> None:
-        cmd = AddEventCallbackCommand
+        cmd = ClearEventCallbacksCommand()
+        self._worker.send_command(cmd)
+        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
 
     # ==== open ====
 

@@ -5,7 +5,6 @@
 Raw protocol layer, data is returned as bytes "as-is"
 """
 
-from collections.abc import Callable
 from types import EllipsisType
 
 from ..adapters.adapterbase import AdapterBase
