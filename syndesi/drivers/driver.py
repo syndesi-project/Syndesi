@@ -2,14 +2,28 @@
 # Author : Sébastien Deriaz
 # License : GPL
 
+"""
+Driver and SubDriver classes
+
+Drivers are bases classes for user implementation that implement
+custom behaviour for a device / instrument / projet
+
+SubDrivers do have have open/close/test methods as they are usually derived from a
+Driver (like a single power supply channel). The main Driver is always responsible for
+adapter/protocol management
+"""
+
 from abc import abstractmethod
-from typing import Generic, TypeVar
+from typing import ClassVar
 
-from ..shell.shell import shell_command
+class SubDriver:
+    """
+    A subdriver can be a single channel of an instrument, it doesn't need open/close/test but
+    it is still a driver
+    """
+    CHANGELOG : ClassVar[dict[str, str]] = {}
 
-DataT = TypeVar("DataT")
-
-class Driver(Generic[DataT]):
+class Driver(SubDriver):
     """
     Driver base class. A Driver implements target-specific instructions
     over a given Protocol or Adapter. Drivers can also be composed to implement
@@ -19,7 +33,6 @@ class Driver(Generic[DataT]):
     def __init__(self) -> None:
         pass
 
-    @shell_command()
     @abstractmethod
     def open(self) -> None:
         """
@@ -35,19 +48,7 @@ class Driver(Generic[DataT]):
         """
 
     @abstractmethod
-    def write(self, data : DataT):
+    def test(self) -> bool:
         """
-        Write data to the target
+        Test communication with the target. Return True on success and False otherwise
         """
-
-    @abstractmethod
-    def read(self) -> DataT:
-        """
-        Read data from the target
-        """
-
-    def query(self, data : DataT) -> DataT:
-        """
-        Query data from the target
-        """
-        raise NotImplementedError()
