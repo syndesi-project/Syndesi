@@ -136,6 +136,7 @@ class ReadCommand(Generic[DataT], ThreadCommand[Frame[DataT]]):
     scope:
         - ``ReadScope.NEXT`` => Only read data after the read command
         - ``ReadScope.BUFFERED`` => Accept data that was already in the buffer
+        - ``ReadScope.LAST_WRITE`` => Accept data after the last write command
     """
 
     def __init__(
@@ -405,7 +406,10 @@ class AdapterWorkerBase(Generic[DataT]):
                     self._event_callbacks.clear()
                     command.set_result(None)
                 case ReadCommand():
-                    self._worker_begin_read(command)
+                    if self._last_write_timestamp is None and command.scope == ReadScope.LAST_WRITE:
+                        command.set_exception(AdapterReadError("Cannot read with scope=LAST_WRITE without a previous write"))
+                    else:
+                        self._worker_begin_read(command)
                 case SetStopConditionsCommand():
                     self._stop_conditions = command.stop_conditions
                     command.set_result(None)
@@ -488,11 +492,18 @@ class AdapterWorkerBase(Generic[DataT]):
             tracehub.emit_frame(str(self._interface.descriptor), frame)
 
         pr = self._pending_read
+        qualifies = False
         if pr is not None:
-            qualifies = (
-                frame.stop_timestamp is not None
-                and frame.stop_timestamp > pr.start_time
-            ) or (pr.scope == ReadScope.BUFFERED)
+            if pr.scope == ReadScope.BUFFERED:
+                qualifies = True
+            elif pr.scope == ReadScope.NEXT:
+                qualifies = frame.stop_timestamp > pr.start_time
+            elif pr.scope == ReadScope.LAST_WRITE:
+                if self._last_write_timestamp is not None:
+                    # The opposite should technically never happen because we check when the
+                    # ReadCommand is received
+                    qualifies = frame.stop_timestamp > self._last_write_timestamp
+
             if qualifies:
                 # Restore stop conditions if we had applied an override
                 pr.cmd.set_result(frame)
@@ -501,6 +512,7 @@ class AdapterWorkerBase(Generic[DataT]):
 
         # Not consumed by a pending read => buffer it
         self._frame_buffer.append(frame)
+
 
     def _worker_fail_pending_read_timeout(self) -> None:
         """

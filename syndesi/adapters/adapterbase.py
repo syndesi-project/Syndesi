@@ -254,11 +254,11 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
     def _read_detailed_future(
         self,
         timeout: TimeoutType,
-        scope: str,
+        scope: ReadScope,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition],
     ) -> ReadCommand[DataT]:
         cmd: ReadCommand[DataT] = ReadCommand(
-            timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
+            timeout=timeout, scope=scope, stop_conditions=stop_conditions
         )
         self._worker.send_command(cmd)
         return cmd
@@ -271,7 +271,7 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
     ) -> Frame[DataT]:
         with self._sync_io_lock:
             result = self._read_detailed_future(
-                timeout=timeout, scope=scope, stop_conditions=stop_conditions
+                timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
             ).result(self.WorkerTimeout.READ.value)
         return result
 
@@ -284,7 +284,7 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
         async with self._async_io_lock:
             return await asyncio.wrap_future(
                 self._read_detailed_future(
-                    timeout=timeout, scope=scope, stop_conditions=stop_conditions
+                    timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
                 )
             )
 
@@ -354,7 +354,7 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
         self,
         payload: DataT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> Frame[DataT]:
         async with self._async_io_lock:
@@ -362,7 +362,7 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
             await asyncio.wrap_future(self._write_future(payload))
             return await asyncio.wrap_future(
                 self._read_detailed_future(
-                    timeout=timeout, scope=scope, stop_conditions=stop_conditions
+                    timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
                 )
             )
 
@@ -370,7 +370,7 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
         self,
         payload: DataT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> Frame[DataT]:
 
@@ -378,7 +378,7 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
             self._flush_read_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
             self._write_future(payload).result(self.WorkerTimeout.WRITE.value)
             output = self._read_detailed_future(
-                timeout=timeout, scope=scope, stop_conditions=stop_conditions
+                timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
             ).result(self.WorkerTimeout.READ.value)
         return output
 

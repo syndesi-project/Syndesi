@@ -226,7 +226,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         self,
         payload: ProtocolFrameT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolFrame[ProtocolFrameT]:
         await self.aflush_read()
@@ -239,7 +239,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         self,
         payload: ProtocolFrameT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolFrame[ProtocolFrameT]:
         self.flush_read()

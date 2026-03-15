@@ -103,8 +103,10 @@ class ReadScope(StrEnum):
 
     NEXT = "next"
     BUFFERED = "buffered"
+    LAST_WRITE = "last_write"
 
 
+#pylint: disable-next=too-many-public-methods
 class Component(ABC, Generic[DataT]):
     """Syndesi Component
 
@@ -230,7 +232,7 @@ class Component(ABC, Generic[DataT]):
         self,
         payload: DataT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
     ) -> Frame[DataT]:
         """
         Asynchronously query the component and return a Frame object
@@ -241,7 +243,7 @@ class Component(ABC, Generic[DataT]):
         self,
         payload: DataT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
     ) -> Frame[DataT]:
         """
         Synchronously query the component and return a Frame object
@@ -253,7 +255,7 @@ class Component(ABC, Generic[DataT]):
         self,
         payload: DataT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
     ) -> DataT:
         """Asynchronously query the component"""
         output_frame = await self.aquery_detailed(
@@ -267,7 +269,7 @@ class Component(ABC, Generic[DataT]):
         self,
         payload: DataT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
     ) -> DataT:
         """Query the component"""
         output_frame = self.query_detailed(
