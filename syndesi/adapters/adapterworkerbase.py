@@ -100,6 +100,9 @@ class AddEventCallbackCommand(ThreadCommand[None]):
         super().__init__()
         self.event_callback = callback
 
+class ClearEventCallbacksCommand(ThreadCommand[None]):
+    """Clear all of the event callbacks"""
+
 
 class WriteCommand(Generic[DataT], ThreadCommand[None]):
     """Write data to the adapter"""
@@ -397,6 +400,9 @@ class AdapterWorkerBase(Generic[DataT]):
                     command.set_result(self._opened)
                 case AddEventCallbackCommand():
                     self._event_callbacks.append(command.event_callback)
+                    command.set_result(None)
+                case ClearEventCallbacksCommand():
+                    self._event_callbacks.clear()
                     command.set_result(None)
                 case ReadCommand():
                     self._worker_begin_read(command)

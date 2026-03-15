@@ -11,7 +11,7 @@ from types import EllipsisType
 from ..adapters.adapterbase import AdapterBase
 from ..adapters.timeout import Timeout
 from ..component import Frame
-from .protocol import Protocol, ProtocolEvent, ProtocolFrame
+from .protocol import Protocol, ProtocolFrame
 
 
 class Raw(Protocol[bytes, bytes]):
@@ -26,29 +26,15 @@ class Raw(Protocol[bytes, bytes]):
     def __init__(
         self,
         adapter: AdapterBase[bytes],
-        timeout: Timeout | None | EllipsisType = ...,
-        event_callback: Callable[[ProtocolEvent], None] | None = None,
+        timeout: Timeout | None | EllipsisType = ...
     ) -> None:
-        super().__init__(adapter, timeout, event_callback)
+        super().__init__(adapter, timeout)
 
     def _default_timeout(self) -> Timeout | None:
         return Timeout(response=2)
 
     def __str__(self) -> str:
         return f"Raw({self._adapter})"
-
-    # def _on_event(self, event: AdapterEvent) -> None:
-    #     if self._event_callback is not None:
-    #         output_event: ProtocolEvent | None = None
-    #         if isinstance(event, AdapterDisconnectedEvent):
-    #             output_event = ProtocolDisconnectedEvent()
-    #         if isinstance(event, AdapterFrameEvent):
-    #             output_event = ProtocolFrameEvent(
-    #                 frame=self._adapter_to_protocol(event.frame)
-    #             )
-
-    #         if output_event is not None:
-    #             self._event_callback(output_event)
 
     def _adapter_to_protocol(self, adapter_frame: Frame[bytes]) -> ProtocolFrame[bytes]:
         payload = adapter_frame.data

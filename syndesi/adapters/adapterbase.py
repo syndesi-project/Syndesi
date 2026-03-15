@@ -205,6 +205,9 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
         self._worker.send_command(cmd)
         cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
 
+    def clear_event_callbacks(self) -> None:
+        cmd = AddEventCallbackCommand
+
     # ==== open ====
 
     def _open_future(self) -> OpenCommand:

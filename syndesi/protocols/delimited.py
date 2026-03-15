@@ -55,7 +55,6 @@ class Delimited(Protocol[str, bytes]):
         format_response: bool = True,
         encoding: str = "utf-8",
         timeout: Timeout | None | EllipsisType = ...,
-        event_callback: Callable[[ProtocolEvent], None] | None = None,
         receive_termination: str | None = None,
     ) -> None:
         self._encoding = encoding
@@ -75,9 +74,7 @@ class Delimited(Protocol[str, bytes]):
         adapter.set_stop_conditions(
             stop_conditions=Termination(sequence=self._receive_termination)
         )
-        super().__init__(adapter, timeout=timeout, event_callback=event_callback)
-
-        self._adapter.register_event_callback(self._on_event)
+        super().__init__(adapter, timeout=timeout)
 
     def __str__(self) -> str:
         if self._receive_termination == self._termination:

@@ -11,7 +11,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
-from typing import Generic, TypeVar
+from typing import Any, Callable, Generic, TypeVar
 
 from syndesi.adapters.stop_conditions import StopConditionType
 from syndesi.adapters.timeout import Timeout, TimeoutType
@@ -46,9 +46,7 @@ class Descriptor(ABC):
     def is_initialized(self) -> bool:
         """Return True if the descriptor is initialized"""
 
-
 DataT = TypeVar("DataT")
-
 
 @dataclass
 class Frame(Generic[DataT]):
@@ -284,3 +282,12 @@ class Component(ABC, Generic[DataT]):
     @abstractmethod
     def is_open(self) -> bool:
         """Return True if the component is open"""
+
+    @abstractmethod
+    def register_event_callback(self, event_callback: Callable[[Any], None]) -> None:
+        ...
+
+    @abstractmethod
+    def clear_event_callbacks(self) -> None:
+        ...
+        
