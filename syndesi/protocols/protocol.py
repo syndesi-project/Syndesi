@@ -7,10 +7,9 @@ of incoming data
 """
 
 from abc import abstractmethod
-from collections.abc import Callable
 from dataclasses import dataclass
 from types import EllipsisType
-from typing import Generic, TypeVar
+from typing import Callable, Generic, TypeVar
 
 from syndesi.adapters.adapterworkerbase import (
     AdapterDisconnectedEvent,
@@ -70,12 +69,9 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         self,
         adapter: AdapterBase[AdapterDataT],
         timeout: ProtocolTimeoutType = ...,
-        event_callback: Callable[[ProtocolEvent], None] | None = None,
     ) -> None:
         super().__init__(LoggerAlias.PROTOCOL)
         self._adapter = adapter
-        # self._adapter : AdapterT = auto_adapter(adapter)
-        self._event_callback = event_callback
 
         self._adapter.register_event_callback(self._on_event)
 
@@ -87,12 +83,14 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         else:
             self._adapter.set_timeout(timeout)
 
+        self._event_callbacks : list[Callable[[ProtocolEvent], None]] = []
+
     @abstractmethod
     def _default_timeout(self) -> Timeout | None:
         pass
 
     def _on_event(self, event: AdapterEvent) -> None:
-        if self._event_callback is not None:
+        for callback in self._event_callbacks:
             output_event: ProtocolEvent | None = None
             if isinstance(event, AdapterDisconnectedEvent):
                 output_event = ProtocolDisconnectedEvent()
@@ -102,7 +100,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
                 )
 
             if output_event is not None:
-                self._event_callback(output_event)
+                callback(output_event)
 
     @abstractmethod
     def _adapter_to_protocol(
@@ -113,6 +111,12 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
     def _protocol_to_adapter(
         self, protocol_payload: ProtocolFrameT
     ) -> AdapterDataT: ...
+
+    def register_event_callback(self, event_callback: Callable[[ProtocolEvent], None]) -> None:
+        self._event_callbacks.append(event_callback)
+
+    def clear_event_callbacks(self) -> None:
+        self._event_callbacks.clear()
 
     # ┌────────────┐
     # │ Public API │
@@ -222,7 +226,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         self,
         payload: ProtocolFrameT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolFrame[ProtocolFrameT]:
         await self.aflush_read()
@@ -235,7 +239,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         self,
         payload: ProtocolFrameT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolFrame[ProtocolFrameT]:
         self.flush_read()

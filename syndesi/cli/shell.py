@@ -212,7 +212,7 @@ class AdapterShell:
         _format = Format(args.format)
         self.protocol: Protocol[Any, Any]
         if _format == Format.HEX:
-            self.protocol = Raw(self.adapter, event_callback=self.event)
+            self.protocol = Raw(self.adapter)
         elif _format == Format.TEXT:
             send_end = parse_end_argument(args.end)
             receive_end = parse_end_argument(args.receive_end)
@@ -225,8 +225,9 @@ class AdapterShell:
                 self.adapter,
                 termination=send_end,
                 receive_termination=receive_end,
-                event_callback=self.event,
             )
+
+        self.protocol.register_event_callback(self.event)
 
         # Create the shell
         self.shell = Shell(
@@ -241,7 +242,6 @@ class AdapterShell:
         """
 
         try:
-            print("Run open")
             self.protocol.open()
         except AdapterOpenError:
             self.shell.print(f"Failed to open {self.adapter}")

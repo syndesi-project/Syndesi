@@ -5,8 +5,6 @@
 Delimited protocol, formats data when communicating with devices expecting
 command-like formats with specified delimiters (like \\n, \\r, \\r\\n, etc...)
 """
-
-from collections.abc import Callable
 from types import EllipsisType
 
 from syndesi.adapters.bytesadapter import BytesAdapter
@@ -14,16 +12,7 @@ from syndesi.adapters.bytesadapter import BytesAdapter
 from ..adapters.stop_conditions import StopCondition, Termination
 from ..adapters.timeout import Timeout
 from ..component import Frame, ReadScope
-from .protocol import Protocol, ProtocolEvent, ProtocolFrame
-
-# class DelimitedFrame(ProtocolFrame[str]):
-#     """Delimited frame"""
-
-#     payload: str
-
-#     def __str__(self) -> str:
-#         return f"DelimitedFrame({self.payload})"
-
+from .protocol import Protocol, ProtocolFrame
 
 class Delimited(Protocol[str, bytes]):
     """
@@ -55,7 +44,6 @@ class Delimited(Protocol[str, bytes]):
         format_response: bool = True,
         encoding: str = "utf-8",
         timeout: Timeout | None | EllipsisType = ...,
-        event_callback: Callable[[ProtocolEvent], None] | None = None,
         receive_termination: str | None = None,
     ) -> None:
         self._encoding = encoding
@@ -75,9 +63,7 @@ class Delimited(Protocol[str, bytes]):
         adapter.set_stop_conditions(
             stop_conditions=Termination(sequence=self._receive_termination)
         )
-        super().__init__(adapter, timeout=timeout, event_callback=event_callback)
-
-        self._adapter.register_event_callback(self._on_event)
+        super().__init__(adapter, timeout=timeout)
 
     def __str__(self) -> str:
         if self._receive_termination == self._termination:
@@ -139,17 +125,3 @@ class Delimited(Protocol[str, bytes]):
             timeout=timeout, stop_conditions=stop_conditions, scope=scope
         )
         return frame.data
-
-    # def _on_event(self, event: AdapterEvent) -> None:
-
-    #     if self._event_callback is not None:
-    #         output_event: ProtocolEvent | None = None
-    #         if isinstance(event, AdapterDisconnectedEvent):
-    #             output_event = ProtocolDisconnectedEvent()
-    #         if isinstance(event, AdapterFrameEvent):
-    #             output_event = ProtocolFrameEvent(
-    #                 frame=self._adapter_to_protocol(event.frame)
-    #             )
-
-    #         if output_event is not None:
-    #             self._event_callback(output_event)

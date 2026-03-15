@@ -22,10 +22,12 @@ class SCPI(Delimited):
     Parameters
     ----------
     adapter : Adapter
-    send_termination : str
+    termination : str
         '\n' by default
     receive_termination : str
-        None by default (copy value from send_termination)
+        A custom different termination when receiving datas.
+        
+        None by default (copy value from termination)
     timeout : Timeout/float/tuple
         Set device timeout
     """
@@ -35,7 +37,7 @@ class SCPI(Delimited):
     def __init__(
         self,
         adapter: BytesAdapter,
-        send_termination: str = "\n",
+        termination: str = "\n",
         receive_termination: str | None = None,
         *,
         timeout: Timeout | None | EllipsisType = ...,
@@ -54,15 +56,12 @@ class SCPI(Delimited):
         # Give the adapter to the Protocol base class
         super().__init__(
             adapter=adapter,
-            termination=send_termination,
+            termination=termination,
             format_response=True,
             encoding=encoding,
             timeout=timeout,
             receive_termination=receive_termination,
         )
-
-        # Connect the adapter if it wasn't done already
-        # self._adapter.connect()
 
     def _default_timeout(self) -> Timeout | None:
         return Timeout(response=5)
@@ -80,28 +79,3 @@ class SCPI(Delimited):
         self._adapter.write(
             data + (self._termination.encode(self._encoding) if termination else b"")
         )
-
-    # def read_raw(
-    #     self,
-    #     timeout: Timeout | None | EllipsisType = ...,
-    #     stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    # ) -> bytes:
-    #     """
-    #     Blocking read and return bytes data
-
-    #     Parameters
-    #     ----------
-    #     timeout : Timeout
-    #         Optional temporary timeout
-    #     stop_conditions : [StopCondition]
-    #         Optional temporary stop-conditions
-
-    #     Returns
-    #     -------
-    #     data : bytes
-    #     """
-    #     signal = self.read_detailed(
-    #         timeout=timeout,
-    #         stop_conditions=stop_conditions,
-    #     )
-    #     return signal.data()

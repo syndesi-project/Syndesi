@@ -37,6 +37,9 @@ syndesi-trace = "syndesi.scripts.syndesi_trace:main"
 where = ["."]
 include = ["syndesi*"]
 
+[tool.setuptools.package-data]
+"syndesi" = ["py.typed"]
+
 # ----------------------------
 # Tooling configs
 # ----------------------------
