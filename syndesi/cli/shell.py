@@ -242,7 +242,6 @@ class AdapterShell:
         """
 
         try:
-            print("Run open")
             self.protocol.open()
         except AdapterOpenError:
             self.shell.print(f"Failed to open {self.adapter}")

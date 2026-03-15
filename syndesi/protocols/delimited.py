@@ -12,16 +12,7 @@ from syndesi.adapters.bytesadapter import BytesAdapter
 from ..adapters.stop_conditions import StopCondition, Termination
 from ..adapters.timeout import Timeout
 from ..component import Frame, ReadScope
-from .protocol import Protocol, ProtocolEvent, ProtocolFrame
-
-# class DelimitedFrame(ProtocolFrame[str]):
-#     """Delimited frame"""
-
-#     payload: str
-
-#     def __str__(self) -> str:
-#         return f"DelimitedFrame({self.payload})"
-
+from .protocol import Protocol, ProtocolFrame
 
 class Delimited(Protocol[str, bytes]):
     """

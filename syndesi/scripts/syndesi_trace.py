@@ -24,8 +24,6 @@ import selectors
 import socket
 import struct
 import sys
-import termios
-import tty
 from abc import abstractmethod
 from collections import OrderedDict, deque
 from collections.abc import Generator
@@ -50,10 +48,10 @@ from syndesi.adapters.tracehub import (
 )
 
 if os.name == "posix":
-    import termios
-    import tty
+    import termios #pylint: disable=import-error
+    import tty #pylint: disable=import-error
 elif os.name == "nt":
-    import msvcrt
+    import msvcrt #pylint: disable=import-error
 
 if TYPE_CHECKING:
     from rich.align import Align
@@ -71,7 +69,7 @@ else:
         from rich.text import Text
         rich_available = True
     except ImportError:
-        RICH_AVAILABLE = False
+        rich_available = False
 
 
 class TimeMode(StrEnum):
@@ -515,8 +513,8 @@ class _TerminalRawMode:
             return self
         try:
             fd = sys.stdin.fileno()
-            self._old = termios.tcgetattr(fd)
-            tty.setcbreak(fd)
+            self._old = termios.tcgetattr(fd) #pylint: disable=possibly-used-before-assignment
+            tty.setcbreak(fd) #pylint: disable=possibly-used-before-assignment
             self._enabled = True
         except OSError:
             self._enabled = False
@@ -537,7 +535,7 @@ class _TerminalRawMode:
         except OSError:
             pass
 
-
+#pylint: disable=too-many-branches
 def _read_keys_nonblocking() -> list[str]:
     """
     Read available keys without blocking.
@@ -546,9 +544,15 @@ def _read_keys_nonblocking() -> list[str]:
     keys: list[str] = []
 
     if os.name == "nt":
+        # msvcrt is only available on Windows; mypy's stubs may not include
+        # the attributes we use. Cast to Any so attribute access is allowed.
+
+        #pylint: disable-next=possibly-used-before-assignment, used-before-assignment
         while msvcrt.kbhit():
+            #pylint: disable-next=possibly-used-before-assignment, used-before-assignment
             ch = msvcrt.getwch()
             if ch in ("\x00", "\xe0"):  # special key prefix
+                #pylint: disable-next=possibly-used-before-assignment, used-before-assignment
                 ch2 = msvcrt.getwch()
                 if ch2 == "K":
                     keys.append("LEFT")
