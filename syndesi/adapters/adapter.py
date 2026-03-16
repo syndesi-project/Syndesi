@@ -21,7 +21,6 @@ from .timeout import TimeoutType
 
 DataT = TypeVar("DataT")
 
-
 class AdapterWorker(Generic[DataT], AdapterWorkerBase[DataT], ABC):
     """
     Adapter worker with bytes and fragment support

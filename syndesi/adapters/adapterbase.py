@@ -26,7 +26,8 @@ from abc import abstractmethod
 from collections.abc import Callable
 from enum import Enum
 from types import EllipsisType
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, get_args, get_origin
+from types import get_original_bases
 
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.tools.errors import AdapterError
@@ -52,7 +53,6 @@ from .adapterworkerbase import (  # SetDescriptorCommand,
 from .timeout import Timeout, TimeoutType, any_to_timeout
 
 DataT = TypeVar("DataT")
-
 
 # pylint: disable=too-many-public-methods, too-many-instance-attributes
 class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
@@ -396,3 +396,14 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
     async def ais_open(self) -> bool:
         """Asynchronously check if the adapter is open"""
         return await asyncio.wrap_future(self._is_open_future())
+
+def find_adapter_data_type(cls: type) -> DataT:
+    for base in get_original_bases(cls):
+        origin = get_origin(base)
+        if origin is AdapterBase:
+            args = get_args(base)
+            if args:
+                return args[0]
+        else:
+            raise TypeError("Class is not an Adapter")
+    return None
