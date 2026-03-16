@@ -11,7 +11,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
-from typing import Generic, TypeVar
+from typing import Any, Callable, Generic, TypeVar
 
 from syndesi.adapters.stop_conditions import StopConditionType
 from syndesi.adapters.timeout import Timeout, TimeoutType
@@ -46,9 +46,7 @@ class Descriptor(ABC):
     def is_initialized(self) -> bool:
         """Return True if the descriptor is initialized"""
 
-
 DataT = TypeVar("DataT")
-
 
 @dataclass
 class Frame(Generic[DataT]):
@@ -105,8 +103,10 @@ class ReadScope(StrEnum):
 
     NEXT = "next"
     BUFFERED = "buffered"
+    LAST_WRITE = "last_write"
 
 
+#pylint: disable-next=too-many-public-methods
 class Component(ABC, Generic[DataT]):
     """Syndesi Component
 
@@ -232,7 +232,7 @@ class Component(ABC, Generic[DataT]):
         self,
         payload: DataT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
     ) -> Frame[DataT]:
         """
         Asynchronously query the component and return a Frame object
@@ -243,7 +243,7 @@ class Component(ABC, Generic[DataT]):
         self,
         payload: DataT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
     ) -> Frame[DataT]:
         """
         Synchronously query the component and return a Frame object
@@ -255,7 +255,7 @@ class Component(ABC, Generic[DataT]):
         self,
         payload: DataT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
     ) -> DataT:
         """Asynchronously query the component"""
         output_frame = await self.aquery_detailed(
@@ -269,7 +269,7 @@ class Component(ABC, Generic[DataT]):
         self,
         payload: DataT,
         timeout: Timeout | None | EllipsisType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.LAST_WRITE.value,
     ) -> DataT:
         """Query the component"""
         output_frame = self.query_detailed(
@@ -284,3 +284,17 @@ class Component(ABC, Generic[DataT]):
     @abstractmethod
     def is_open(self) -> bool:
         """Return True if the component is open"""
+
+    @abstractmethod
+    def register_event_callback(self, event_callback: Callable[[Any], None]) -> None:
+        """
+        Register an event callback
+        
+        Parameters
+        ----------
+        event_callback : Callable[[Event], None]
+        """
+
+    @abstractmethod
+    def clear_event_callbacks(self) -> None:
+        """Remove all event callbacks"""
