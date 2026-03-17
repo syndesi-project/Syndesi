@@ -8,6 +8,12 @@ The tester is a UI based on dearpygui that allows the user to test functions of 
 """
 from enum import StrEnum
 
+from syndesi.adapters.ip import IP
+from syndesi.adapters.serialport import SerialPort
+from syndesi.adapters.visa import Visa
+from syndesi.protocols.delimited import Delimited
+from syndesi.protocols.modbus import Modbus
+
 from ..adapters.adapterbase import find_adapter_data_type
 
 from ..adapters.adapter import Adapter
@@ -23,10 +29,12 @@ try:
 except ImportError:
     dpg = None
 
-class KnownComponents(StrEnum):
+class Adapter(StrEnum):
     IP = 'ip'
     SERIAL = 'serial'
     VISA = 'visa'
+
+class Protocol(StrEnum):
     MODBUS = 'modbus'
     DELIMTIED = 'delimited'
     
@@ -41,7 +49,7 @@ class UIBase:
             )
         self.dpg = dpg
 
-    def _start(self):
+    def start(self):
         self.dpg.start_dearpygui()
         self.dpg.destroy_context()
 
@@ -64,30 +72,59 @@ class UIDriver:
     def __init__(self, driver : Driver) -> None:
         pass
 
+class Mode(StrEnum):
+    MODULE = 'module'
+    PATH = 'path'
+    ADAPTER = 'adapter'
+    PROTOCOL = 'protocol'
+
+COMMAND_HELP = """The type of UI to open. Choose between : 
+
+- 'module' : Open a driver with dot location like package.module.driver:DriverClass
+- 'path' : Open a driver with a path to the file like ./folder/driver.py:DriverClass
+- 'adapter' : Open an adapter (ip, serial, visa)
+- 'protocol' : Open a protocol (delimited, modbus)
+"""
+
 def main(args : list[str] | None = None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-m', '--module', help="Module to open in the format package.module.driver:ClassName", default=None)
-    parser.add_argument('-p', '--path', help="Path of the module to open in the format ./folder/driver.py:ClassName", default=None)
+    parser.add_argument('mode', choices=list(Mode), type=str)
+    parser.add_argument('argument', type=str, help="The mode argument, see the mode help")
 
     args = parser.parse_args(args)
-    module_arg = args.module
-    path_arg = args.path
 
-    if module_arg is not None and path_arg is not None:
-        parser.error("Cannot specify both -m and -p")
-        return
-    elif module_arg is not None:
-        module, class_name = module_arg.split(CLASS_NAME_SEPARATOR)
+
+    mode = Mode(args.command)
+    argument = args.argument
+
+    if mode == Mode.MODULE:
+        module, class_name = argument.split(CLASS_NAME_SEPARATOR)
         m = importlib.import_module(module)
         c = getattr(m, class_name)
-    elif path_arg is not None:
-        path, class_name = path_arg.split(CLASS_NAME_SEPARATOR)
+        ui = UIDriver(c)
+    elif mode == Mode.PATH:
+        path, class_name = argument.split(CLASS_NAME_SEPARATOR)
         m = importlib.util.spec_from_file_location(path)
         c = getattr(m, class_name)
-    else:
-        parser.error("Please specify a module with -m or -p")
-        return
+        ui = UIDriver(c)
+    elif mode == Mode.ADAPTER:
+        adapter_name = Adapter(argument)
+        if adapter_name == Adapter.IP:
+            adapter = IP
+        elif adapter_name == Adapter.SERIAL:
+            adapter = SerialPort
+        elif adapter_name == Adapter.VISA:
+            adapter = Visa
+        ui = UIAdapter(adapter)
+    elif mode == Mode.PROTOCOL:
+        protocol_name = Protocol(argument)
+        if protocol_name == Protocol.DELIMTIED:
+            protocol = Delimited
+        elif protocol_name == Protocol.MODBUS:
+            protocol = Modbus
+        ui = UIProtocol(protocol)
 
+    ui.start()
 
 if __name__ == '__main__':
     main()
