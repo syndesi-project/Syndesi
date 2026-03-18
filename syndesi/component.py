@@ -231,7 +231,7 @@ class Component(ABC, Generic[DataT]):
     async def aquery_detailed(
         self,
         payload: DataT,
-        timeout: Timeout | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
     ) -> Frame[DataT]:
         """
@@ -242,7 +242,7 @@ class Component(ABC, Generic[DataT]):
     def query_detailed(
         self,
         payload: DataT,
-        timeout: Timeout | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
     ) -> Frame[DataT]:
         """
@@ -254,7 +254,7 @@ class Component(ABC, Generic[DataT]):
     async def aquery(
         self,
         payload: DataT,
-        timeout: Timeout | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
     ) -> DataT:
         """Asynchronously query the component"""
@@ -268,7 +268,7 @@ class Component(ABC, Generic[DataT]):
     def query(
         self,
         payload: DataT,
-        timeout: Timeout | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
     ) -> DataT:
         """Query the component"""

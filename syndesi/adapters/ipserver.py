@@ -14,7 +14,6 @@ from types import EllipsisType
 from syndesi.adapters.adapter import Adapter
 from syndesi.adapters.adapterworkerbase import AdapterEvent, AdapterFrameEvent
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
-from syndesi.adapters.timeout import Timeout
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
 
 from .ip import IP, IPDescriptor
@@ -186,8 +185,10 @@ class IPServer(Adapter[Client]):
     def _default_stop_conditions() -> list[StopCondition]:
         return [Continuation(continuation=0.2)]
 
-    def _default_timeout(self) -> Timeout:
-        return Timeout(response=1)
+    @staticmethod
+    def default_timeout() -> float | None:
+        """Default timeout"""
+        return 1.0
 
     def get_client(self, timeout: float | None = None) -> IP:
         """

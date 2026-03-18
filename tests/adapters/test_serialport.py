@@ -100,9 +100,7 @@ def test_continuation():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(
-            response=delay_response + TIME_DELTA
-        ),
+        timeout=delay_response + TIME_DELTA,
         stop_conditions=[
             Continuation(delay_continuation+TIME_DELTA)
         ]
@@ -129,7 +127,7 @@ def test_big():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay + TIME_DELTA)#continuation=TIME_DELTA),
+        timeout=delay + TIME_DELTA
     )
 
     client.write(encode_sequences([(sequence, delay)]))
@@ -150,7 +148,7 @@ def test_termination():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay + TIME_DELTA),#, continuation=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,#, continuation=delay + TIME_DELTA),
         stop_conditions=Termination(termination),
     )
 
@@ -174,7 +172,7 @@ def test_termination_partial():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
             Continuation(continuation=delay + TIME_DELTA)
@@ -216,7 +214,7 @@ def test_length_short_timeout():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay - TIME_DELTA),
+        timeout=delay - TIME_DELTA,
         stop_conditions=Length(N),
     )
 
@@ -244,7 +242,7 @@ def test_length_long_timeout():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=Length(N),
     )
 
@@ -266,7 +264,7 @@ def test_termination_long_timeout():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[Termination(termination), Continuation(continuation=delay + TIME_DELTA)]
     )
 
@@ -288,9 +286,7 @@ def test_discard_timeout_short():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(
-            response=delay - TIME_DELTA,
-        ),
+        timeout=delay - TIME_DELTA,
         stop_conditions=[
             Termination(termination),
             Continuation(continuation=delay - TIME_DELTA)
@@ -324,9 +320,7 @@ def test_discard_timeout_long():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(
-            response=delay + TIME_DELTA,
-        ),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
             Continuation(continuation=delay + TIME_DELTA)
@@ -350,9 +344,7 @@ def test_return_timeout_short():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(
-            response=delay + TIME_DELTA,
-        ),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
             Continuation(continuation=delay - TIME_DELTA)
@@ -379,9 +371,7 @@ def test_return_timeout_long():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(
-            response=delay + TIME_DELTA
-        ),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
             Continuation(continuation=delay+TIME_DELTA),
@@ -404,7 +394,7 @@ def test_flush():
     B = b"XXXXXXXX"
 
     client = SerialPort(
-        port=PORT, baudrate=BAUDRATE, timeout=Timeout(response=1)#, continuation=10e-3)
+        port=PORT, baudrate=BAUDRATE, timeout=1#, continuation=10e-3)
     )
 
     client.write(encode_sequences([(A, 0)] * 3))

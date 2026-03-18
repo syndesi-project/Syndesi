@@ -6,7 +6,6 @@ import time
 from syndesi import IP
 from syndesi.adapters.adapterbase import Frame
 from syndesi.adapters.stop_conditions import *
-from syndesi.adapters.timeout import Timeout
 import socket
 import os
 import shutil
@@ -140,7 +139,7 @@ def test_response_A():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=Continuation(0.1),
     )
     client.write(encode_sequences([(sequence, delay)]))
@@ -157,7 +156,7 @@ def test_response_B():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA),
+        timeout=delay - TIME_DELTA,
         stop_conditions=Continuation(0.1),
     )
     try:
@@ -213,7 +212,7 @@ def test_termination():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=Termination(termination),
         transport="UDP"
     )
@@ -237,7 +236,7 @@ def test_termination_partial():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=Termination(termination),
         transport="UDP",
     )
@@ -279,7 +278,7 @@ def test_length_short_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA),
+        timeout=delay - TIME_DELTA,
         stop_conditions=[Length(10), Continuation(0.1)],
     )
     try:
@@ -306,7 +305,7 @@ def test_length_long_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[Length(10), Continuation(0.1)],
     )
     client.write(encode_sequences([(sequence, delay)]))
@@ -329,7 +328,7 @@ def test_termination_long_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=Termination(termination),
         transport="UDP",
     )
@@ -371,9 +370,7 @@ def test_double_stop_condition():
 #     client = IP(
 #         HOST,
 #         port=PORT,
-#         timeout=Timeout(
-#             response=delay + TIME_DELTA
-#         ),  # continuation=delay-TIME_DELTA, on_continuation='return'
+#         timeout=delay + TIME_DELTA,  # continuation=delay-TIME_DELTA, on_continuation='return'
 #         stop_conditions=Termination(termination),
 #         transport="UDP",
 #     )
@@ -413,7 +410,7 @@ def test_timeout_on_return():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA),
+        timeout=delay - TIME_DELTA,
         stop_conditions=Termination(termination),
         transport="UDP",
     )
@@ -437,7 +434,7 @@ def test_on_response_error():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA),
+        timeout=delay - TIME_DELTA,
         stop_conditions=Termination(termination),
         transport="UDP",
     )
@@ -453,28 +450,6 @@ def test_on_response_error():
     client.flush_read()
     client.close()
 
-
-# # Test on_continuation='discard'
-# def test_continuation_discard():
-#     A = b"ABCDEFGH"
-#     B = b"IJKLMNOPQKRSTUVWXYZ"
-#     termination = b"\n"
-#     delay = 0.5
-#     client = IP(
-#         HOST,
-#         port=PORT,
-#         timeout=Timeout(
-#             response=delay + TIME_DELTA
-#         ),  # continuation=delay-TIME_DELTA, on_continuation='discard'
-#         stop_conditions=Termination(termination),
-#         transport="UDP",
-#     )
-#     client.write(encode_sequences([(A, delay), (termination + B, delay)]))
-#     data = client.read()
-#     assert data == b""
-#     client.close()
-
-
 # Test on_continuation='return'
 def test_continuation_return():
     A = b"ABCDEFGH"
@@ -484,9 +459,7 @@ def test_continuation_return():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(
-            response=delay + TIME_DELTA
-        ),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
             Continuation(delay-TIME_DELTA)
@@ -512,26 +485,16 @@ def test_read_timeout_reconfiguration():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(
-            response=0,
-        ),
+        timeout=0,
         stop_conditions=Termination(termination),
         transport="UDP",
     )
     client.write(encode_sequences([(A+termination, delay)]))
-    data = client.read(
-        timeout=Timeout(
-            response=delay + TIME_DELTA,
-        )
-    )
+    data = client.read(timeout=delay + TIME_DELTA)
     assert data == A + termination
     client.write(encode_sequences([(B+termination, delay)]))
     try:
-        data = client.read(
-            timeout=Timeout(
-                response=delay-TIME_DELTA
-            )
-        )
+        data = client.read(timeout=delay-TIME_DELTA)
     except AdapterTimeoutError:
         ...
     else:
@@ -544,7 +507,7 @@ def test_flush():
     A = b"AAAAAAAA"
     B = b"XXXXXXXX"
 
-    client = IP(HOST, port=PORT, timeout=Timeout(response=1))
+    client = IP(HOST, port=PORT, timeout=1)
 
     client.write(encode_sequences([(A, 0)] * 3))
     sleep(1)
@@ -560,7 +523,7 @@ def _test_delayer(ip_delayer_port):
     client = IP(
         HOST,
         port=ip_delayer_port,
-        timeout=Timeout(1 + TIME_DELTA),
+        timeout=1 + TIME_DELTA,
         stop_conditions=Continuation(0.005),
         transport='UDP')
     for _ in range(N):

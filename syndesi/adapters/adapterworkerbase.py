@@ -30,9 +30,8 @@ from ..tools.errors import (
     AdapterTimeoutError,
     WorkerThreadError,
 )
-from .timeout import Timeout, TimeoutType, any_to_timeout
 from .tracehub import tracehub
-from .utils import Fragment, HasFileno
+from .utils import Fragment, HasFileno, TimeoutType, ValidTimeoutType
 
 DataT = TypeVar("DataT")
 
@@ -115,7 +114,7 @@ class WriteCommand(Generic[DataT], ThreadCommand[None]):
 class SetTimeoutCommand(ThreadCommand[None]):
     """Configure adapter timeout"""
 
-    def __init__(self, timeout: Timeout) -> None:
+    def __init__(self, timeout: ValidTimeoutType) -> None:
         super().__init__()
         self.timeout = timeout
 
@@ -131,7 +130,7 @@ class ReadCommand(Generic[DataT], ThreadCommand[Frame[DataT]]):
     timeout:
         - ... => use adapter default timeout
         - None => wait indefinitely for first fragment (response timeout disabled)
-        - Timeout => as provided
+        - float | int => as provided
 
     scope:
         - ``ReadScope.NEXT`` => Only read data after the read command
@@ -220,8 +219,8 @@ class AdapterWorkerBase(Generic[DataT]):
 
         # Timing
         self._last_write_timestamp: float | None = None
-        self._timeout: Timeout = Timeout(response=None)
-        self._current_timeout: Timeout = Timeout(response=None)
+        self._timeout: ValidTimeoutType = None
+        self._current_timeout: ValidTimeoutType = None
 
         # Adapter status
         self._opened = False
@@ -445,19 +444,17 @@ class AdapterWorkerBase(Generic[DataT]):
         if cmd.timeout is ...:
             read_timeout = self._timeout
         elif cmd.timeout is None:
-            read_timeout = Timeout(response=None)
-        elif isinstance(cmd.timeout, Timeout):
-            read_timeout = cmd.timeout
+            read_timeout = None
         else:
-            read_timeout = any_to_timeout(cmd.timeout)
+            try:
+                read_timeout = float(cmd.timeout)
+            except (ValueError, TypeError) as e:
+                raise RuntimeWarning("Invalid timeout : {cmd.timeout}") from e
 
         if read_timeout is None:
             raise RuntimeError("Cannot read without setting a timeout")
-        if not read_timeout.is_initialized():
-            raise RuntimeError("Timeout needs to be initialized")
 
-        resp = read_timeout.response()
-        response_deadline = None if resp is None else (t + resp)
+        response_deadline = None if read_timeout is None else (t + read_timeout)
 
         # Resolve stop-condition override (applied at next qualifying frame boundary)
         stop_override: list[StopCondition] | None = None
@@ -527,21 +524,21 @@ class AdapterWorkerBase(Generic[DataT]):
         if cmd.timeout is ...:
             read_timeout = self._timeout
         elif cmd.timeout is None:
-            read_timeout = Timeout(response=None)
-        elif isinstance(cmd.timeout, Timeout):
-            read_timeout = cmd.timeout
+            read_timeout = None
         else:
-            read_timeout = any_to_timeout(cmd.timeout)
+            try:
+                read_timeout = float(cmd.timeout)
+            except (ValueError, TypeError) as e:
+                raise RuntimeError(f"Invalid timeout : {cmd.timeout}") from e
 
         if read_timeout is None:
             pr.cmd.set_exception(AdapterReadError("Read timeout configuration invalid"))
             self._pending_read = None
             return
 
-        timeout_value = read_timeout.response()
         pr.cmd.set_exception(
             AdapterTimeoutError(
-                float("nan") if timeout_value is None else timeout_value
+                float("nan") if read_timeout is None else read_timeout
             )
         )
         self._pending_read = None

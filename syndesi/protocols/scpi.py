@@ -7,11 +7,10 @@ provides extra functionalities
 
 """
 
-from types import EllipsisType
+from syndesi.adapters.utils import TimeoutType
 
 from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP
-from ..adapters.timeout import Timeout
 from .delimited import Delimited
 
 
@@ -28,7 +27,7 @@ class SCPI(Delimited):
         A custom different termination when receiving datas.
         
         None by default (copy value from termination)
-    timeout : Timeout/float/tuple
+    timeout : float | int | None | ...
         Set device timeout
     """
 
@@ -40,7 +39,7 @@ class SCPI(Delimited):
         termination: str = "\n",
         receive_termination: str | None = None,
         *,
-        timeout: Timeout | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         encoding: str = "utf-8",
     ) -> None:
 
@@ -63,8 +62,10 @@ class SCPI(Delimited):
             receive_termination=receive_termination,
         )
 
-    def _default_timeout(self) -> Timeout | None:
-        return Timeout(response=5)
+    @staticmethod
+    def default_timeout() -> float | None:
+        """Default timeout"""
+        return 5.0
 
     def write_raw(self, data: bytes, termination: bool = False) -> None:
         """

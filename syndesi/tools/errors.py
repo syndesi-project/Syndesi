@@ -7,8 +7,6 @@ Syndesi errors
 
 from pathlib import Path
 
-from syndesi.tools.types import NumberLike
-
 PACKAGE_PATH = Path(__file__).resolve().parent.parent
 
 
@@ -61,7 +59,7 @@ class AdapterTimeoutError(AdapterError):
     Adapter timeout error
     """
 
-    def __init__(self, timeout: NumberLike) -> None:
+    def __init__(self, timeout: float) -> None:
         self.timeout = timeout
         super().__init__(
             f"No response received from target within {self.timeout} seconds"

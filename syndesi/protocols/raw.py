@@ -7,8 +7,9 @@ Raw protocol layer, data is returned as bytes "as-is"
 
 from types import EllipsisType
 
+from syndesi.adapters.utils import TimeoutType
+
 from ..adapters.adapterbase import AdapterBase
-from ..adapters.timeout import Timeout
 from ..component import Frame
 from .protocol import Protocol, ProtocolFrame
 
@@ -19,18 +20,21 @@ class Raw(Protocol[bytes, bytes]):
 
     Parameters
     ----------
-    adapter : IAdapter
+    adapter : Adapter
+    timeout : float | int | None | ...
     """
 
     def __init__(
         self,
         adapter: AdapterBase[bytes],
-        timeout: Timeout | None | EllipsisType = ...
+        timeout: TimeoutType = ...
     ) -> None:
         super().__init__(adapter, timeout)
 
-    def _default_timeout(self) -> Timeout | None:
-        return Timeout(response=2)
+    @staticmethod
+    def default_timeout() -> float | None:
+        """Default timeout"""
+        return 2.0
 
     def __str__(self) -> str:
         return f"Raw({self._adapter})"

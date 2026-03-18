@@ -6,6 +6,7 @@ Various utilities for adapters
 """
 
 from dataclasses import dataclass
+from types import EllipsisType
 from typing import Any, Generic, Protocol, TypeVar, cast
 
 
@@ -70,3 +71,7 @@ class Fragment(Generic[FragmentT]):
         Slice fragment data while preserving timestamp.
         """
         return Fragment(cast(SliceableFragmentT, self.data[key]), self.timestamp)
+
+
+TimeoutType = EllipsisType | float | int | None
+ValidTimeoutType = float | int | None

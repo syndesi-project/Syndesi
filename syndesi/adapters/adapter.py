@@ -81,7 +81,7 @@ class Adapter(Generic[DataT], AdapterBase[DataT]):
     Parameters
     ----------
     descriptor : Descriptor
-    timeout : Timeout | None | Number | ...
+    timeout : float | int | None | ...
     alias : str
     auto_open : bool
     """

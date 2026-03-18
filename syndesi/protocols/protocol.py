@@ -17,10 +17,10 @@ from syndesi.adapters.adapterworkerbase import (
     AdapterFrameEvent,
 )
 from syndesi.adapters.stop_conditions import StopCondition
+from syndesi.adapters.utils import TimeoutType
 from syndesi.component import Component, Event, Frame, ReadScope
 
 from ..adapters.adapterbase import AdapterBase
-from ..adapters.timeout import Timeout, TimeoutType
 from ..tools.log_settings import LoggerAlias
 
 ProtocolFrameT = TypeVar("ProtocolFrameT")
@@ -57,9 +57,6 @@ class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
     frame: ProtocolFrame[ProtocolFrameT]
 
 
-ProtocolTimeoutType = Timeout | None | EllipsisType
-
-
 class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT]):
     """
     Protocol base class
@@ -68,7 +65,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
     def __init__(
         self,
         adapter: AdapterBase[AdapterDataT],
-        timeout: ProtocolTimeoutType = ...,
+        timeout: TimeoutType = ...,
     ) -> None:
         super().__init__(LoggerAlias.PROTOCOL)
         self._adapter = adapter
@@ -79,15 +76,16 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
             self._adapter.set_default_timeout(timeout)
 
         if timeout is ...:
-            self._adapter.set_timeout(self._default_timeout())
+            self._adapter.set_timeout(self.default_timeout())
         else:
             self._adapter.set_timeout(timeout)
 
         self._event_callbacks : list[Callable[[ProtocolEvent], None]] = []
 
+    @staticmethod
     @abstractmethod
-    def _default_timeout(self) -> Timeout | None:
-        pass
+    def default_timeout() -> float | None:
+        """Default timeout"""
 
     def _on_event(self, event: AdapterEvent) -> None:
         for callback in self._event_callbacks:
@@ -225,7 +223,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
     async def aquery_detailed(
         self,
         payload: ProtocolFrameT,
-        timeout: Timeout | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolFrame[ProtocolFrameT]:
@@ -238,7 +236,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
     def query_detailed(
         self,
         payload: ProtocolFrameT,
-        timeout: Timeout | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolFrame[ProtocolFrameT]:

@@ -34,7 +34,6 @@ from syndesi.tools.errors import AdapterError
 
 from ..component import Component, Descriptor, Frame, ReadScope
 from ..tools.log_settings import LoggerAlias
-from ..tools.types import is_number
 from .adapterworkerbase import (  # SetDescriptorCommand,
     AdapterEvent,
     AdapterWorkerBase,
@@ -50,7 +49,7 @@ from .adapterworkerbase import (  # SetDescriptorCommand,
     StopThreadCommand,
     WriteCommand,
 )
-from .timeout import Timeout, TimeoutType, any_to_timeout
+from .utils import TimeoutType, ValidTimeoutType
 
 DataT = TypeVar("DataT")
 
@@ -94,16 +93,16 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
         # Default timeout
         self.is_default_timeout = timeout is Ellipsis
 
-        if timeout is Ellipsis:
-            self._initial_timeout = self._default_timeout()
-        elif isinstance(timeout, Timeout):
-            self._initial_timeout = timeout
-        elif is_number(timeout):
-            self._initial_timeout = Timeout(timeout)
+        self._initial_timeout : float | None
+        if timeout is ...:
+            self._initial_timeout = self.default_timeout()
         elif timeout is None:
-            self._initial_timeout = Timeout(None)
+            self._initial_timeout = None
         else:
-            raise ValueError(f"Invalid timeout : {timeout}")
+            try:
+                self._initial_timeout = float(timeout)
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid timeout : {timeout}") from e
 
         # Serialize read/write/query ordering for sync callers.
         self._sync_io_lock = threading.Lock()
@@ -141,8 +140,10 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
         except AdapterError:
             pass
 
+    @staticmethod
     @abstractmethod
-    def _default_timeout(self) -> Timeout:
+    def default_timeout() -> float | None:
+        """Default timeout"""
         raise NotImplementedError
 
     def __str__(self) -> str:
@@ -163,33 +164,31 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
     # │ Public API │
     # └────────────┘
 
-    def set_timeout(self, timeout: Timeout | None | float) -> None:
+    def set_timeout(self, timeout: ValidTimeoutType) -> None:
         """
         Set adapter timeout
 
         Parameters
         ----------
-        timeout : Timeout, float or None
+        timeout : float | int | None
         """
         # This is read by the worker when ReadCommand.timeout is ...
-        timeout_instance = any_to_timeout(timeout)
-        cmd = SetTimeoutCommand(timeout_instance)
+        cmd = SetTimeoutCommand(timeout)
         self._worker.send_command(cmd)
         cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
 
-    def set_default_timeout(self, default_timeout: Timeout | None) -> None:
+    def set_default_timeout(self, default_timeout: ValidTimeoutType) -> None:
         """
         Configure adapter default timeout. Timeout will only be set if none
         has been configured before
 
         Parameters
         ----------
-        default_timeout : Timeout or None
+        default_timeout : float | int | None
         """
         if self.is_default_timeout:
-            new_timeout = any_to_timeout(default_timeout)
-            self._logger.debug(f"Setting default timeout to {new_timeout}")
-            self.set_timeout(new_timeout)
+            self._logger.debug(f"Setting default timeout to {default_timeout}")
+            self.set_timeout(default_timeout)
 
     def register_event_callback(self, event_callback: Callable[[AdapterEvent], None]) -> None:
         """
@@ -353,7 +352,7 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
     async def aquery_detailed(
         self,
         payload: DataT,
-        timeout: Timeout | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> Frame[DataT]:
@@ -369,7 +368,7 @@ class AdapterBase(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT
     def query_detailed(
         self,
         payload: DataT,
-        timeout: Timeout | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> Frame[DataT]:

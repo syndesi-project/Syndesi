@@ -12,7 +12,6 @@ from .adapters.ip import IP
 from .adapters.ipserver import IPServer
 from .adapters.serialport import SerialPort
 from .adapters.stop_conditions import Continuation, Length, Termination, Total
-from .adapters.timeout import Timeout
 from .adapters.visa import Visa
 from .adapters.adapter import Adapter
 from .adapters.bytesadapter import BytesAdapter
@@ -38,7 +37,6 @@ __all__ = [
     "Adapter",
     "BytesAdapter",
     "log",
-    "Timeout",
     "Continuation",
     "Length",
     "Termination",

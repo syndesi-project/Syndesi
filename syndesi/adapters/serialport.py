@@ -21,8 +21,7 @@ from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
 
 from .stop_conditions import BytesFragment, Continuation, StopCondition
-from .timeout import Timeout, TimeoutType
-from .utils import Fragment, HasFileno
+from .utils import Fragment, HasFileno, TimeoutType
 
 
 class Parity(StrEnum):
@@ -141,8 +140,10 @@ class SerialPort(BytesAdapter):
                 timeout={timeout} and stop_conditions={stop_conditions}"
         )
 
-    def _default_timeout(self) -> Timeout:
-        return Timeout(response=2)
+    @staticmethod
+    def default_timeout() -> float | None:
+        """Default timeout"""
+        return 2.0
 
     @staticmethod
     def _default_stop_conditions() -> list[StopCondition]:

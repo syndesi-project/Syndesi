@@ -25,7 +25,7 @@ from syndesi.adapters.utils import Fragment, HasFileno
 from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterReadError
 
-from .timeout import Timeout, TimeoutType
+from .utils import TimeoutType
 
 
 class QueueEvent:
@@ -154,8 +154,10 @@ class Visa(BytesAdapter):
             auto_open=auto_open,
         )
 
-    def _default_timeout(self) -> Timeout:
-        return Timeout(response=5)
+    @staticmethod
+    def default_timeout() -> float | None:
+        """Default timeout"""
+        return 5.0
 
     @staticmethod
     def _default_stop_conditions() -> list[StopCondition]:

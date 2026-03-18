@@ -9,13 +9,13 @@ Syndesi shell, used to communicate with adapters, protocols and drivers directly
 import logging
 from argparse import ArgumentParser
 from enum import Enum
+import math
 from typing import Any
 
 from syndesi.adapters.bytesadapter import BytesAdapter
 
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
-from ..adapters.timeout import Timeout
 from ..adapters.visa import Visa
 from ..protocols.delimited import Delimited
 from ..protocols.protocol import (
@@ -172,8 +172,16 @@ class AdapterShell:
         else:
             raise ValueError("Unsupported Kind")
         args = self._parser.parse_args(input_arguments)
-
-        timeout = Timeout(args.timeout)
+        
+        try:
+            timeout_arg = float(args.timeout)
+        except ValueError as e:
+            raise ValueError(f"Invalid timeout : {args.timeout}") from e
+        
+        if math.isnan(timeout_arg):
+            timeout = None
+        else:
+            timeout = timeout_arg
 
         self.adapter: BytesAdapter
         # Create the adapter
@@ -197,8 +205,6 @@ class AdapterShell:
             self.adapter = Visa(
                 descriptor=args.descriptor, timeout=timeout, auto_open=False
             )
-
-        self.adapter.set_default_timeout(Timeout())
 
         # Add the protocol
         _format = Format(args.format)

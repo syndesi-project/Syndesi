@@ -12,7 +12,6 @@ from types import EllipsisType
 
 from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
-from syndesi.adapters.timeout import Timeout
 from syndesi.component import Descriptor
 from syndesi.tools.errors import (
     AdapterDisconnected,
@@ -22,7 +21,7 @@ from syndesi.tools.errors import (
 
 from .stop_conditions import BytesFragment
 from .tracehub import tracehub
-from .utils import Fragment, HasFileno
+from .utils import Fragment, HasFileno, TimeoutType
 
 
 @dataclass
@@ -97,7 +96,7 @@ class IP(BytesAdapter):
         IP port
     transport : {'TCP', 'UDP'}
         Transport layer
-    timeout : Timeout or float
+    timeout : float | int | None
         Specify communication timeout, the time it takes for the target to respond
     stop_conditions : list[StopCondition] or StopCondition
         Stop coniditions are used to decide when a read data block is finished
@@ -136,7 +135,7 @@ class IP(BytesAdapter):
         port: int | None = None,
         transport: str = IPDescriptor.Transport.TCP.value,
         *,
-        timeout: Timeout | float | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
         alias: str = "",
         auto_open: bool = True,
@@ -234,5 +233,7 @@ class IP(BytesAdapter):
     def _default_stop_conditions() -> list[StopCondition]:
         return [Continuation(continuation=0.2)]
 
-    def _default_timeout(self) -> Timeout:
-        return Timeout(response=1)
+    @staticmethod
+    def default_timeout() -> float | None:
+        """Default timeout"""
+        return 1.0

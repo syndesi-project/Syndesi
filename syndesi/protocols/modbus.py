@@ -43,12 +43,12 @@ from math import ceil
 from types import EllipsisType
 from typing import cast
 
+from syndesi.adapters.utils import TimeoutType
 from syndesi.component import Frame
 
 from ..adapters.adapterbase import AdapterBase
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
-from ..adapters.timeout import Timeout
 from ..tools.errors import ProtocolError, ProtocolReadError
 from .protocol import Protocol, ProtocolFrame
 
@@ -1384,7 +1384,7 @@ class Modbus(Protocol[ModbusSDU, bytes]):
     ----------
     adapter : Adapter
         SerialPort or IP
-    timeout : Timeout
+    timeout : float | int | None | ...
     _type : str
         Only used with SerialPort adapter
         'RTU' : Modbus RTU (default)
@@ -1394,7 +1394,7 @@ class Modbus(Protocol[ModbusSDU, bytes]):
     def __init__(
         self,
         adapter: AdapterBase[bytes],
-        timeout: Timeout | None | EllipsisType = ...,
+        timeout: TimeoutType = ...,
         _type: str = ModbusType.RTU.value,
         slave_address: int | None = None,
     ) -> None:
@@ -1418,8 +1418,9 @@ class Modbus(Protocol[ModbusSDU, bytes]):
         self._last_sdu: ModbusSDU | None = None
         self._transaction_id = 0
 
-    def _default_timeout(self) -> Timeout | None:
-        return Timeout(response=1)
+    @staticmethod
+    def default_timeout() -> float | None:
+        return 1.0
 
     def _protocol_to_adapter(self, protocol_payload: ModbusSDU) -> bytes:
         if isinstance(protocol_payload, SerialLineOnlySDU):
