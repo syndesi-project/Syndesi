@@ -12,10 +12,11 @@ from collections import deque
 from types import EllipsisType
 
 from ..component import Descriptor, Frame
-from .adapterbase import AdapterBase
-from .adapterworkerbase import (
-    AdapterWorkerBase,
+from .adapter import Adapter
+from .adapterworker import (
+    AdapterWorker,
     AdapterWorkerInterface,
+    GetStopConditionsCommand,
     SetStopConditionsCommand,
 )
 from .stop_conditions import (
@@ -25,9 +26,8 @@ from .stop_conditions import (
     StopConditionType,
     Total,
 )
-from .timeout import TimeoutType
 from .tracehub import tracehub
-from .utils import nmin
+from .utils import nmin, TimeoutType
 
 
 def fuse_fragments(fragments: list[BytesFragment]) -> bytes:
@@ -42,7 +42,7 @@ def fuse_fragments(fragments: list[BytesFragment]) -> bytes:
 
 
 # pylint: disable=too-many-instance-attributes
-class BytesAdapterWorker(AdapterWorkerBase[bytes]):
+class BytesAdapterWorker(AdapterWorker[bytes]):
     """
     Adapter worker with bytes and fragment support
     """
@@ -263,7 +263,7 @@ class BytesAdapterWorker(AdapterWorkerBase[bytes]):
             self._worker_on_stop_condition_timeout(timestamp)
 
 
-class BytesAdapter(AdapterBase[bytes]):
+class BytesAdapter(Adapter[bytes]):
     """
     Bytes adapter with stop-conditions
 
@@ -331,6 +331,16 @@ class BytesAdapter(AdapterBase[bytes]):
         cmd = SetStopConditionsCommand(lst)
         self._worker.send_command(cmd)
         cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+
+    @property
+    def stop_conditions(self) -> list[StopCondition]:
+        """
+        Return the list of stop-conditions configured for this adapter
+        """
+        cmd = GetStopConditionsCommand()
+        self._worker.send_command(cmd)
+        stop_conditions = cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+        return stop_conditions
 
     def set_default_stop_conditions(self, stop_conditions: list[StopCondition]) -> None:
         """

@@ -11,8 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from types import EllipsisType
 
-from syndesi.adapters.adapter import Adapter
-from syndesi.adapters.adapterworkerbase import AdapterEvent, AdapterFrameEvent
+from syndesi.adapters.genericadapter import GenericAdapter
+from syndesi.adapters.adapterworker import AdapterEvent, AdapterFrameEvent
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
 
@@ -33,7 +33,7 @@ class Client:
 
 
 # pylint: disable=too-many-instance-attributes
-class IPServer(Adapter[Client]):
+class IPServer(GenericAdapter[Client]):
     """
     IP server stack adapter. The IP Adapter reads and writes bytes units (frames)
 
@@ -69,7 +69,8 @@ class IPServer(Adapter[Client]):
         Function called when an event is received by the adapter worker thread.
         The event can be either one of :
 
-        * ``AdapterDisconnectedEvent``
+        * ``AdapterOpenedEvent``
+        * ``AdapterClosedEvent``
         * ``AdapterFrameEvent``
         * ``FirstFragmentEvent``
     auto_open : bool, default to True

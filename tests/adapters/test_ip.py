@@ -4,7 +4,7 @@ from time import sleep
 import time
 
 from syndesi import IP
-from syndesi.adapters.adapterbase import Frame
+from syndesi.adapters.adapter import Frame
 from syndesi.adapters.stop_conditions import *
 import socket
 import os

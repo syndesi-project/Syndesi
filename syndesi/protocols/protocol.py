@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from types import EllipsisType
 from typing import Callable, Generic, TypeVar
 
-from syndesi.adapters.adapterworkerbase import (
-    AdapterDisconnectedEvent,
+from syndesi.adapters.adapterworker import (
+    AdapterClosedEvent,
     AdapterEvent,
     AdapterFrameEvent,
 )
@@ -20,7 +20,7 @@ from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.adapters.utils import TimeoutType
 from syndesi.component import Component, Event, Frame, ReadScope
 
-from ..adapters.adapterbase import AdapterBase
+from ..adapters.adapter import Adapter
 from ..tools.log_settings import LoggerAlias
 
 ProtocolFrameT = TypeVar("ProtocolFrameT")
@@ -64,7 +64,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
 
     def __init__(
         self,
-        adapter: AdapterBase[AdapterDataT],
+        adapter: Adapter[AdapterDataT],
         timeout: TimeoutType = ...,
     ) -> None:
         super().__init__(LoggerAlias.PROTOCOL)
@@ -90,7 +90,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
     def _on_event(self, event: AdapterEvent) -> None:
         for callback in self._event_callbacks:
             output_event: ProtocolEvent | None = None
-            if isinstance(event, AdapterDisconnectedEvent):
+            if isinstance(event, AdapterClosedEvent):
                 output_event = ProtocolDisconnectedEvent()
             if isinstance(event, AdapterFrameEvent):
                 output_event = ProtocolFrameEvent(

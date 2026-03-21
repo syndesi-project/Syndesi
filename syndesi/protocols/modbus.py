@@ -46,7 +46,7 @@ from typing import cast
 from syndesi.adapters.utils import TimeoutType
 from syndesi.component import Frame
 
-from ..adapters.adapterbase import AdapterBase
+from ..adapters.adapter import Adapter
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..tools.errors import ProtocolError, ProtocolReadError
@@ -1393,7 +1393,7 @@ class Modbus(Protocol[ModbusSDU, bytes]):
 
     def __init__(
         self,
-        adapter: AdapterBase[bytes],
+        adapter: Adapter[bytes],
         timeout: TimeoutType = ...,
         _type: str = ModbusType.RTU.value,
         slave_address: int | None = None,

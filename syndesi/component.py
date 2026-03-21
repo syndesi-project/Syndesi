@@ -10,13 +10,11 @@ from abc import ABC, abstractmethod
 from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
-from types import EllipsisType
 from typing import Any, Callable, Generic, TypeVar
 
-from syndesi.adapters.stop_conditions import StopConditionType
-from syndesi.adapters.timeout import Timeout, TimeoutType
-from syndesi.tools.errors import AdapterOpenError, AdapterReadError, WorkerThreadError
-
+from .adapters.stop_conditions import StopConditionType
+from .adapters.utils import TimeoutType
+from .tools.errors import AdapterOpenError, AdapterReadError, WorkerThreadError
 from .tools.log_settings import LoggerAlias
 
 

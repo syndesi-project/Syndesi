@@ -2,8 +2,8 @@
 Syndesi module
 """
 
-from .adapters.adapterworkerbase import (
-    AdapterDisconnectedEvent,
+from .adapters.adapterworker import (
+    AdapterClosedEvent,
     AdapterEvent,
     AdapterFirstFragmentEvent,
     AdapterFrameEvent,
@@ -13,7 +13,7 @@ from .adapters.ipserver import IPServer
 from .adapters.serialport import SerialPort
 from .adapters.stop_conditions import Continuation, Length, Termination, Total
 from .adapters.visa import Visa
-from .adapters.adapter import Adapter
+from .adapters.genericadapter import GenericAdapter
 from .adapters.bytesadapter import BytesAdapter
 from .protocols.delimited import Delimited
 from .protocols.modbus import Modbus
@@ -34,7 +34,7 @@ __all__ = [
     "Raw",
     "SCPI",
     "Protocol",
-    "Adapter",
+    "GenericAdapter",
     "BytesAdapter",
     "log",
     "Continuation",
@@ -42,7 +42,7 @@ __all__ = [
     "Termination",
     "Total",
     "AdapterEvent",
-    "AdapterDisconnectedEvent",
+    "AdapterClosedEvent",
     "AdapterFrameEvent",
     "AdapterFirstFragmentEvent",
     "Driver",

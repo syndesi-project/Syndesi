@@ -44,8 +44,11 @@ class AdapterEvent(Event):
     """Adapter event"""
 
 
-class AdapterDisconnectedEvent(AdapterEvent):
-    """Adapter disconnected event"""
+class AdapterClosedEvent(AdapterEvent):
+    """Adapter closed event"""
+
+class AdapterOpenedEvent(AdapterEvent):
+    """Adapter opened event"""
 
 
 @dataclass
@@ -75,6 +78,8 @@ class SetStopConditionsCommand(ThreadCommand[None]):
         super().__init__()
         self.stop_conditions = stop_conditions
 
+class GetStopConditionsCommand(ThreadCommand[list[StopCondition]]):
+    """Return the list of stop-conditions"""
 
 class OpenCommand(ThreadCommand[None]):
     """Open the adapter"""
@@ -201,7 +206,7 @@ class AdapterWorkerInterface(Generic[DataT]):
 
 
 # pylint: disable=too-many-instance-attributes
-class AdapterWorkerBase(Generic[DataT]):
+class AdapterWorker(Generic[DataT]):
     """Base Adapter worker"""
 
     _FRAME_BUFFER_MAX = 256
@@ -412,6 +417,8 @@ class AdapterWorkerBase(Generic[DataT]):
                 case SetStopConditionsCommand():
                     self._stop_conditions = command.stop_conditions
                     command.set_result(None)
+                case GetStopConditionsCommand():
+                    command.set_result(self._stop_conditions)
                 case _:
                     command.set_exception(
                         WorkerThreadError(f"Invalid command {command!r}")

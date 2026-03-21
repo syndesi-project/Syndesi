@@ -122,7 +122,8 @@ class IP(BytesAdapter):
         Function called when an event is received by the adapter worker thread.
         The event can be either one of :
 
-        * ``AdapterDisconnectedEvent``
+        * ``AdapterOpenedEvent``
+        * ``AdapterClosedEvent``
         * ``AdapterFrameEvent``
         * ``FirstFragmentEvent``
     auto_open : bool, default to True
