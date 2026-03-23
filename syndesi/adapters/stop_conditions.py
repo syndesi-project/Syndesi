@@ -145,11 +145,11 @@ class Length(StopCondition):
     # TYPE = StopConditionType.LENGTH
     def __init__(self, n: int) -> None:
         super().__init__()
-        self._n = n
+        self.n = n
         self._counter = 0
 
     def __str__(self) -> str:
-        return f"Length({self._n})"
+        return f"Length({self.n})"
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -167,11 +167,11 @@ class Length(StopCondition):
     def evaluate(
         self, raw_fragment: BytesFragment
     ) -> tuple[bool, BytesFragment, BytesFragment, float | None]:
-        remaining_bytes = self._n - self._counter
+        remaining_bytes = self.n - self._counter
         kept_fragment = raw_fragment[:remaining_bytes]
         deferred_fragment = raw_fragment[remaining_bytes:]
         self._counter += len(kept_fragment.data)
-        remaining_bytes = self._n - self._counter
+        remaining_bytes = self.n - self._counter
         return remaining_bytes == 0, kept_fragment, deferred_fragment, None
 
 class Continuation(StopCondition):
