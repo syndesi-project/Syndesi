@@ -15,7 +15,7 @@ from typing import Callable
 from syndesi.adapters.adapterworker import AdapterClosedEvent, AdapterEvent
 from syndesi.adapters.ip import IP, IPDescriptor
 from syndesi.adapters.serialport import SerialPort
-from syndesi.adapters.stop_conditions import StopCondition, StopConditionType
+from syndesi.adapters.stop_conditions import STOP_CONDITION_BY_TYPE, StopCondition, StopConditionType, Termination
 from syndesi.adapters.visa import Visa
 from syndesi.protocols.delimited import Delimited
 from syndesi.protocols.modbus import Modbus
@@ -45,20 +45,25 @@ def _check_dpg():
         raise RuntimeError("Missing dearpygui, please install with 'pip install dearpygui'")
 
 class Block(ABC):
+    def __init__(self, parent : int | str) -> None:
+        super().__init__()
+        self._parent = parent
+
     @abstractmethod
-    def build(self, parent : int) -> None:
+    def build(self) -> None:
         ...
 
 class AdapterBlock(Block):
     on_close : Callable[[], None] | None = None
     on_open : Callable[[], None] | None = None
 
-    def __init__(self) -> None:
+    def __init__(self, parent : int | str) -> None:
+        super().__init__(parent)
         self._status_text : int | str = 0
 
     @abstractmethod
-    def build(self, parent : int) -> None:
-        with dpg.group(horizontal=True, parent=parent):
+    def build(self) -> None:
+        with dpg.group(horizontal=True, parent=self._parent):
             dpg.add_text("Status : ")
             self._status_text = dpg.add_text("")
             self.close()
@@ -85,52 +90,136 @@ class AdapterBlock(Block):
         if isinstance(event, AdapterClosedEvent):
             self._close_adapter()
 
+
+
+
+class StopConditionSuperBlock(Block):
+    _COMBO_ITEMS = [x.value.upper() for x in StopConditionType]
+    def __init__(self, parent: int | str, stop_condition : StopCondition | None) -> None:
+        super().__init__(parent)
+        self._items = []
+        self._stop_condition_block : 
+
+
+    def build(self) -> None:
+        if self._stop_condition is None:
+            default_value = ""
+        else:
+            default_value = self._stop_condition.type().value.upper()
+
+        self._combo = dpg.add_combo(
+            self._COMBO_ITEMS,
+            parent=self._parent,
+            callback=self.set_stop_condition_type,
+            default_value=default_value)
+        
+        if self._stop_condition is not None:
+            if isinstance(self._stop_condition, Termination):
+                self._items.append(
+                    
+                )
+        
+    def set_stop_condition_type(self, sender, app_data):
+        ...
+
+    # Termination
+    def build_termination(self):
+
+    def _termination_callback(self, sender, app_data):
+        if isinstance(self._stop_condition, Termination):
+            
+
+            self._stop_condition = Termination()
+    # Length
+
+    # Continuation
+
+    # Total
+
+    # Fragment
+    LENGTH = "length"
+    CONTINUATION = "continuation"
+    TOTAL = "total"
+    FRAGMENT = "fragment"
+
+class StopConditionBlock(Block):
+    ...
+
+class TerminationBlock(StopConditionBlock):
+    DEFAULT_SEQUENCE = "\n"
+    def __init__(self, parent: int | str) -> None:
+        super().__init__(parent)
+        self._stop_condition = Termination(self.DEFAULT_SEQUENCE)
+
+    def build(self):
+        self._termination_input = dpg.add_input_text(
+            label="Termination",
+            callback=self._termination_callback,
+            default_value=repr(self._stop_condition.sequence)[2:-1]
+        )
+        self._error_text = dpg.add_text("", color=(255,0,0), show=False)
+
+    def _termination_callback(self, sender, app_data):
+        try:
+            sequence_bytes : bytes = eval(f"b'{app_data}'")
+        except ValueError:
+            dpg.set_value(self._error_text, "Could not parse sequence")
+            dpg.show_item(self._error_text)
+        else:
+            dpg.hide_item(self._error_text)
+            self._stop_condition = Termination(sequence_bytes)
+
 class IPBlock(AdapterBlock):
     import dearpygui.dearpygui as dpg
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, parent : int | str) -> None:
+        super().__init__(parent)
         self._adapter : IP | None = None
         self._stop_conditions_rows : list[list[int]] = []
-        self._adapter_stop_conditions : list[StopCondition] = []
+        self._cache_stop_conditions : list[StopCondition] = []
 
     def _clear_stop_conditions_table(self):
         for tags in self._stop_conditions_rows:
             for tag in tags:
                 dpg.delete_item(tag)
 
-    #def _add_stop_condition(self, index : int)
+    def _cache_stop_conditions_to_adapter(self):
+        ...
 
-    def _stop_condition_combo_callback(self, sender, app_data : str, user_data : int):
+    def _adapter_to_cache_stop_conditions(self):
+        ...
+
+    def _stop_condition_combo_callback(self, sender, app_data : str, index : int):
         # app_data : New combo balue
         # user_data : Row index of the combo
         _type = StopConditionType(app_data.lower())
-        if self._adapter_stop_conditions[user_data].type() != _type:
+        if self._cache_stop_conditions[index].type() != _type:
             # The stop-condition has changed
-            self._adapter_stop_conditions = 
+            self._cache_stop_conditions[index] = STOP_CONDITION_BY_TYPE[_type]()
+        self._update_stop_conditions_table()
 
     def _update_stop_conditions_table(self):
         self._clear_stop_conditions_table()
         if self._adapter is not None:
-            self._adapter_stop_conditions = self._adapter.stop_conditions
-            for i, stop_condition in enumerate(self._adapter_stop_conditions):
+            self._cache_stop_conditions = self._adapter.stop_conditions
+            for i, stop_condition in enumerate(self._cache_stop_conditions):
                 with dpg.table_row() as row:
                     combo = dpg.add_combo(
-                        items=[x.value.upper() for x in StopConditionType],
+                        items=,
                         callback=self._stop_condition_combo_callback,
                         user_data=i
                         )
                     _type = stop_condition.type()
-                    if _type == StopConditionType.
+                    if _type == StopConditionType.TOTAL:
+
 
                 self._stop_conditions_rows.append(
                     [row, combo]
                 )
         else:
-            self._adapter_stop_conditions = []
+            self._cache_stop_conditions = []
 
 
-    def build(self, parent : int):
-        super().build(parent)
+    def build(self):
         import dearpygui.dearpygui as dpg
         with dpg.collapsing_header(label="IP Adapter", parent=parent, default_open=True):
             self._address_input = dpg.add_input_text(width=200, label="Address")

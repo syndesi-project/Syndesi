@@ -75,11 +75,11 @@ class Termination(StopCondition):
     def __init__(self, sequence: bytes | str) -> None:
         super().__init__()
         if isinstance(sequence, str):
-            self._sequence = sequence.encode("utf-8")
+            self.sequence = sequence.encode("utf-8")
         else:
-            self._sequence = sequence
+            self.sequence = sequence
 
-        if self._sequence == b"":
+        if self.sequence == b"":
             raise ValueError(
                 "Empty termination isn't allowed. If you wish "
                 "to stop on any received data, use Datagram stop-conditions instead"
@@ -87,7 +87,7 @@ class Termination(StopCondition):
         self._sequence_found_length = 0
 
     def __str__(self) -> str:
-        return f"Termination({repr(self._sequence)})"
+        return f"Termination({repr(self.sequence)})"
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -103,7 +103,7 @@ class Termination(StopCondition):
     ) -> tuple[bool, BytesFragment, BytesFragment, float | None]:
 
         position, length = termination_in_data(
-            self._sequence[self._sequence_found_length :], raw_fragment.data
+            self.sequence[self._sequence_found_length :], raw_fragment.data
         )
         stop = False
         deferred = BytesFragment(b"", raw_fragment.timestamp)
@@ -114,7 +114,7 @@ class Termination(StopCondition):
         else:
             self._sequence_found_length += length
 
-            if self._sequence_found_length == len(self._sequence):
+            if self._sequence_found_length == len(self.sequence):
                 # The sequence was found entirely
                 deferred = raw_fragment[position + length :]
                 self._sequence_found_length = 0
@@ -322,3 +322,11 @@ def termination_in_data(termination: bytes, data: bytes) -> tuple[int | None, in
             length -= 1
 
     return p, length
+
+STOP_CONDITION_BY_TYPE = {
+    StopConditionType.TERMINATION : Termination,
+    StopConditionType.LENGTH : Length,
+    StopConditionType.CONTINUATION : Continuation,
+    StopConditionType.TOTAL : Total,
+    StopConditionType.FRAGMENT : Fragment,
+}
