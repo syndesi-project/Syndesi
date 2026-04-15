@@ -80,9 +80,7 @@ class IPDescriptor(Descriptor):
 
         return self.port is not None and self.transport is not None
 
-
 BUFFER_SIZE = 65535
-
 
 class IP(BytesAdapter):
     """
@@ -143,7 +141,7 @@ class IP(BytesAdapter):
         server_socket: socket.socket | None = None,
     ):
 
-        descriptor = IPDescriptor(
+        self._descriptor = IPDescriptor(
             address=address,
             port=port,
             transport=IPDescriptor.Transport(transport.upper()),
@@ -153,17 +151,19 @@ class IP(BytesAdapter):
         if server_socket is not None:
             self._opened = True
             auto_open = False
-            tracehub.emit_open(str(descriptor))
+            tracehub.emit_open(str(self._descriptor))
             self._socket = server_socket
 
         super().__init__(
-            descriptor=descriptor,
             stop_conditions=stop_conditions,
             timeout=timeout,
             alias=alias,
             auto_open=auto_open,
         )
-        self._descriptor: IPDescriptor
+    
+    @property
+    def descriptor(self) -> IPDescriptor:
+        return self._descriptor
 
     def set_default_port(self, port: int) -> None:
         """

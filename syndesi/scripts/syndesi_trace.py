@@ -548,12 +548,12 @@ def _read_keys_nonblocking() -> list[str]:
         # the attributes we use. Cast to Any so attribute access is allowed.
 
         #pylint: disable-next=possibly-used-before-assignment, used-before-assignment
-        while msvcrt.kbhit():
+        while msvcrt.kbhit(): # type: ignore
             #pylint: disable-next=possibly-used-before-assignment, used-before-assignment
-            ch = msvcrt.getwch()
+            ch = msvcrt.getwch() # type: ignore
             if ch in ("\x00", "\xe0"):  # special key prefix
                 #pylint: disable-next=possibly-used-before-assignment, used-before-assignment
-                ch2 = msvcrt.getwch()
+                ch2 = msvcrt.getwch() # type: ignore
                 if ch2 == "K":
                     keys.append("LEFT")
                 elif ch2 == "M":

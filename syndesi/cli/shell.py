@@ -246,7 +246,7 @@ class AdapterShell:
         else:
             self.shell.run()
             self.shell.print(
-                f"Opened adapter {self.adapter.get_descriptor()}",
+                f"Opened adapter {self.adapter.descriptor}",
                 style=Shell.Style.NOTE,
             )
 

@@ -54,7 +54,7 @@ class ProtocolReadError(SyndesiError):
     """Protocol error when reading"""
 
 
-class AdapterTimeoutError(AdapterError):
+class AdapterTimeoutError(AdapterReadError):
     """
     Adapter timeout error
     """

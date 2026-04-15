@@ -9,7 +9,7 @@ from types import EllipsisType
 
 from syndesi.adapters.utils import TimeoutType
 
-from ..adapters.adapter import Adapter
+from ..adapters.bytesadapter import BytesAdapter
 from ..component import Frame
 from .protocol import Protocol, ProtocolFrame
 
@@ -26,7 +26,7 @@ class Raw(Protocol[bytes, bytes]):
 
     def __init__(
         self,
-        adapter: Adapter[bytes],
+        adapter: BytesAdapter,
         timeout: TimeoutType = ...
     ) -> None:
         super().__init__(adapter, timeout)

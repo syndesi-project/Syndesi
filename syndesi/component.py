@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
+import time
 from typing import Any, Callable, Generic, TypeVar
 
 from .adapters.stop_conditions import StopConditionType
@@ -20,7 +21,8 @@ from .tools.log_settings import LoggerAlias
 
 class Event:
     """Generic event, used to move information asynchronously from the adapter worker thread"""
-
+    def __init__(self) -> None:
+        self.timestamp = time.time()
 
 class Descriptor(ABC):
     """

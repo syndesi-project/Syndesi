@@ -278,7 +278,6 @@ class BytesAdapter(Adapter[bytes]):
 
     def __init__(
         self,
-        descriptor: Descriptor,
         timeout: TimeoutType,
         stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
         *,
@@ -287,7 +286,6 @@ class BytesAdapter(Adapter[bytes]):
     ) -> None:
         super().__init__(
             worker=BytesAdapterWorker(self),
-            descriptor=descriptor,
             timeout=timeout,
             alias=alias,
             auto_open=auto_open,

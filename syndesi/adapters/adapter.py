@@ -74,7 +74,6 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         self,
         *,
         worker: AdapterWorker[DataT],
-        descriptor: Descriptor,
         timeout: TimeoutType,
         # stop_conditions : StopCondition | list[StopCondition] | EllipsisType,
         alias: str,
@@ -82,7 +81,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         auto_open: bool = True,
     ) -> None:
         Component.__init__(self, LoggerAlias.ADAPTER)
-        AdapterWorkerInterface.__init__(self, descriptor)
+        #AdapterWorkerInterface.__init__(self, descriptor)
 
         self._alias = alias
         self._event_callbacks: list[Callable[[AdapterEvent], None]] = []
@@ -108,23 +107,18 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         # Serialize read/write/query ordering for async callers.
         self._async_io_lock = asyncio.Lock()
 
-        self._logger.info(f"Setting up {self._descriptor} adapter ")
+        self._logger.info(f"Setting up {self.descriptor} adapter ")
         self.set_timeout(self._initial_timeout)
 
-        if self._descriptor.is_initialized() and self._auto_open:
+        if self.descriptor.is_initialized() and self._auto_open:
             self.open()
 
         weakref.finalize(self, self._cleanup)
 
-    def get_descriptor(self) -> Descriptor:
-        """
-        Return the adapter's descriptor
-
-        Returns
-        -------
-        descriptor : Descriptor
-        """
-        return self._descriptor
+    @property
+    @abstractmethod
+    def descriptor(self) -> Descriptor:
+        ...
 
     # ┌──────────────────────────┐
     # │ Defaults / configuration │
@@ -146,7 +140,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         raise NotImplementedError
 
     def __str__(self) -> str:
-        return str(self._descriptor)
+        return str(self.descriptor)
 
     def __repr__(self) -> str:
         return self.__str__()

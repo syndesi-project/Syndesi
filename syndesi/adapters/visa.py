@@ -119,7 +119,7 @@ class Visa(BytesAdapter):
         auto_open: bool = False,
     ) -> None:
 
-        self._descriptor: VisaDescriptor
+        self._descriptor = VisaDescriptor.from_string(descriptor)
 
         if pyvisa is None:
             raise ImportError(
@@ -146,13 +146,15 @@ class Visa(BytesAdapter):
         self._thread: threading.Thread | None = None
 
         super().__init__(
-            descriptor=VisaDescriptor.from_string(descriptor),
             alias=alias,
             stop_conditions=stop_conditions,
             timeout=timeout,
-            # encoding=encoding,
             auto_open=auto_open,
         )
+
+    @property
+    def descriptor(self) -> VisaDescriptor:
+        return self._descriptor
 
     @staticmethod
     def default_timeout() -> float | None:

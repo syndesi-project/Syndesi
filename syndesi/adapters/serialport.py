@@ -116,7 +116,7 @@ class SerialPort(BytesAdapter):
         Instanciate new SerialPort adapter
         """
         self._port: serial.Serial | None = None
-        descriptor = SerialPortDescriptor(
+        self._descriptor = SerialPortDescriptor(
             port=port,
             baudrate=baudrate,
             bytesize=bytesize,
@@ -127,18 +127,20 @@ class SerialPort(BytesAdapter):
             xon_xoff=xon_xoff,
         )
         super().__init__(
-            descriptor=descriptor,
             timeout=timeout,
             stop_conditions=stop_conditions,
             alias=alias,
             auto_open=auto_open,
         )
-        self._descriptor: SerialPortDescriptor
 
         self._logger.info(
             f"Setting up SerialPort adapter {self._descriptor}, \
                 timeout={timeout} and stop_conditions={stop_conditions}"
         )
+
+    @property
+    def descriptor(self) -> SerialPortDescriptor:
+        return self._descriptor
 
     @staticmethod
     def default_timeout() -> float | None:

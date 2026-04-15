@@ -89,14 +89,12 @@ class GenericAdapter(Generic[DataT], Adapter[DataT]):
     def __init__(
         self,
         *,
-        descriptor: Descriptor,
         timeout: TimeoutType,
         alias: str,
         auto_open: bool = True,
     ) -> None:
         super().__init__(
             worker=GenericAdapterWorker(self),
-            descriptor=descriptor,
             timeout=timeout,
             alias=alias,
             auto_open=auto_open,

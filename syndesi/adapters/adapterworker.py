@@ -43,7 +43,6 @@ DataT = TypeVar("DataT")
 class AdapterEvent(Event):
     """Adapter event"""
 
-
 class AdapterClosedEvent(AdapterEvent):
     """Adapter closed event"""
 
@@ -176,14 +175,15 @@ class PendingRead(Generic[DataT]):
 class AdapterWorkerInterface(Generic[DataT]):
     """Adapter base class for worker interface.
     The worker will call these methods that the final adapter will implement"""
+    #_descriptor : Descriptor
 
-    def __init__(self, descriptor: Descriptor) -> None:
-        self._descriptor = descriptor
+    # def __init__(self) -> None:
+    #     self._descriptor = descriptor
 
     @property
+    @abstractmethod
     def descriptor(self) -> Descriptor:
         """Return the adapter descriptor"""
-        return self._descriptor
 
     @abstractmethod
     def _worker_read(self, fragment_timestamp: float) -> Fragment[DataT]: ...
@@ -346,6 +346,7 @@ class AdapterWorker(Generic[DataT]):
             raise AdapterOpenError("Descriptor not initialized")
 
     def _worker_emit_event(self, event: AdapterEvent) -> None:
+        print(f'Worker emit event')
         for callback in self._event_callbacks:
             try:
                 callback(event)
@@ -377,15 +378,18 @@ class AdapterWorker(Generic[DataT]):
                             self._interface._worker_open()  # pylint: disable=protected-access
                         except AdapterOpenError as e:
                             self._opened = False
+                            self._worker_emit_event(AdapterClosedEvent())
                             raise e
+                        self._opened = True
                         if self._interface.descriptor is not None:
                             tracehub.emit_open(str(self._interface.descriptor))
-                        self._opened = True
+                        self._worker_emit_event(AdapterOpenedEvent())
                         self._first_opened = True
                     command.set_result(None)
                 case CloseCommand():
                     self._interface._worker_close()  # pylint: disable=protected-access
                     self._opened = False
+                    self._worker_emit_event(AdapterClosedEvent())
                     self._frame_buffer.clear()
                     # Cancel any pending read
                     if self._pending_read is not None:

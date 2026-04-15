@@ -270,7 +270,7 @@ class Total(StopCondition):
         return StopConditionType.TOTAL
 
 
-class FragmentStopCondition(StopCondition):
+class FragmentSC(StopCondition):
     """
     Fragment stop-condition, used to stop on each piece of data received by the
     adapter
@@ -280,7 +280,7 @@ class FragmentStopCondition(StopCondition):
     def __init__(self) -> None: ...
 
     def __str__(self) -> str:
-        return "FragmentStopCondition()"
+        return "FragmentSC()"
 
     def __repr__(self) -> str:
         return self.__str__()

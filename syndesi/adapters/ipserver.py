@@ -91,14 +91,13 @@ class IPServer(GenericAdapter[Client]):
         auto_open: bool = True,
     ):
         # pylint: disable=duplicate-code
-        descriptor = IPDescriptor(
+        self._descriptor = IPDescriptor(
             address=address,
             port=port,
             transport=IPDescriptor.Transport(transport.upper()),
             server=True,
         )
         self._socket: socket.socket | None = None
-        self._descriptor: IPDescriptor
         self._client_adapters: dict[str, IP] = {}
         self._backlog = backlog
         self._on_client_callbacks: list[Callable[[IP, AdapterEvent], None]] = []
@@ -114,7 +113,7 @@ class IPServer(GenericAdapter[Client]):
             raise ValueError("Invalid stop-conditions")
 
         super().__init__(
-            descriptor=descriptor, timeout=None, alias=alias, auto_open=auto_open
+            timeout=None, alias=alias, auto_open=auto_open
         )
 
         self.register_event_callback(self._on_event)
@@ -218,6 +217,10 @@ class IPServer(GenericAdapter[Client]):
         func : Callable[[IP, AdapterEvent], None]
         """
         self._on_client_callbacks.append(func)
+
+    @property
+    def descriptor(self) -> IPDescriptor:
+        return self._descriptor
 
     def _on_client_event(self, client: IP, event: AdapterEvent) -> None:
         for callback in self._on_client_callbacks:
