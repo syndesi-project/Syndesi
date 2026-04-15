@@ -216,7 +216,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 default_value=timeout if timeout is not None else -1,
                 width=100
             )
-        
 
             with dpg.group(horizontal=True):
                 dpg.add_button(label="Open", callback=self.open)
@@ -401,12 +400,15 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
     def close(self) -> None:
         """Close adapter"""
         self._adapter.close()
-        self._status(False)
+        
 
     def _on_adapter_event(self, event : AdapterEvent) -> None:
+        event : int | str = -1
         print(f'Adapter event : {event}')
         if isinstance(event, AdapterClosedEvent):
-            self.close()
+            self._status(False)
+            with dpg.group(parent=self._event_window) as event:
+                dpg.add_text("")
 
         if isinstance(event, AdapterOpenedEvent):
             with dpg.group(parent=self._event_window) as event:
@@ -482,6 +484,8 @@ class UIBase:
         dpg.show_viewport()
         dpg_async.run() # run; replaces `dpg.start_dearpygui()`
         dpg.destroy_context()
+
+        
     
     def _build(self) -> None:
         dpg.create_context()
@@ -490,6 +494,11 @@ class UIBase:
             width=self._width,
             height=self._height
         )
+
+        # with dpg.font_registry():
+        #     # Noto Sans couvre des milliers de symboles Unicode
+        #     font = dpg.add_font("NotoSans-Regular.ttf", 16)
+        #     dpg.bind_font(font)
         
         self.window = dpg.add_window(
             width=self._width,
@@ -498,7 +507,9 @@ class UIBase:
             no_title_bar=True
         )
 
-        dpg.set_item_pos(self.window, [0,0])
+        #dpg.set_item_pos(self.window, [0,0])
+
+        dpg.set_primary_window(self.window, True)
 
         dpg.setup_dearpygui()
 
