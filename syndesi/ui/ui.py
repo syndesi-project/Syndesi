@@ -16,7 +16,7 @@ from typing import Any, Callable, Generic, TypeVar
 import ast
 from .dearpygui_async import DearPyGuiAsync
 
-from syndesi.adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterOpenedEvent
+from syndesi.adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFirstFragmentEvent, AdapterFrameEvent, AdapterOpenedEvent
 from syndesi.adapters.ip import IP, IPDescriptor
 from syndesi.adapters.serialport import SerialPort
 from syndesi.adapters.stop_conditions import STOP_CONDITION_BY_TYPE, Continuation, FragmentSC, Length, StopCondition, StopConditionType, Termination, Total
@@ -33,6 +33,10 @@ from ..adapters.bytesadapter import BytesAdapter
 from ..drivers.driver import Driver
 
 import dearpygui.dearpygui as dpg # type: ignore[import-untyped]
+
+
+import importlib.resources
+import dearpygui.dearpygui as dpg
 
 CLASS_NAME_SEPARATOR = ':'
 
@@ -408,11 +412,22 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         if isinstance(event, AdapterClosedEvent):
             self._status(False)
             with dpg.group(parent=self._event_window) as event:
-                dpg.add_text("")
+                dpg.add_text("● closed", color=(207, 19, 19))
 
-        if isinstance(event, AdapterOpenedEvent):
+        elif isinstance(event, AdapterOpenedEvent):
             with dpg.group(parent=self._event_window) as event:
-                dpg.add_text("")
+                dpg.add_text("● open", color=(30, 199, 38))
+
+        elif isinstance(event, AdapterFrameEvent):
+            with dpg.group(parent=self._event_window) as event:
+                dpg.add_text("← read")
+
+        elif isinstance(event, AdapterFirstFragmentEvent):
+            ...
+
+        elif isinstance(event, AdapterFragmentEvent):
+            with dpg.group(parent=self._event_window) as event:
+                dpg.add_text("↓")
 
         self._events.append(event)
 
@@ -481,9 +496,15 @@ class UIBase:
         self._build()
 
     def start(self) -> None:
+        with dpg.font_registry():            
+            with importlib.resources.path("syndesi.fonts", "DejaVuSans.ttf") as f:
+                with dpg.font(f, 16) as font:
+                    dpg.bind_font(font)
+
         dpg.show_viewport()
         dpg_async.run() # run; replaces `dpg.start_dearpygui()`
         dpg.destroy_context()
+
 
         
     
@@ -494,11 +515,6 @@ class UIBase:
             width=self._width,
             height=self._height
         )
-
-        # with dpg.font_registry():
-        #     # Noto Sans couvre des milliers de symboles Unicode
-        #     font = dpg.add_font("NotoSans-Regular.ttf", 16)
-        #     dpg.bind_font(font)
         
         self.window = dpg.add_window(
             width=self._width,
@@ -506,8 +522,12 @@ class UIBase:
             no_resize=True,
             no_title_bar=True
         )
+        dpg.add_text("Statut → OK   Erreur ✗   Niveau ▲",parent=self.window)
+        dpg.add_text("Points : ● ○ ◆ ◇ ▲ ■ ● Formes : ■ □ ▲ △",parent=self.window)
+        dpg.add_text("Flèches : ← → ↑ ↓ ↔ ⇒ ⇐ ⇑ ⇓",parent=self.window)
 
-        #dpg.set_item_pos(self.window, [0,0])
+        # Ouvre le font manager pour inspecter visuellement
+        dpg.show_font_manager()
 
         dpg.set_primary_window(self.window, True)
 
