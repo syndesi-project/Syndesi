@@ -16,7 +16,7 @@ from typing import Any, Callable, Generic, TypeVar
 import ast
 from .dearpygui_async import DearPyGuiAsync
 
-from syndesi.adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFirstFragmentEvent, AdapterFrameEvent, AdapterOpenedEvent
+from syndesi.adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFirstFragmentEvent, AdapterFragmentEvent, AdapterFrameEvent, AdapterOpenedEvent
 from syndesi.adapters.ip import IP, IPDescriptor
 from syndesi.adapters.serialport import SerialPort
 from syndesi.adapters.stop_conditions import STOP_CONDITION_BY_TYPE, Continuation, FragmentSC, Length, StopCondition, StopConditionType, Termination, Total
@@ -197,8 +197,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         self._event_window : int | str = -1
         self._events = []
 
-        self._adapter.register_event_callback(self._on_adapter_event)
-
     @abstractmethod
     def _build_descriptor(self, parent : int | str) -> None:
         ...
@@ -266,6 +264,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                     ...
 
         self._adapter_to_cache_stop_conditions()
+        self._adapter.register_event_callback(self._on_adapter_event)
 
     async def _read_callback(self) -> None:
         self._read_start = time.time()
@@ -407,29 +406,29 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         
 
     def _on_adapter_event(self, event : AdapterEvent) -> None:
-        event : int | str = -1
+        event_tag : int | str = -1
         print(f'Adapter event : {event}')
         if isinstance(event, AdapterClosedEvent):
             self._status(False)
-            with dpg.group(parent=self._event_window) as event:
+            with dpg.group(parent=self._event_window) as event_tag:
                 dpg.add_text("● closed", color=(207, 19, 19))
 
         elif isinstance(event, AdapterOpenedEvent):
-            with dpg.group(parent=self._event_window) as event:
+            with dpg.group(parent=self._event_window) as event_tag:
                 dpg.add_text("● open", color=(30, 199, 38))
 
         elif isinstance(event, AdapterFrameEvent):
-            with dpg.group(parent=self._event_window) as event:
+            with dpg.group(parent=self._event_window) as event_tag:
                 dpg.add_text("← read")
 
         elif isinstance(event, AdapterFirstFragmentEvent):
             ...
 
         elif isinstance(event, AdapterFragmentEvent):
-            with dpg.group(parent=self._event_window) as event:
+            with dpg.group(parent=self._event_window) as event_tag:
                 dpg.add_text("↓")
 
-        self._events.append(event)
+        self._events.append(event_tag)
 
 class IPBlock(BytesAdapterBlock[IP]):
     """IP adapter block"""
@@ -525,9 +524,6 @@ class UIBase:
         dpg.add_text("Statut → OK   Erreur ✗   Niveau ▲",parent=self.window)
         dpg.add_text("Points : ● ○ ◆ ◇ ▲ ■ ● Formes : ■ □ ▲ △",parent=self.window)
         dpg.add_text("Flèches : ← → ↑ ↓ ↔ ⇒ ⇐ ⇑ ⇓",parent=self.window)
-
-        # Ouvre le font manager pour inspecter visuellement
-        dpg.show_font_manager()
 
         dpg.set_primary_window(self.window, True)
 

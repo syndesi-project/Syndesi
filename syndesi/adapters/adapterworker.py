@@ -53,16 +53,18 @@ class AdapterOpenedEvent(AdapterEvent):
 @dataclass
 class AdapterFrameEvent(Generic[DataT], AdapterEvent):
     """Adapter frame event, emitted when new data is available"""
-
     frame: Frame[DataT]
-
 
 @dataclass
 class AdapterFirstFragmentEvent(AdapterEvent):
     """Adapter first fragment event"""
-
-    timestamp: float
     next_timeout_timestamp: float | None
+
+@dataclass
+class AdapterFragmentEvent(AdapterEvent):
+    """Adapter fragment event"""
+    next_timeout_timestamp: float | None
+    fragment : Fragment
 
 
 # ┌───────────────────────────────┐
@@ -348,6 +350,7 @@ class AdapterWorker(Generic[DataT]):
     def _worker_emit_event(self, event: AdapterEvent) -> None:
         print(f'Worker emit event')
         for callback in self._event_callbacks:
+            print(f'callback {callback}')
             try:
                 callback(event)
             except Exception as e:  # pylint: disable=broad-exception-caught
@@ -355,6 +358,7 @@ class AdapterWorker(Generic[DataT]):
                 self._worker_logger.exception(
                     "Adapter event callback failed with error : %s", str(e)
                 )
+                print(f"Adapter event callback failed with error : {str(e)}")
 
     def _worker_manage_command(self, command: ThreadCommand[Any]) -> None:
         # pylint: disable=too-many-branches
