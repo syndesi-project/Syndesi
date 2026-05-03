@@ -5,10 +5,32 @@
 Syndesi UI tools
 """
 
+from abc import ABC, abstractmethod
 import inspect
 from typing import Any, get_type_hints
 import sys
 
+# From dearpygui's demo.py
+def _hsv_to_rgb(h : float, s : float, v : float) -> tuple[float, float, float]:
+    if s == 0.0:
+        return (v, v, v)
+    i = int(h*6.) # XXX assume int() truncates!
+    f = (h*6.)-i
+    p,q,t = v*(1.-s), v*(1.-s*f), v*(1.-s*(1.-f))
+    i%=6
+    if i == 0:
+        return (255*v, 255*t, 255*p)
+    if i == 1:
+        return (255*q, 255*v, 255*p)
+    if i == 2:
+        return (255*p, 255*v, 255*t)
+    if i == 3:
+        return (255*p, 255*q, 255*v)
+    if i == 4:
+        return (255*t, 255*p, 255*v)
+    if i == 5:
+        return (255*v, 255*p, 255*q)
+    return (0,0,0)
 
 def get_method_arguments(
         cls: type,
@@ -85,3 +107,9 @@ def get_method_arguments(
         )
 
     return result
+
+class Block(ABC):
+    """A collection of dearpygui items"""
+    @abstractmethod
+    def build(self, parent : int | str) -> None:
+        """Construct the block in dearpygui"""

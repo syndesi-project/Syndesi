@@ -211,7 +211,7 @@ class IP(BytesAdapter):
             self._socket.connect((self._descriptor.address, self._descriptor.port))
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:
             self._opened = False
-            msg = f"Failed to open adapter {self._descriptor} : {e}"
+            msg = f"Failed to open adapter {self._descriptor} ({e})"
             self._logger.error(msg)
             raise AdapterOpenError(msg) from None
 

@@ -56,21 +56,15 @@ class AdapterFrameEvent(Generic[DataT], AdapterEvent):
     frame: Frame[DataT]
 
 @dataclass
-class AdapterFirstFragmentEvent(AdapterEvent):
-    """Adapter first fragment event"""
-    next_timeout_timestamp: float | None
-
-@dataclass
-class AdapterFragmentEvent(AdapterEvent):
+class AdapterFragmentEvent(Generic[DataT], AdapterEvent):
     """Adapter fragment event"""
     next_timeout_timestamp: float | None
-    fragment : Fragment
-
+    fragment : Fragment[DataT]
+    first : bool
 
 # ┌───────────────────────────────┐
 # │ Worker commands (composition) │
 # └───────────────────────────────┘
-
 
 class SetStopConditionsCommand(ThreadCommand[None]):
     """Configure adapter stop conditions"""
@@ -248,7 +242,7 @@ class AdapterWorker(Generic[DataT]):
         self._worker_thread.start()
 
         # Events
-        self._event_callbacks: list[Callable[[AdapterEvent], None]] = []
+        self._event_callbacks: set[Callable[[AdapterEvent], None]] = set()
 
     # ┌─────────────────┐
     # │ Worker plumbing │
@@ -348,9 +342,7 @@ class AdapterWorker(Generic[DataT]):
             raise AdapterOpenError("Descriptor not initialized")
 
     def _worker_emit_event(self, event: AdapterEvent) -> None:
-        print(f'Worker emit event')
         for callback in self._event_callbacks:
-            print(f'callback {callback}')
             try:
                 callback(event)
             except Exception as e:  # pylint: disable=broad-exception-caught
@@ -358,7 +350,6 @@ class AdapterWorker(Generic[DataT]):
                 self._worker_logger.exception(
                     "Adapter event callback failed with error : %s", str(e)
                 )
-                print(f"Adapter event callback failed with error : {str(e)}")
 
     def _worker_manage_command(self, command: ThreadCommand[Any]) -> None:
         # pylint: disable=too-many-branches
@@ -382,7 +373,7 @@ class AdapterWorker(Generic[DataT]):
                             self._interface._worker_open()  # pylint: disable=protected-access
                         except AdapterOpenError as e:
                             self._opened = False
-                            self._worker_emit_event(AdapterClosedEvent())
+                            #self._worker_emit_event(AdapterClosedEvent())
                             raise e
                         self._opened = True
                         if self._interface.descriptor is not None:
@@ -412,7 +403,7 @@ class AdapterWorker(Generic[DataT]):
                 case IsOpenCommand():
                     command.set_result(self._opened)
                 case AddEventCallbackCommand():
-                    self._event_callbacks.append(command.event_callback)
+                    self._event_callbacks.add(command.event_callback)
                     command.set_result(None)
                 case ClearEventCallbacksCommand():
                     self._event_callbacks.clear()
@@ -534,7 +525,7 @@ class AdapterWorker(Generic[DataT]):
         if pr is None:
             return
 
-        # Resolve timeout again the same way as begin_read did
+        # Resolve timeout again the same way as begin_read  did
         cmd = pr.cmd
         if cmd.timeout is ...:
             read_timeout = self._timeout

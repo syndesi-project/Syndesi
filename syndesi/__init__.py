@@ -5,7 +5,7 @@ Syndesi module
 from .adapters.adapterworker import (
     AdapterClosedEvent,
     AdapterEvent,
-    AdapterFirstFragmentEvent,
+    AdapterFragmentEvent,
     AdapterFrameEvent,
 )
 from .adapters.ip import IP
@@ -22,7 +22,7 @@ from .protocols.scpi import SCPI
 from .protocols.protocol import Protocol
 from .drivers.driver import Driver, SubDriver
 from .drivers.scpi_driver import SCPIDriver
-from .tools.logmanager import log
+#from .tools.logmanager import log
 
 __all__ = [
     "IP",
@@ -44,7 +44,7 @@ __all__ = [
     "AdapterEvent",
     "AdapterClosedEvent",
     "AdapterFrameEvent",
-    "AdapterFirstFragmentEvent",
+    "AdapterFragmentEvent",
     "Driver",
     "SubDriver",
     "SCPIDriver"

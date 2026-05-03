@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import time
 from typing import Any, Callable, Generic, TypeVar
+import math
 
 from .adapters.stop_conditions import StopConditionType
 from .adapters.utils import TimeoutType
@@ -19,10 +20,14 @@ from .tools.errors import AdapterOpenError, AdapterReadError, WorkerThreadError
 from .tools.log_settings import LoggerAlias
 
 
+@dataclass(kw_only=True)
 class Event:
     """Generic event, used to move information asynchronously from the adapter worker thread"""
-    def __init__(self) -> None:
-        self.timestamp = time.time()
+    timestamp : float = float("nan")
+
+    def __post_init__(self) -> None:
+        if math.isnan(self.timestamp):
+            self.timestamp = time.time()
 
 class Descriptor(ABC):
     """

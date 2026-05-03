@@ -7,11 +7,13 @@ Main syndesi CLI script
 
 import argparse
 from enum import Enum
+import logging
 
+from syndesi.tools.log_settings import LoggerAlias
 from syndesi.ui.ui import main as start_ui
 
 from ..cli.shell import AdapterShell, AdapterType
-from ..tools.logmanager import log
+#from ..tools.logmanager import log
 from ..version import __version__
 
 
@@ -34,7 +36,8 @@ def main() -> None:
     )
 
     parser.add_argument("--version", action="version", version=f"Syndesi {__version__}")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-v", "--verbose", action="count", default=0, help="-v = INFO, -vv = DEBUG")
+    parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument(
         "command",
         choices=[x.value for x in SyndesiCommands],
@@ -44,8 +47,13 @@ def main() -> None:
     args, remaining_args = parser.parse_known_args()
     command = SyndesiCommands(args.command)
 
-    if args.verbose:
-        log("DEBUG", console=True)
+    if args.quiet:
+        debug_level = logging.CRITICAL
+    else:
+        debug_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
+        debug_level = debug_levels[min(args.verbose, len(debug_levels)-1)]
+
+    logging.basicConfig(level=debug_level)
 
     if command == SyndesiCommands.SERIAL:
         AdapterShell(AdapterType.SERIAL, remaining_args).run()

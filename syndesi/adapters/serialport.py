@@ -186,7 +186,6 @@ class SerialPort(BytesAdapter):
         else:
             # with self._open_ports_lock:
             #    self._open_ports.discard(self._descriptor.port)
-            self._logger.error(f"Failed to open adapter {self._descriptor}")
             raise AdapterOpenError("Unknown error")
 
     def _worker_close(self) -> None:

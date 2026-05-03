@@ -30,8 +30,6 @@ from .console import Shell
 
 HISTORY_FILE_NAME = "syndesi"
 
-logging.basicConfig(level=logging.CRITICAL + 1)
-
 class Format(Enum):
     """
     Display format
@@ -117,6 +115,8 @@ class AdapterShell:
 
     def __init__(self, kind: AdapterType, input_arguments: list[str]) -> None:
 
+        logging.basicConfig(level=logging.CRITICAL + 1)
+        
         self._parser = ArgumentParser()
         self._parser.add_argument(
             "-t",

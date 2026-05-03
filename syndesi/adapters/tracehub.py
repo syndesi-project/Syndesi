@@ -31,82 +31,67 @@ STOP_CONDITION_INDICATOR = {
     StopConditionType.TIMEOUT: "Time",
 }
 
-
 @dataclass(frozen=True)
 class TraceEvent:
     """
     Base trace event
     """
-
     descriptor: str
     timestamp: float
     t: str = field(default="", init=False)
-
 
 @dataclass(frozen=True)
 class OpenEvent(TraceEvent):
     """
     Adapter open trace event
     """
-
     t: str = field(default="open", init=False)
-
 
 @dataclass(frozen=True)
 class FragmentEvent(TraceEvent):
     """
     Fragment received trace event
     """
-
     data: str
     length: int
     write_delta: float
     t: str = field(default="fragment", init=False)
-
 
 @dataclass(frozen=True)
 class CloseEvent(TraceEvent):
     """
     Adapter close trace event
     """
-
     t: str = field(default="close", init=False)
-
 
 @dataclass(frozen=True)
 class ReadEventBytes(TraceEvent):
     """
     Adapter read trace event
     """
-
     data: str
     length: int
     stop_condition_indicator: str
     write_delta: float
     t: str = field(default="bytes_read", init=False)
 
-
 @dataclass(frozen=True)
 class WriteEvent(TraceEvent):
     """
     Adapter write trace event
     """
-
     data: str
     length: int
     t: str = field(default="write", init=False)
-
 
 @dataclass(frozen=True)
 class ReadEventMessage(TraceEvent):
     """
     Generic read event
     """
-
     message: str
     write_delta: float
     t: str = field(default="read_bytes", init=False)
-
 
 EVENTS: list[type[TraceEvent]] = [
     FragmentEvent,

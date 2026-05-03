@@ -14,6 +14,15 @@ Modes
 -----
 - interactive (default): tabs per adapter, switch with ←/→ (or h/l), quit with q.
 - flat: append-only timeline (stdout or --output file).
+
+
+Output
+------
+open  ●
+close ●
+write → <length> data
+      ↓ <length> data (frag)
+read  ← <length> data (<stop_condition>)
 """
 from __future__ import annotations
 

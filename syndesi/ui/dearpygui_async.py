@@ -62,7 +62,7 @@ class DearPyGuiAsync:
                         try:
                             await job[0](*args)
                         except Exception as e: # pylint: disable=
-                            print(e)
+                            print(f"Dearpygui execption : {e}")
                     else:
                         job[0](*args)
 
