@@ -81,10 +81,9 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         auto_open: bool = True,
     ) -> None:
         Component.__init__(self, LoggerAlias.ADAPTER)
-        #AdapterWorkerInterface.__init__(self, descriptor)
+        AdapterWorkerInterface.__init__(self)
 
         self._alias = alias
-        self._event_callbacks: list[Callable[[AdapterEvent], None]] = []
         self._worker = worker
         self._auto_open = auto_open
 

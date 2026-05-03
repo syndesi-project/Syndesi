@@ -290,7 +290,6 @@ class BytesAdapter(Adapter[bytes]):
             alias=alias,
             auto_open=auto_open,
         )
-
         # Default stop conditions
         self._initial_stop_conditions: list[StopCondition]
         if stop_conditions is ...:

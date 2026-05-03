@@ -226,6 +226,11 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 self._events.append(event_tag)
         except Exception as e:
             print(f'Exception in loop : {e}')
+            
+    def _clear_events(self):
+        for tag in self._events:
+            dpg.delete_item(tag)
+        self._events.clear()
 
     def build(self, parent : int | str) -> None:
 
@@ -275,19 +280,8 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 dpg.add_separator()
                 dpg.add_spacer(height=5)
                 dpg.add_text("Stop-conditions", color=(70, 142, 194))
-                # with dpg.group(horizontal=True):
-                #     dpg.add_button(label="Add", callback=self._add_callback)
-                #     self._combo = dpg.add_combo(
-                #         self.STOP_CONDITIONS_COMBO_ITEMS,
-                #         default_value="",
-                #         width=120
-                #     )
-                #     dpg.add_button(label="Remove", callback=self._remove_callback)
-                #     dpg.add_button(label="Update", callback=self._cache_stop_conditions_to_adapter)
                 with dpg.tab_bar(reorderable=True) as self._tab_bar:
                     ...
-
-                
 
                 dpg.add_spacer(height=5)
                 dpg.add_separator()
@@ -305,12 +299,14 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                     dpg.add_spacer(width=20)
                     with dpg.group(horizontal=False):
                         dpg.add_text("Read", color=(70, 142, 194))
-                        dpg.add_combo(label="Scope", items=[x for x in ReadScope], width=80, default_value=ReadScope.BUFFERED.value)
+                        dpg.add_combo(label="Scope", items=[x for x in ReadScope], width=150, default_value=ReadScope.BUFFERED.value)
                         dpg.add_button(label="Read", callback=self._read_callback, width=60)
                         self._read_output = dpg.add_text("")
 
                 with dpg.collapsing_header(label="Adapter events"):
-                    self._show_fragments_checkbox = dpg.add_checkbox(label="Show fragments", default_value=True)
+                    with dpg.group(horizontal=True):
+                        self._show_fragments_checkbox = dpg.add_checkbox(label="Show fragments", default_value=True)
+                        dpg.add_button(label="Clear events", callback=self._clear_events)
                     with dpg.child_window(height=100, width=-1) as self._event_window:
                         with dpg.theme() as tight:
                             with dpg.theme_component(dpg.mvAll):
@@ -421,6 +417,8 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
     def open(self) -> None:
         """Open adapter"""
+        self._clear_events()
+        self._start_timestamp = time.time()
         self._adapter_to_cache_stop_conditions()
 
         if self._adapter is not None:
@@ -509,16 +507,16 @@ class IPBlock(BytesAdapterBlock[IP]):
         
     def _build_descriptor(self, parent : int | str) -> None:
         dpg.add_text("Descriptor", color=(70, 142, 194), parent=parent)
-        self._address_input = dpg.add_input_text(
-            width=150,
-            label="Address",
-            default_value=self._adapter.descriptor.address,
-            parent=parent
-        )
-        with dpg.group(horizontal=True):
-            with dpg.group(horizontal=True, parent=parent):
-                self._port_input = dpg.add_input_text(width=100, label="Port", default_value=str(self._adapter.descriptor.port))
-                self._port_details = dpg.add_text("")
+        with dpg.group(horizontal=True, parent=parent):
+            self._address_input = dpg.add_input_text(
+                width=150,
+                label="Address",
+                default_value=self._adapter.descriptor.address,
+            )
+        #with dpg.group(horizontal=True):
+            #with dpg.group(horizontal=True, parent=parent):
+            self._port_input = dpg.add_input_text(width=100, label="Port", default_value=str(self._adapter.descriptor.port))
+            self._port_details = dpg.add_text("")
         self._transport_input = dpg.add_combo(
             parent=parent,
             label="Transport",

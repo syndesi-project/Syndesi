@@ -176,6 +176,11 @@ class AdapterWorkerInterface(Generic[DataT]):
     # def __init__(self) -> None:
     #     self._descriptor = descriptor
 
+    def __init__(self) -> None:
+        self._worker_logger = logging.getLogger(LoggerAlias.ADAPTER_WORKER.value)
+        # Events
+        self._event_callbacks: set[Callable[[AdapterEvent], None]] = set()
+
     @property
     @abstractmethod
     def descriptor(self) -> Descriptor:
@@ -195,10 +200,21 @@ class AdapterWorkerInterface(Generic[DataT]):
     def _worker_close(self) -> None:
         if self.descriptor is not None:
             tracehub.emit_close(str(self.descriptor))
+        self._worker_emit_event(AdapterClosedEvent())
 
     @abstractmethod
     def _selectable(self) -> HasFileno | None:
         """Return an object with fileno() that becomes readable when device data is available."""
+
+    def _worker_emit_event(self, event: AdapterEvent) -> None:
+        for callback in self._event_callbacks:
+            try:
+                callback(event)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Never let user callback break worker
+                self._worker_logger.exception(
+                    "Adapter event callback failed with error : %s", str(e)
+                )
 
 
 # pylint: disable=too-many-instance-attributes
@@ -240,9 +256,6 @@ class AdapterWorker(Generic[DataT]):
             target=self._worker_thread_method, daemon=True
         )
         self._worker_thread.start()
-
-        # Events
-        self._event_callbacks: set[Callable[[AdapterEvent], None]] = set()
 
     # ┌─────────────────┐
     # │ Worker plumbing │
@@ -341,15 +354,7 @@ class AdapterWorker(Generic[DataT]):
         ):
             raise AdapterOpenError("Descriptor not initialized")
 
-    def _worker_emit_event(self, event: AdapterEvent) -> None:
-        for callback in self._event_callbacks:
-            try:
-                callback(event)
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                # Never let user callback break worker
-                self._worker_logger.exception(
-                    "Adapter event callback failed with error : %s", str(e)
-                )
+    
 
     def _worker_manage_command(self, command: ThreadCommand[Any]) -> None:
         # pylint: disable=too-many-branches
@@ -378,13 +383,13 @@ class AdapterWorker(Generic[DataT]):
                         self._opened = True
                         if self._interface.descriptor is not None:
                             tracehub.emit_open(str(self._interface.descriptor))
-                        self._worker_emit_event(AdapterOpenedEvent())
+                        self._interface._worker_emit_event(AdapterOpenedEvent())
                         self._first_opened = True
                     command.set_result(None)
                 case CloseCommand():
                     self._interface._worker_close()  # pylint: disable=protected-access
                     self._opened = False
-                    self._worker_emit_event(AdapterClosedEvent())
+                    #self._worker_emit_event(AdapterClosedEvent())
                     self._frame_buffer.clear()
                     # Cancel any pending read
                     if self._pending_read is not None:
@@ -403,10 +408,10 @@ class AdapterWorker(Generic[DataT]):
                 case IsOpenCommand():
                     command.set_result(self._opened)
                 case AddEventCallbackCommand():
-                    self._event_callbacks.add(command.event_callback)
+                    self._interface._event_callbacks.add(command.event_callback)
                     command.set_result(None)
                 case ClearEventCallbacksCommand():
-                    self._event_callbacks.clear()
+                    self._interface._event_callbacks.clear()
                     command.set_result(None)
                 case ReadCommand():
                     if self._last_write_timestamp is None and command.scope == ReadScope.LAST_WRITE:
@@ -490,7 +495,7 @@ class AdapterWorker(Generic[DataT]):
         - else buffer it
         - always emit callback event (if configured)
         """
-        self._worker_emit_event(AdapterFrameEvent(frame))
+        self._interface._worker_emit_event(AdapterFrameEvent(frame))
         if self._interface.descriptor is not None:
             tracehub.emit_frame(str(self._interface.descriptor), frame)
 

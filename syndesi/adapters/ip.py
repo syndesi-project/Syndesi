@@ -179,10 +179,9 @@ class IP(BytesAdapter):
     def _worker_read(self, fragment_timestamp: float) -> BytesFragment:
         if self._socket is None:
             return Fragment(b"", fragment_timestamp)
-
         try:
             data = self._socket.recv(BUFFER_SIZE)
-        except (ConnectionRefusedError, OSError):
+        except (ConnectionRefusedError, OSError) as e:
             fragment = Fragment(b"", fragment_timestamp)
         else:
             if data == b"":
