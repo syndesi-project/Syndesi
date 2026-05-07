@@ -16,6 +16,7 @@ from syndesi.component import Descriptor
 from syndesi.tools.errors import (
     AdapterDisconnected,
     AdapterOpenError,
+    AdapterReadError,
     AdapterWriteError,
 )
 
@@ -178,11 +179,12 @@ class IP(BytesAdapter):
 
     def _worker_read(self, fragment_timestamp: float) -> BytesFragment:
         if self._socket is None:
-            return Fragment(b"", fragment_timestamp)
+            raise AdapterDisconnected()
         try:
             data = self._socket.recv(BUFFER_SIZE)
         except (ConnectionRefusedError, OSError) as e:
-            fragment = Fragment(b"", fragment_timestamp)
+            raise AdapterReadError() from e
+            #fragment = Fragment(b"", fragment_timestamp)
         else:
             if data == b"":
                 raise AdapterDisconnected()
@@ -200,20 +202,22 @@ class IP(BytesAdapter):
     def _worker_open(self) -> None:
         # Create the socket instance
         if self._descriptor.transport == IPDescriptor.Transport.TCP:
-            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         elif self._descriptor.transport == IPDescriptor.Transport.UDP:
-            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         else:
             raise AdapterOpenError("Invalid transport protocol")
         try:
-            self._socket.settimeout(self.WorkerTimeout.OPEN.value)
-            self._socket.connect((self._descriptor.address, self._descriptor.port))
+            s.settimeout(self.WorkerTimeout.OPEN.value)
+            s.connect((self._descriptor.address, self._descriptor.port))
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:
             self._opened = False
             msg = f"Failed to open adapter {self._descriptor} ({e})"
-            self._logger.error(msg)
             raise AdapterOpenError(msg) from None
 
+        # We only set the socket on success to prevent the worker thread
+        # from sending events before the adapter is opened
+        self._socket = s
         self._logger.info(f"IP Adapter {self._descriptor} opened")
 
     def _worker_close(self) -> None:

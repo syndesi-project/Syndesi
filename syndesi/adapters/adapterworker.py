@@ -28,6 +28,7 @@ from ..tools.errors import (
     AdapterOpenError,
     AdapterReadError,
     AdapterTimeoutError,
+    AdapterWriteError,
     WorkerThreadError,
 )
 from .tracehub import tracehub
@@ -320,7 +321,10 @@ class AdapterWorker(Generic[DataT]):
                     # pylint: disable=protected-access
                     try:
                         frag = self._interface._worker_read(t)
-                    except AdapterDisconnected:
+                    except (AdapterDisconnected, AdapterReadError) as e:
+                        if self._pending_read is not None:
+                            self._pending_read.cmd.set_exception(e)
+                            self._pending_read = None
                         self._interface._worker_close()
                     else:
                         self._worker_manage_fragment(frag)
@@ -343,6 +347,8 @@ class AdapterWorker(Generic[DataT]):
 
     def stop(self) -> None:
         """Stop the worker"""
+        # This method is run by the worker thread, so to stop it we use the
+        # thread_running attribute
         self._thread_running = False
         self._command_queue_r.close()
         self._command_queue_w.close()
@@ -362,13 +368,17 @@ class AdapterWorker(Generic[DataT]):
             match command:
                 case WriteCommand():
                     self._last_write_timestamp = time.time()
-                    if self._interface.descriptor is not None:
+                    if self._interface.descriptor is None: # pylint: disable=protected-access
+                        command.set_exception(AdapterWriteError("Missing descriptor"))
+                    elif not self._opened:
+                        command.set_exception(AdapterWriteError("Adapter is not opened"))
+                    else:
                         tracehub.emit_write(
                             str(self._interface.descriptor), command.data
                         )
-                    # pylint: disable=protected-access
-                    self._interface._worker_write(command.data)
-                    command.set_result(None)
+                        # pylint: disable=protected-access
+                        self._interface._worker_write(command.data)
+                        command.set_result(None)
                 case OpenCommand():
                     if self._opened:
                         self._worker_logger.warning("Adapter already opened")
@@ -378,14 +388,16 @@ class AdapterWorker(Generic[DataT]):
                             self._interface._worker_open()  # pylint: disable=protected-access
                         except AdapterOpenError as e:
                             self._opened = False
-                            #self._worker_emit_event(AdapterClosedEvent())
-                            raise e
-                        self._opened = True
-                        if self._interface.descriptor is not None:
-                            tracehub.emit_open(str(self._interface.descriptor))
-                        self._interface._worker_emit_event(AdapterOpenedEvent())
-                        self._first_opened = True
-                    command.set_result(None)
+                            self._worker_logger.error(str(e))
+                            command.set_exception(e)
+                        else:
+                            self._opened = True
+                            if self._interface.descriptor is not None:
+                                tracehub.emit_open(str(self._interface.descriptor))
+                            # pylint: disable=protected-access 
+                            self._interface._worker_emit_event(AdapterOpenedEvent())
+                            self._first_opened = True
+                            command.set_result(None)
                 case CloseCommand():
                     self._interface._worker_close()  # pylint: disable=protected-access
                     self._opened = False

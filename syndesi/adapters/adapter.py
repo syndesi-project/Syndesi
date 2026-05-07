@@ -124,7 +124,6 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
     # └──────────────────────────┘
 
     def _stop(self) -> None:
-        self._worker.stop()
         cmd = StopThreadCommand()
         self._worker.send_command(cmd)
         try:
@@ -213,7 +212,8 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         """
         Open adapter communication with the target (blocking)
         """
-        return self._open_future().result(self.WorkerTimeout.OPEN.value)
+        output = self._open_future().result(self.WorkerTimeout.OPEN.value)
+        return output
 
     async def aopen(self) -> None:
         """

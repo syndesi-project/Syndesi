@@ -29,7 +29,6 @@ from ..adapters.ip import IP, IPDescriptor
 from ..adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterFrameEvent, AdapterOpenedEvent
 from ..component import ReadScope
 
-
 from .tools import Block, _hsv_to_rgb
 
 StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
@@ -227,7 +226,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         except Exception as e:
             print(f'Exception in loop : {e}')
             
-    def _clear_events(self):
+    def _clear_events(self) -> None:
         for tag in self._events:
             dpg.delete_item(tag)
         self._events.clear()
@@ -264,10 +263,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 label=self._title,
                 default_open=True
             ) as self._header:
-                
-
-                with dpg.group(horizontal=True):
-                    self.close()
                 self._build_descriptor(self._header)
                 timeout = self._adapter.default_timeout()
                 self._timeout_input = dpg.add_input_float(
@@ -289,19 +284,24 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
                 with dpg.group(horizontal=True):
                     with dpg.group(horizontal=False):
-                        dpg.add_text("Write", color=(70, 142, 194))
+                        #dpg.add_text("Write", color=(70, 142, 194))
                         dpg.add_button(label="Write", callback=self._write_callback, width=60)
                         with dpg.group(horizontal=True):        
-                            dpg.add_text("b'")
+                            dpg.add_text("b'", color=(127,127,127))
                             self._write_input = dpg.add_input_text(width=200)
-                            dpg.add_text("'")
+                            dpg.add_text("'", color=(127,127,127))
                         self._write_status = dpg.add_text("")
                     dpg.add_spacer(width=20)
                     with dpg.group(horizontal=False):
-                        dpg.add_text("Read", color=(70, 142, 194))
-                        dpg.add_combo(label="Scope", items=[x for x in ReadScope], width=150, default_value=ReadScope.BUFFERED.value)
-                        dpg.add_button(label="Read", callback=self._read_callback, width=60)
-                        self._read_output = dpg.add_text("")
+                        #dpg.add_text("Read", color=(70, 142, 194))
+                        with dpg.group(horizontal=True):
+                            dpg.add_button(label="Read", callback=self._read_callback, width=60)
+                            dpg.add_combo(label="Scope", items=[x for x in ReadScope], width=150, default_value=ReadScope.BUFFERED.value)
+                        #self._read_output = dpg.add_text("")
+                        with dpg.group(horizontal=True):
+                            dpg.add_text("b'", color=(127,127,127))
+                            self._read_output = dpg.add_input_text(readonly=True, width=200)
+                            dpg.add_text("'", color=(127,127,127))
 
                 with dpg.collapsing_header(label="Adapter events"):
                     with dpg.group(horizontal=True):
@@ -337,7 +337,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
             if dpg.is_item_hovered(block.tab):
                 self._right_clicked_tab = block
                 dpg.show_item(self._edit_stop_condition_popup)
-                
 
     def _build_tabs(self) -> None:
         slots = dpg.get_item_children(self._tab_bar)
@@ -389,8 +388,11 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
             self._adapter.write(data)
         except AdapterWriteError as e:
             dpg.set_value(self._write_status, str(e))
+            dpg.configure_item(self._write_status, color=(255,0,0))
         else:
-            dpg.set_value(self._write_status, "")
+            t_delta = time.time() - self._start_timestamp
+            dpg.set_value(self._write_status, f"Written {repr(data)} at {t_delta:+.3f}s")
+            dpg.configure_item(self._write_status, color=(30, 199, 38))
 
     def _remove_stop_condition_callback(self) -> None:
         if self._right_clicked_tab is not None:
@@ -398,9 +400,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         
         self._build_tabs()
 
-
     def _remove_callback(self) -> None:
-        
         self._cache_stop_conditions_to_adapter()
 
     def _status(self, opened : bool, text : str = "") -> None:
@@ -420,6 +420,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         self._clear_events()
         self._start_timestamp = time.time()
         self._adapter_to_cache_stop_conditions()
+        dpg.set_value(self._write_status, "")
 
         if self._adapter is not None:
             self._adapter.register_event_callback(self._on_adapter_event)
