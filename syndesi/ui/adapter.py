@@ -29,11 +29,15 @@ from ..adapters.ip import IP, IPDescriptor
 from ..adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterFrameEvent, AdapterOpenedEvent
 from ..component import ReadScope
 
-from .tools import Block, _hsv_to_rgb
+from .tools import Block, _help, _hsv_to_rgb
 
 StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
 
 loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+
+
+def bytes_help():
+    _help("bytes formatting can be used such as \\n and \\r")
 
 class StopConditionBlock(Generic[StopConditionT], Block):
     """Single stop-condition block (tab)"""
@@ -62,13 +66,14 @@ class TerminationBlock(StopConditionBlock[Termination]):
     def build(self, parent : int | str) -> None:
         with dpg.tab(label=str(self._stop_condition), parent=parent) as self.tab:
             with dpg.group(horizontal=True):
-                dpg.add_text("b'")
                 self._termination_input = dpg.add_input_text(
                     label="Termination",
                     callback=self._termination_callback,
                     default_value=repr(self._stop_condition.sequence)[2:-1]
                 )
-                dpg.add_text("'")
+                bytes_help()
+                
+
             self._error_text = dpg.add_text("", color=(255,0,0), show=False)
 
         self.items += [self._termination_input, self._error_text, self.tab]
@@ -168,6 +173,8 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
     #on_open : Callable[[], None] | None = None
     STOP_CONDITIONS = [x for x in StopConditionType if x != StopConditionType.TIMEOUT]
 
+    N_WRITE_LINES = 5
+
     def __init__(self, title : str) -> None:
         self._status_text : int | str = 0
         self._stop_conditions_cache : list[StopConditionBlock[Any]] = []
@@ -231,9 +238,13 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
             dpg.delete_item(tag)
         self._events.clear()
 
-    def build(self, parent : int | str) -> None:
+    def _write_advanced_callback(self):
+        ..
 
+    def build(self, parent : int | str) -> None:
         with dpg.group(parent=parent):
+            # with dpg.menu_bar():
+            #     dpg.add_menu_item(label="Adapter")
             with dpg.handler_registry():
                 dpg.add_mouse_click_handler(dpg.mvMouseButton_Right, callback=self._right_click)
                 dpg.add_mouse_click_handler(dpg.mvMouseButton_Left, callback=self._left_click)
@@ -263,45 +274,56 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 label=self._title,
                 default_open=True
             ) as self._header:
-                self._build_descriptor(self._header)
-                timeout = self._adapter.default_timeout()
-                self._timeout_input = dpg.add_input_float(
-                    label="Timeout",
-                    default_value=timeout if timeout is not None else -1,
-                    width=100
-                )
-                
-                dpg.add_spacer(height=5)
-                dpg.add_separator()
-                dpg.add_spacer(height=5)
-                dpg.add_text("Stop-conditions", color=(70, 142, 194))
-                with dpg.tab_bar(reorderable=True) as self._tab_bar:
-                    ...
+                with dpg.group(horizontal=True):
+                    with dpg.group(horizontal=False):
+                        self._build_descriptor(dpg.last_item())
+                        timeout = self._adapter.default_timeout()
+                        self._timeout_input = dpg.add_input_float(
+                            label="Timeout",
+                            default_value=timeout if timeout is not None else -1,
+                            width=100
+                        )
+                    dpg.add_spacer(width=5)
+                    with dpg.group(horizontal=False):
+                        dpg.add_text("Stop-conditions", color=(70, 142, 194))
+                        with dpg.tab_bar(reorderable=True) as self._tab_bar:
+                            ...
 
                 dpg.add_spacer(height=5)
                 dpg.add_separator()
                 dpg.add_spacer(height=5)
 
                 with dpg.group(horizontal=True):
-                    with dpg.group(horizontal=False):
-                        #dpg.add_text("Write", color=(70, 142, 194))
-                        dpg.add_button(label="Write", callback=self._write_callback, width=60)
-                        with dpg.group(horizontal=True):        
-                            dpg.add_text("b'", color=(127,127,127))
-                            self._write_input = dpg.add_input_text(width=200)
-                            dpg.add_text("'", color=(127,127,127))
-                        self._write_status = dpg.add_text("")
+                    dpg.add_text("Write", color=(70, 142, 194))
+                    dpg.add_spacer(width=200)
+                    dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
+
+                
+                self._write_input : dict[int, int | str] = {}
+                self._write_group : dict[int, int | str] = {}
+                with dpg.group(horizontal=False):
+                    for i in range(self.N_WRITE_LINES):
+                        with dpg.group(horizontal=True, show=i==0):
+                            self._write_group[i] = dpg.last_item()
+                            dpg.add_button(label="Write", callback=self._write_callback, width=60, user_data=i)
+                            self._write_input[i] = dpg.add_input_text(width=200)
+                            if i == 0:
+                                bytes_help()
+
+                self._write_status = dpg.add_text("")
+
+
+                with dpg.group(horizontal=True):
                     dpg.add_spacer(width=20)
                     with dpg.group(horizontal=False):
                         #dpg.add_text("Read", color=(70, 142, 194))
                         with dpg.group(horizontal=True):
                             dpg.add_button(label="Read", callback=self._read_callback, width=60)
-                            dpg.add_combo(label="Scope", items=[x for x in ReadScope], width=150, default_value=ReadScope.BUFFERED.value)
+                            dpg.add_combo(label="Scope", items=[x for x in ReadScope], width=132, default_value=ReadScope.BUFFERED.value)
                         #self._read_output = dpg.add_text("")
                         with dpg.group(horizontal=True):
-                            dpg.add_text("b'", color=(127,127,127))
                             self._read_output = dpg.add_input_text(readonly=True, width=200)
-                            dpg.add_text("'", color=(127,127,127))
+                            bytes_help()
 
                 with dpg.collapsing_header(label="Adapter events"):
                     with dpg.group(horizontal=True):
@@ -371,7 +393,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
     async def _read_task(self) -> None:
         self._read_task_running = True
-        dpg.configure_item(self._read_output, color=None)
             
         while self._read_task_running:
             dpg.set_value(self._read_output, f"{time.time() - self._read_start:.3f}s")
@@ -508,12 +529,12 @@ class IPBlock(BytesAdapterBlock[IP]):
         
     def _build_descriptor(self, parent : int | str) -> None:
         dpg.add_text("Descriptor", color=(70, 142, 194), parent=parent)
+        self._address_input = dpg.add_input_text(
+            width=150,
+            label="Address",
+            default_value=self._adapter.descriptor.address,
+        )
         with dpg.group(horizontal=True, parent=parent):
-            self._address_input = dpg.add_input_text(
-                width=150,
-                label="Address",
-                default_value=self._adapter.descriptor.address,
-            )
         #with dpg.group(horizontal=True):
             #with dpg.group(horizontal=True, parent=parent):
             self._port_input = dpg.add_input_text(width=100, label="Port", default_value=str(self._adapter.descriptor.port))

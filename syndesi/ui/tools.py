@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 import inspect
 from typing import Any, get_type_hints
 import sys
+import dearpygui.dearpygui as dpg
 
 # From dearpygui's demo.py
 def _hsv_to_rgb(h : float, s : float, v : float) -> tuple[float, float, float]:
@@ -31,6 +32,14 @@ def _hsv_to_rgb(h : float, s : float, v : float) -> tuple[float, float, float]:
     if i == 5:
         return (255*v, 255*p, 255*q)
     return (0,0,0)
+
+def _help(message):
+    last_item = dpg.last_item()
+    with dpg.group(horizontal=True) as group:
+        dpg.move_item(last_item, parent=group)
+        t = dpg.add_text("(?)", color=[0, 255, 0])
+        with dpg.tooltip(t):
+            dpg.add_text(message)
 
 def get_method_arguments(
         cls: type,
