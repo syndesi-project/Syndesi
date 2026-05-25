@@ -22,7 +22,7 @@ from typing import Any, Generic, TypeVar
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.tools.log_settings import LoggerAlias
 
-from ..component import Descriptor, Event, Frame, ReadScope, ThreadCommand
+from ..component import Descriptor, Event, Frame, ReadFrame, ReadScope, ThreadCommand, WriteFrame
 from ..tools.errors import (
     AdapterDisconnected,
     AdapterOpenError,
@@ -50,11 +50,15 @@ class AdapterClosedEvent(AdapterEvent):
 class AdapterOpenedEvent(AdapterEvent):
     """Adapter opened event"""
 
+@dataclass
+class AdapterWriteEvent(Generic[DataT], AdapterEvent):
+    """Adapter write event, emitted when data has been written"""
+    frame: WriteFrame[DataT]
 
 @dataclass
-class AdapterFrameEvent(Generic[DataT], AdapterEvent):
+class AdapterReadEvent(Generic[DataT], AdapterEvent):
     """Adapter frame event, emitted when new data is available"""
-    frame: Frame[DataT]
+    frame: ReadFrame[DataT]
 
 @dataclass
 class AdapterFragmentEvent(Generic[DataT], AdapterEvent):
@@ -107,9 +111,9 @@ class ClearEventCallbacksCommand(ThreadCommand[None]):
 class WriteCommand(Generic[DataT], ThreadCommand[None]):
     """Write data to the adapter"""
 
-    def __init__(self, data: DataT) -> None:
+    def __init__(self, frame: WriteFrame[DataT]) -> None:
         super().__init__()
-        self.data = data
+        self.frame = frame
 
 
 class SetTimeoutCommand(ThreadCommand[None]):
@@ -124,7 +128,7 @@ class IsOpenCommand(ThreadCommand[bool]):
     """Return True if the adapter is opened"""
 
 
-class ReadCommand(Generic[DataT], ThreadCommand[Frame[DataT]]):
+class ReadCommand(Generic[DataT], ThreadCommand[ReadFrame[DataT]]):
     """
     Read a frame (detailed) from the adapter.
 
@@ -230,7 +234,7 @@ class AdapterWorker(Generic[DataT]):
         self._worker_logger = logging.getLogger(LoggerAlias.ADAPTER_WORKER.value)
 
         # Frames
-        self._frame_buffer: deque[Frame[DataT]] = deque(maxlen=self._FRAME_BUFFER_MAX)
+        self.frame_buffer: deque[ReadFrame[DataT]] = deque(maxlen=self._FRAME_BUFFER_MAX)
 
         # Stop-conditions
         self._stop_conditions: list[StopCondition] = []
@@ -373,11 +377,12 @@ class AdapterWorker(Generic[DataT]):
                     elif not self._opened:
                         command.set_exception(AdapterWriteError("Adapter is not opened"))
                     else:
-                        tracehub.emit_write(
-                            str(self._interface.descriptor), command.data
+                        tracehub.emit_write_frame(
+                            str(self._interface.descriptor), command.frame
                         )
+                        self._interface._worker_emit_event(AdapterWriteEvent(command.frame))
                         # pylint: disable=protected-access
-                        self._interface._worker_write(command.data)
+                        self._interface._worker_write(command.frame.data)
                         command.set_result(None)
                 case OpenCommand():
                     if self._opened:
@@ -402,7 +407,7 @@ class AdapterWorker(Generic[DataT]):
                     self._interface._worker_close()  # pylint: disable=protected-access
                     self._opened = False
                     #self._worker_emit_event(AdapterClosedEvent())
-                    self._frame_buffer.clear()
+                    self.frame_buffer.clear()
                     # Cancel any pending read
                     if self._pending_read is not None:
                         self._pending_read.cmd.set_exception(AdapterDisconnected())
@@ -412,7 +417,7 @@ class AdapterWorker(Generic[DataT]):
                     self.stop()
                     command.set_result(None)
                 case FlushReadCommand():
-                    self._frame_buffer.clear()
+                    self.frame_buffer.clear()
                     command.set_result(None)
                 case SetTimeoutCommand():
                     self._timeout = command.timeout
@@ -458,8 +463,8 @@ class AdapterWorker(Generic[DataT]):
             return
 
         # If buffered scope, serve immediately from buffer if available
-        if cmd.scope == ReadScope.BUFFERED and len(self._frame_buffer) > 0:
-            frame = self._frame_buffer.popleft()
+        if cmd.scope == ReadScope.BUFFERED and len(self.frame_buffer) > 0:
+            frame = self.frame_buffer.popleft()
             cmd.set_result(frame)
             return
 
@@ -500,16 +505,16 @@ class AdapterWorker(Generic[DataT]):
     @abstractmethod
     def _worker_manage_fragment(self, fragment: Fragment[DataT]) -> None: ...
 
-    def _worker_deliver_frame(self, frame: Frame[DataT]) -> None:
+    def _worker_deliver_frame(self, frame: ReadFrame[DataT]) -> None:
         """
         Route a completed frame:
         - complete pending read if it matches scope/time rules
         - else buffer it
         - always emit callback event (if configured)
         """
-        self._interface._worker_emit_event(AdapterFrameEvent(frame))
+        self._interface._worker_emit_event(AdapterReadEvent(frame))
         if self._interface.descriptor is not None:
-            tracehub.emit_frame(str(self._interface.descriptor), frame)
+            tracehub.emit_read_frame(str(self._interface.descriptor), frame)
 
         pr = self._pending_read
         qualifies = False
@@ -531,7 +536,7 @@ class AdapterWorker(Generic[DataT]):
                 return
 
         # Not consumed by a pending read => buffer it
-        self._frame_buffer.append(frame)
+        self.frame_buffer.append(frame)
 
 
     def _worker_fail_pending_read_timeout(self) -> None:

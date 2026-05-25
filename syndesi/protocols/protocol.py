@@ -14,11 +14,11 @@ from typing import Callable, Generic, TypeVar
 from syndesi.adapters.adapterworker import (
     AdapterClosedEvent,
     AdapterEvent,
-    AdapterFrameEvent,
+    AdapterReadEvent,
 )
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.adapters.utils import TimeoutType
-from syndesi.component import Component, Event, Frame, ReadScope
+from syndesi.component import Component, Event, ReadFrame, ReadScope
 
 from ..adapters.adapter import Adapter
 from ..tools.log_settings import LoggerAlias
@@ -30,7 +30,7 @@ AdapterDataT = TypeVar("AdapterDataT")
 
 
 @dataclass
-class ProtocolFrame(Generic[ProtocolFrameT], Frame[ProtocolFrameT]):
+class ProtocolReadFrame(Generic[ProtocolFrameT], ReadFrame[ProtocolFrameT]):
     """
     Adapter signal containing received data
     """
@@ -54,7 +54,7 @@ class ProtocolDisconnectedEvent(ProtocolEvent):
 class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
     """Protocol frame event"""
 
-    frame: ProtocolFrame[ProtocolFrameT]
+    frame: ProtocolReadFrame[ProtocolFrameT]
 
 
 class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT]):
@@ -92,7 +92,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
             output_event: ProtocolEvent | None = None
             if isinstance(event, AdapterClosedEvent):
                 output_event = ProtocolDisconnectedEvent()
-            if isinstance(event, AdapterFrameEvent):
+            if isinstance(event, AdapterReadEvent):
                 output_event = ProtocolFrameEvent(
                     frame=self._adapter_to_protocol(event.frame)
                 )
@@ -102,8 +102,8 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
 
     @abstractmethod
     def _adapter_to_protocol(
-        self, adapter_frame: Frame[AdapterDataT]
-    ) -> ProtocolFrame[ProtocolFrameT]: ...
+        self, adapter_frame: ReadFrame[AdapterDataT]
+    ) -> ProtocolReadFrame[ProtocolFrameT]: ...
 
     @abstractmethod
     def _protocol_to_adapter(
@@ -155,7 +155,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         timeout: TimeoutType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> ProtocolFrame[ProtocolFrameT]:
+    ) -> ProtocolReadFrame[ProtocolFrameT]:
         adapter_frame = await self._adapter.aread_detailed(
             timeout=timeout, stop_conditions=stop_conditions, scope=scope
         )
@@ -166,7 +166,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         timeout: TimeoutType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> ProtocolFrame[ProtocolFrameT]:
+    ) -> ProtocolReadFrame[ProtocolFrameT]:
         adapter_frame = self._adapter.read_detailed(
             timeout=timeout, scope=scope, stop_conditions=stop_conditions
         )
@@ -226,7 +226,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> ProtocolFrame[ProtocolFrameT]:
+    ) -> ProtocolReadFrame[ProtocolFrameT]:
         await self.aflush_read()
         await self.awrite(payload)
         return await self.aread_detailed(
@@ -239,7 +239,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> ProtocolFrame[ProtocolFrameT]:
+    ) -> ProtocolReadFrame[ProtocolFrameT]:
         self.flush_read()
         self.write(payload)
         return self.read_detailed(

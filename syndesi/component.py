@@ -58,8 +58,10 @@ class Frame(Generic[DataT]):
     """
     A complete frame of data
     """
-
     data: DataT
+    
+@dataclass
+class ReadFrame(Generic[DataT], Frame[DataT]):
     stop_timestamp: float
     previous_read_buffer_used: bool
     response_delay: float
@@ -67,7 +69,14 @@ class Frame(Generic[DataT]):
     first_fragment_timestamp: float = float("nan")
 
     def __str__(self) -> str:
-        return f"Frame({self.data})"
+        return f"ReadFrame({self.data})"
+
+@dataclass
+class WriteFrame(Generic[DataT], Frame[DataT]):
+
+    def __str__(self) -> str:
+        return f"WriteFrame({self.data})"
+
 
 
 class EmptyFrame(AdapterReadError):
@@ -181,7 +190,7 @@ class Component(ABC, Generic[DataT]):
         self,
         timeout: TimeoutType = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> Frame[DataT]:
+    ) -> ReadFrame[DataT]:
         """Asynchronously read data from the component and return a Frame object"""
 
     @abstractmethod
@@ -189,7 +198,7 @@ class Component(ABC, Generic[DataT]):
         self,
         timeout: TimeoutType = ...,
         scope: str = ReadScope.BUFFERED.value,
-    ) -> Frame[DataT]:
+    ) -> ReadFrame[DataT]:
         """Read data from the component and return a Frame object"""
 
     # ==== read ====
@@ -238,7 +247,7 @@ class Component(ABC, Generic[DataT]):
         payload: DataT,
         timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
-    ) -> Frame[DataT]:
+    ) -> ReadFrame[DataT]:
         """
         Asynchronously query the component and return a Frame object
         """
@@ -249,7 +258,7 @@ class Component(ABC, Generic[DataT]):
         payload: DataT,
         timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
-    ) -> Frame[DataT]:
+    ) -> ReadFrame[DataT]:
         """
         Synchronously query the component and return a Frame object
         """

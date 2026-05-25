@@ -5,6 +5,7 @@
 Adapter UI elements
 """
 
+import traceback
 from typing import Generic, TypeVar, Any
 import time
 import asyncio
@@ -26,7 +27,7 @@ from ..adapters.stop_conditions import (
 
 from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP, IPDescriptor
-from ..adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterFrameEvent, AdapterOpenedEvent
+from ..adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterReadEvent, AdapterOpenedEvent, AdapterWriteEvent
 from ..component import ReadScope
 
 from .tools import Block, _help, _hsv_to_rgb
@@ -68,6 +69,7 @@ class TerminationBlock(StopConditionBlock[Termination]):
             with dpg.group(horizontal=True):
                 self._termination_input = dpg.add_input_text(
                     label="Termination",
+                    width=100,
                     callback=self._termination_callback,
                     default_value=repr(self._stop_condition.sequence)[2:-1]
                 )
@@ -102,6 +104,7 @@ class LengthBlock(StopConditionBlock[Length]):
         with dpg.tab(label=str(self._stop_condition), parent=parent) as self.tab:
             self._length_input = dpg.add_input_int(
                 label="Length",
+                width=100,
                 callback=self._length_callback,
                 default_value=self._stop_condition.n
             )
@@ -147,6 +150,7 @@ class TotalBlock(StopConditionBlock[Total]):
             self._total_input = dpg.add_input_float(
                 label="Total time [s]",
                 min_value=0,
+                width=100,
                 min_clamped=True,
                 default_value=self._stop_condition.total,
                 callback=self._total_callback
@@ -171,6 +175,8 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
     _adapter : AdapterT
     #on_close : Callable[[], None] | None = None
     #on_open : Callable[[], None] | None = None
+    DEFAULT_TIMEOUT = 0
+
     STOP_CONDITIONS = [x for x in StopConditionType if x != StopConditionType.TIMEOUT]
 
     N_WRITE_LINES = 5
@@ -182,7 +188,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         self._combo : int | str = -1
         self._timeout_input : int | str = -1
         self._title = title
-        self._write_input : int | str = -1
+        #self._write_input : int | str = -1
         self._write_status : int | str = -1
         self._read_output : int | str = -1
         self._read_start : float = 0
@@ -194,6 +200,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         self._start_timestamp = time.time()
         self._add_tab : int | str = -1
         self._right_clicked_tab : StopConditionBlock[Any] | None = None
+        self._buffer_items : list[int | str] = []
 
         self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
 
@@ -220,26 +227,48 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 elif isinstance(event, AdapterOpenedEvent):
                     dpg.add_text("● open", color=(30, 199, 38), parent=event_tag)
 
-                elif isinstance(event, AdapterFrameEvent):
-                    dpg.add_text(f"← read {event.frame.data!r}", parent=event_tag)
+                elif isinstance(event, AdapterReadEvent):
+                    dpg.add_text(f"← read  {event.frame.data!r}", parent=event_tag)
                 elif isinstance(event, AdapterFragmentEvent) and dpg.get_value(self._show_fragments_checkbox):
                     first_indicator = "*" if event.first else ""
                     dpg.add_text(f"↓    {event.fragment} ({first_indicator}frag)", parent=event_tag)
-
+                elif isinstance(event, AdapterWriteEvent):
+                    dpg.add_text(f"→ write {event.frame.data!r}", parent=event_tag)
                 else:
                     dpg.add_text("Unknown event", color=(255, 0, 0))
-                
                 self._events.append(event_tag)
+
+                self._update_buffer()
         except Exception as e:
-            print(f'Exception in loop : {e}')
+            print(f'Exception in loop : {traceback.format_exc()}')
+
+
+
+    def _update_buffer(self):
+        print(f'Clear buffer')
+        for tag in self._buffer_items:
+            dpg.delete_item(tag)
+        self._buffer_items.clear()
+        
+        if self._adapter is None:
+            return
+        
+        else:
+            for frame in self._adapter.frame_buffer:
+                print(f'Add buffer frame : {frame}')
+                self._buffer_items.append(dpg.add_text(str(frame.data), parent=self._buffer_group))
             
     def _clear_events(self) -> None:
         for tag in self._events:
             dpg.delete_item(tag)
         self._events.clear()
 
-    def _write_advanced_callback(self):
-        ..
+    def _write_advanced_callback(self, sender : int | str, enabled : bool):
+        for i in range(1, self.N_WRITE_LINES):
+            if enabled:
+                dpg.show_item(self._write_group[i])
+            else:
+                dpg.hide_item(self._write_group[i])
 
     def build(self, parent : int | str) -> None:
         with dpg.group(parent=parent):
@@ -274,70 +303,84 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 label=self._title,
                 default_open=True
             ) as self._header:
-                with dpg.group(horizontal=True):
-                    with dpg.group(horizontal=False):
-                        self._build_descriptor(dpg.last_item())
-                        timeout = self._adapter.default_timeout()
-                        self._timeout_input = dpg.add_input_float(
-                            label="Timeout",
-                            default_value=timeout if timeout is not None else -1,
-                            width=100
-                        )
-                    dpg.add_spacer(width=5)
-                    with dpg.group(horizontal=False):
-                        dpg.add_text("Stop-conditions", color=(70, 142, 194))
-                        with dpg.tab_bar(reorderable=True) as self._tab_bar:
-                            ...
-
+                with dpg.table(header_row=False, resizable=False,
+                            policy=dpg.mvTable_SizingStretchSame):
+                    dpg.add_table_column()
+                    dpg.add_table_column()
+                    
+                    with dpg.table_row():
+                        with dpg.table_cell():
+                            with dpg.group(horizontal=False):
+                                self._build_descriptor(dpg.last_item())
+                                #timeout = self._adapter.default_timeout()
+                                self._timeout_input = dpg.add_input_float(
+                                    label="Timeout",
+                                    default_value=self.DEFAULT_TIMEOUT,#timeout if timeout is not None else -1,
+                                    width=100
+                                )
+                        with dpg.table_cell():
+                            with dpg.group(horizontal=True):
+                                dpg.add_spacer(width=5)
+                                with dpg.group(horizontal=False):
+                                    dpg.add_text("Stop-conditions", color=(70, 142, 194))
+                                    with dpg.tab_bar(reorderable=True) as self._tab_bar:
+                                        ...
+                    
                 dpg.add_spacer(height=5)
                 dpg.add_separator()
                 dpg.add_spacer(height=5)
 
-                with dpg.group(horizontal=True):
-                    dpg.add_text("Write", color=(70, 142, 194))
-                    dpg.add_spacer(width=200)
-                    dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
+                #with dpg.group(horizontal=True):
+                dpg.add_text("Write", color=(70, 142, 194))
+                dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
 
                 
                 self._write_input : dict[int, int | str] = {}
                 self._write_group : dict[int, int | str] = {}
-                with dpg.group(horizontal=False):
-                    for i in range(self.N_WRITE_LINES):
-                        with dpg.group(horizontal=True, show=i==0):
-                            self._write_group[i] = dpg.last_item()
-                            dpg.add_button(label="Write", callback=self._write_callback, width=60, user_data=i)
-                            self._write_input[i] = dpg.add_input_text(width=200)
-                            if i == 0:
-                                bytes_help()
 
+                
+                    
+                
+                with dpg.group(horizontal=True):
+                    with dpg.group(horizontal=False):
+                        for i in range(self.N_WRITE_LINES):
+                            with dpg.group(horizontal=True, show=i==0):
+                                self._write_group[i] = dpg.last_item()
+                                dpg.add_button(label="Write", callback=self._write_callback, user_data=i, width=100)
+                                self._write_input[i] = dpg.add_input_text()
+                                if i == 0:
+                                    bytes_help()
+                    #dpg.add_spacer()
                 self._write_status = dpg.add_text("")
 
-
                 with dpg.group(horizontal=True):
+                    with dpg.group(horizontal=False):    
+                        dpg.add_text("Read", color=(70, 142, 194))
+                        dpg.add_combo(label="Scope", items=[x for x in ReadScope], width=132, default_value=ReadScope.BUFFERED.value)
+                        dpg.add_button(label="Read", callback=self._read_callback, width=60)
+                        #self._read_output = dpg.add_text("")
+                        #with dpg.group(horizontal=True):
+                        self._read_output = dpg.add_text("")#dpg.add_input_text(readonly=True, width=200)
+                            #bytes_help()
                     dpg.add_spacer(width=20)
                     with dpg.group(horizontal=False):
-                        #dpg.add_text("Read", color=(70, 142, 194))
-                        with dpg.group(horizontal=True):
-                            dpg.add_button(label="Read", callback=self._read_callback, width=60)
-                            dpg.add_combo(label="Scope", items=[x for x in ReadScope], width=132, default_value=ReadScope.BUFFERED.value)
-                        #self._read_output = dpg.add_text("")
-                        with dpg.group(horizontal=True):
-                            self._read_output = dpg.add_input_text(readonly=True, width=200)
-                            bytes_help()
+                        dpg.add_text("Buffer")
+                        with dpg.child_window(height=200):
+                            self._buffer_group = dpg.add_group(horizontal=False)
 
-                with dpg.collapsing_header(label="Adapter events"):
-                    with dpg.group(horizontal=True):
-                        self._show_fragments_checkbox = dpg.add_checkbox(label="Show fragments", default_value=True)
-                        dpg.add_button(label="Clear events", callback=self._clear_events)
-                    with dpg.child_window(height=100, width=-1) as self._event_window:
-                        with dpg.theme() as tight:
-                            with dpg.theme_component(dpg.mvAll):
-                                dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 1)  # 1px vertical
+                dpg.add_text("Events", color=(70, 142, 194))
+                with dpg.group(horizontal=True):
+                    self._show_fragments_checkbox = dpg.add_checkbox(label="Show fragments", default_value=True)
+                    dpg.add_button(label="Clear events", callback=self._clear_events)
+                with dpg.child_window(height=100, width=-1) as self._event_window:
+                    with dpg.theme() as tight:
+                        with dpg.theme_component(dpg.mvAll):
+                            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 1)  # 1px vertical
 
-                        with dpg.group(width=-1) as self._event_group:
-                            ...
+                    with dpg.group(width=-1) as self._event_group:
+                        ...
 
-                        dpg.bind_item_theme(self._event_group, tight)
+                    dpg.bind_item_theme(self._event_group, tight)
 
                 with dpg.popup(self._header) as self._add_stop_condition_popup:
                     for stop_condition in self.STOP_CONDITIONS:
@@ -398,22 +441,35 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
             dpg.set_value(self._read_output, f"{time.time() - self._read_start:.3f}s")
             await asyncio.sleep(1/60)
 
-    def _write_callback(self) -> None:
-        try:
-            data : bytes = ast.literal_eval(f"b'{dpg.get_value(self._write_input)}'")
-        except SyntaxError as e:
-            dpg.set_value(self._write_status, str(e))
-            return
+    def _update_write_status(self, text : str, status : str = "neutral"):
+        if status == "ok":
+            dpg.configure_item(self._write_status, color=(30, 199, 38))
+        elif status == "error":
+            dpg.configure_item(self._write_status, color=(255,0,0))
+        else:
+            dpg.configure_item(self._write_status, color=(255,255,255))
+        dpg.set_value(self._write_status, text)
 
+        
+
+    def _write_callback(self, sender : int | str, app_data : Any, index : int) -> None:
+        try:
+            data : bytes = ast.literal_eval(f"b'{dpg.get_value(self._write_input[index])}'")
+        except SyntaxError as e:
+            self._update_write_status(str(e), "error")
+            return
+        
+        if self._adapter is None:
+            self._update_write_status("Adapter has not been opened", "error")
+            return
+        
         try:
             self._adapter.write(data)
         except AdapterWriteError as e:
-            dpg.set_value(self._write_status, str(e))
-            dpg.configure_item(self._write_status, color=(255,0,0))
+            self._update_write_status(str(e), "error")
         else:
             t_delta = time.time() - self._start_timestamp
-            dpg.set_value(self._write_status, f"Written {repr(data)} at {t_delta:+.3f}s")
-            dpg.configure_item(self._write_status, color=(30, 199, 38))
+            self._update_write_status(f"Written {repr(data)} at {t_delta:+.3f}s", "ok")
 
     def _remove_stop_condition_callback(self) -> None:
         if self._right_clicked_tab is not None:
@@ -520,7 +576,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 class IPBlock(BytesAdapterBlock[IP]):
     """IP adapter block"""
     def __init__(self) -> None:
-        self._adapter = IP(address="", port=0, auto_open=False)
+        self._adapter : IP | None = None#IP(address="", port=0, auto_open=False)
         super().__init__("IP Adapter")
         self._address_input : int | str = -1
         self._port_input : int | str = -1
@@ -532,12 +588,12 @@ class IPBlock(BytesAdapterBlock[IP]):
         self._address_input = dpg.add_input_text(
             width=150,
             label="Address",
-            default_value=self._adapter.descriptor.address,
+            default_value="",
         )
         with dpg.group(horizontal=True, parent=parent):
         #with dpg.group(horizontal=True):
             #with dpg.group(horizontal=True, parent=parent):
-            self._port_input = dpg.add_input_text(width=100, label="Port", default_value=str(self._adapter.descriptor.port))
+            self._port_input = dpg.add_input_text(width=100, label="Port", default_value=0)
             self._port_details = dpg.add_text("")
         self._transport_input = dpg.add_combo(
             parent=parent,
@@ -562,7 +618,7 @@ class IPBlock(BytesAdapterBlock[IP]):
             address=address,
             port=port,
             transport=transport,
-            timeout=timeout if timeout >= 0 else None,
+            timeout=timeout if timeout != self.DEFAULT_TIMEOUT else None,
             auto_open=False
         )
         super().open()

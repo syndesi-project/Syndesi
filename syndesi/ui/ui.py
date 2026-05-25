@@ -57,7 +57,8 @@ class UIBase:
         dpg.create_viewport(
             title="Syndesi UI", 
             width=self._width,
-            height=self._height
+            height=self._height,
+            min_width=self._width,
         )
         
         self.window = dpg.add_window(

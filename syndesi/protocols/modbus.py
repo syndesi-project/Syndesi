@@ -44,13 +44,13 @@ from types import EllipsisType
 from typing import cast
 
 from syndesi.adapters.utils import TimeoutType
-from syndesi.component import Frame
+from syndesi.component import Frame, ReadFrame
 
 from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..tools.errors import ProtocolError, ProtocolReadError
-from .protocol import Protocol, ProtocolFrame
+from .protocol import Protocol, ProtocolReadFrame
 
 MODBUS_TCP_DEFAULT_PORT = 502
 
@@ -1366,7 +1366,7 @@ class EncapsulatedInterfaceTransportSDU(ModbusRequestSDU):
         return self.Response(sdu[2:])
 
 
-class ModbusFrame(ProtocolFrame[ModbusSDU]):
+class ModbusFrame(ProtocolReadFrame[ModbusSDU]):
     """Modbus frame containing a ModbusSDU"""
 
     payload: ModbusSDU
@@ -1456,8 +1456,8 @@ class Modbus(Protocol[ModbusSDU, bytes]):
         return output
 
     def _adapter_to_protocol(
-        self, adapter_frame: Frame[bytes]
-    ) -> ProtocolFrame[ModbusSDU]:
+        self, adapter_frame: ReadFrame[bytes]
+    ) -> ProtocolReadFrame[ModbusSDU]:
         pdu = adapter_frame.data
 
         if self._modbus_type == ModbusType.TCP:

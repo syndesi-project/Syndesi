@@ -31,7 +31,7 @@ from typing import Any, Generic, TypeVar, get_args, get_origin
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.tools.errors import AdapterError
 
-from ..component import Component, Descriptor, Frame, ReadScope
+from ..component import Component, Descriptor, Frame, ReadFrame, ReadScope, WriteFrame
 from ..tools.log_settings import LoggerAlias
 from .adapterworker import (
     AdapterEvent,
@@ -201,6 +201,10 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         self._worker.send_command(cmd)
         cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
 
+    @property
+    def frame_buffer(self) -> list[ReadFrame[Any]]:
+        return list(self._worker.frame_buffer)
+
     # ==== open ====
 
     def _open_future(self) -> OpenCommand:
@@ -259,7 +263,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         timeout: TimeoutType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> Frame[DataT]:
+    ) -> ReadFrame[DataT]:
         with self._sync_io_lock:
             result = self._read_detailed_future(
                 timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
@@ -271,7 +275,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         timeout: TimeoutType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> Frame[DataT]:
+    ) -> ReadFrame[DataT]:
         async with self._async_io_lock:
             return await asyncio.wrap_future(
                 self._read_detailed_future(
@@ -327,7 +331,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
     # ==== write ====
 
     def _write_future(self, data: DataT) -> WriteCommand[DataT]:
-        cmd = WriteCommand(data)
+        cmd = WriteCommand(WriteFrame(data))
         self._worker.send_command(cmd)
         return cmd
 
@@ -347,7 +351,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> Frame[DataT]:
+    ) -> ReadFrame[DataT]:
         async with self._async_io_lock:
             await asyncio.wrap_future(self._flush_read_future())
             await asyncio.wrap_future(self._write_future(payload))
@@ -363,7 +367,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         timeout: TimeoutType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> Frame[DataT]:
+    ) -> ReadFrame[DataT]:
 
         with self._sync_io_lock:
             self._flush_read_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)

@@ -6,7 +6,7 @@ from .adapters.adapterworker import (
     AdapterClosedEvent,
     AdapterEvent,
     AdapterFragmentEvent,
-    AdapterFrameEvent,
+    AdapterReadEvent,
 )
 from .adapters.ip import IP
 from .adapters.ipserver import IPServer
@@ -43,7 +43,7 @@ __all__ = [
     "Total",
     "AdapterEvent",
     "AdapterClosedEvent",
-    "AdapterFrameEvent",
+    "AdapterReadEvent",
     "AdapterFragmentEvent",
     "Driver",
     "SubDriver",

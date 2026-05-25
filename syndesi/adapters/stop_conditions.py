@@ -190,7 +190,7 @@ class Continuation(StopCondition):
         self._last_fragment: float | None = None
 
     def __str__(self) -> str:
-        return f"Continuation({self.continuation})"
+        return f"Continuation({self.continuation:.3f})"
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -239,7 +239,7 @@ class Total(StopCondition):
         self._start_time: float | None = None
 
     def __str__(self) -> str:
-        return f"Total({self.total})"
+        return f"Total({self.total:.3f})"
 
     def __repr__(self) -> str:
         return self.__str__()

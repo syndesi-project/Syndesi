@@ -49,9 +49,8 @@ from syndesi.adapters.tracehub import (
     CloseEvent,
     FragmentEvent,
     OpenEvent,
-    ReadEventBytes,
-    ReadEventMessage,
     TraceEvent,
+    ReadEvent,
     WriteEvent,
     json_to_trace_event,
 )
@@ -212,7 +211,7 @@ class Trace:
             fragments += [
                 Text("write →", style="bold dim"),
                 Text(f"{event.length:4d}B", style="dim"),
-                Text(f" {event.data}"),
+                Text(f" {event.message}"),
             ]
         elif isinstance(event, FragmentEvent):
             if self._no_fragments:
@@ -220,24 +219,17 @@ class Trace:
             fragments += [
                 Text("      ↓", style="dim"),
                 Text(f"{event.length:4d}B ", style="dim"),
-                Text(event.data, style="dim"),
+                Text(event.message, style="dim"),
                 Text(" (frag)", style="dim"),
             ]
             if not isnan(event.write_delta):
                 fragments.append(Text(f" {event.write_delta:+.3f}s", style="dim"))
-        elif isinstance(event, ReadEventBytes):
+        elif isinstance(event, ReadEvent):  
             fragments += [
                 Text("read  ←", style="bold dim"),
                 Text(f"{event.length:4d}B ", style="dim"),
-                Text(f"{event.data} "),
+                Text(f"{event.message} "),
                 Text(f"({event.stop_condition_indicator})", style="dim"),
-            ]
-            if not isnan(event.write_delta):
-                fragments.append(Text(f" {event.write_delta:+.3f}s", style="dim"))
-        elif isinstance(event, ReadEventMessage):
-            fragments += [
-                Text("read  ←", style="bold dim"),
-                Text(f" {event.message} "),
             ]
             if not isnan(event.write_delta):
                 fragments.append(Text(f" {event.write_delta:+.3f}s", style="dim"))
@@ -316,15 +308,12 @@ class FlatTrace(Trace):
         columns[self.CSVColumn.TIME] = f"{event.timestamp:.6f}"
         columns[self.CSVColumn.EVENT] = event.t
 
-        if isinstance(event, (WriteEvent, ReadEventBytes, FragmentEvent)):
-            columns[self.CSVColumn.DATA] = event.data
+        if isinstance(event, (WriteEvent, ReadEvent, FragmentEvent)):
+            columns[self.CSVColumn.DATA] = event.message
             columns[self.CSVColumn.SIZE] = str(event.length)
 
-            if isinstance(event, ReadEventBytes):
+            if isinstance(event, ReadEvent) and event.stop_condition_indicator is not None:
                 columns[self.CSVColumn.STOP_CONDITION] = event.stop_condition_indicator
-        elif isinstance(event, ReadEventMessage):
-            columns[self.CSVColumn.DATA] = event.message
-
         return ",".join(columns.values()) + "\n"
 
     def ingest(self, event: TraceEvent, max_events: int = 0) -> None:

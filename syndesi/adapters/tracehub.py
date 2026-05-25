@@ -20,7 +20,7 @@ from typing import Any
 from syndesi.adapters.stop_conditions import StopConditionType
 from syndesi.adapters.utils import Fragment
 
-from ..component import Frame
+from ..component import Frame, ReadFrame, WriteFrame
 
 STOP_CONDITION_INDICATOR = {
     StopConditionType.CONTINUATION: "Cont",
@@ -52,7 +52,7 @@ class FragmentEvent(TraceEvent):
     """
     Fragment received trace event
     """
-    data: str
+    message: str
     length: int
     write_delta: float
     t: str = field(default="fragment", init=False)
@@ -65,41 +65,40 @@ class CloseEvent(TraceEvent):
     t: str = field(default="close", init=False)
 
 @dataclass(frozen=True)
-class ReadEventBytes(TraceEvent):
+class ReadEvent(TraceEvent):
     """
     Adapter read trace event
     """
-    data: str
+    message: str
     length: int
-    stop_condition_indicator: str
+    stop_condition_indicator: str | None
     write_delta: float
-    t: str = field(default="bytes_read", init=False)
+    t: str = field(default="read_bytes", init=False)
 
 @dataclass(frozen=True)
 class WriteEvent(TraceEvent):
     """
     Adapter write trace event
     """
-    data: str
-    length: int
-    t: str = field(default="write", init=False)
-
-@dataclass(frozen=True)
-class ReadEventMessage(TraceEvent):
-    """
-    Generic read event
-    """
     message: str
-    write_delta: float
-    t: str = field(default="read_bytes", init=False)
+    length: int
+    t: str = field(default="write_bytes", init=False)
+
+# @dataclass(frozen=True)
+# class ReadEventMessage(TraceEvent):
+#     """
+#     Generic read event
+#     """
+#     message: str
+#     write_delta: float
+#     t: str = field(default="read_bytes", init=False)
 
 EVENTS: list[type[TraceEvent]] = [
     FragmentEvent,
     OpenEvent,
     CloseEvent,
-    ReadEventBytes,
-    WriteEvent,
-    ReadEventMessage,
+    ReadEvent,
+    WriteEvent
 ]
 
 EVENTS_MAP: dict[str, type[TraceEvent]] = {e.t: e for e in EVENTS}
@@ -176,14 +175,16 @@ class _TraceHub:
 
         str_data = repr(data)[2:-1]
 
-        truncated_str = str_data[: self.TRUNCATE_LENGTH]
-
-        if len(str_data) != len(truncated_str):
+        return self._format_generic(str_data)        
+    
+    def _format_generic(self, str_data : str) -> str:
+        if len(str_data) > self.TRUNCATE_LENGTH:
             return (
-                truncated_str[: -len(self.TRUNCATION_TERMINATION)]
+                str_data[: self.TRUNCATE_LENGTH-len(self.TRUNCATION_TERMINATION)]
                 + self.TRUNCATION_TERMINATION
             )
-        return truncated_str
+        return str_data
+        
 
     def emit_fragment(
         self, descriptor: str, fragment: Fragment[Any], write_delta: float
@@ -203,44 +204,45 @@ class _TraceHub:
                     )
                 )
 
-    def emit_write(self, descriptor: str, data: Any) -> None:
-        """
-        Emit a write trace event
-        """
-        if isinstance(data, bytes):
-            self._emit_event(
-                WriteEvent(descriptor, time.time(), self._format_bytes(data), len(data))
-            )
-
-    def emit_frame(self, descriptor: str, frame: Frame[Any]) -> None:
+    def emit_read_frame(self, descriptor: str, frame: ReadFrame[Any]) -> None:
         """
         Emit a read frame event
         """
         if frame.stop_condition_type is None:
-            sc_indicator = "(x)"
+            sc_indicator = None
         else:
             sc_indicator = STOP_CONDITION_INDICATOR[frame.stop_condition_type]
 
         if isinstance(frame.data, bytes):
-            self._emit_event(
-                ReadEventBytes(
-                    descriptor=descriptor,
-                    timestamp=frame.stop_timestamp,
-                    data=self._format_bytes(frame.data),
-                    length=len(frame.data),
-                    stop_condition_indicator=sc_indicator,
-                    write_delta=frame.response_delay,
-                )
-            )
+            message = self._format_bytes(frame.data)
         else:
-            self._emit_event(
-                ReadEventMessage(
-                    descriptor=descriptor,
-                    timestamp=frame.stop_timestamp,
-                    message=f"New frame : {str(frame.data)}",
-                    write_delta=frame.response_delay,
-                )
+            message = self._format_generic(str(frame.data))
+        
+        self._emit_event(
+            ReadEvent(
+                descriptor=descriptor,
+                timestamp=frame.stop_timestamp,
+                message=message,
+                length=len(frame.data),
+                stop_condition_indicator=sc_indicator,
+                write_delta=frame.response_delay,
             )
+        )
+
+    def emit_write_frame(self, descriptor : str, frame: WriteFrame[Any]) -> None:
+        if isinstance(frame.data, bytes):
+            message = self._format_bytes(frame.data)
+        else:
+            message = self._format_generic(str(frame.data))
+
+        self._emit_event(
+            WriteEvent(
+                descriptor=descriptor,
+                timestamp=time.time(),
+                message=message,
+                length=len(frame.data)
+            )
+        )
 
     def _emit_event(self, ev: TraceEvent) -> None:
         d = asdict(ev)

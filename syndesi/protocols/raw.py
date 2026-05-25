@@ -5,13 +5,11 @@
 Raw protocol layer, data is returned as bytes "as-is"
 """
 
-from types import EllipsisType
-
 from syndesi.adapters.utils import TimeoutType
 
 from ..adapters.bytesadapter import BytesAdapter
-from ..component import Frame
-from .protocol import Protocol, ProtocolFrame
+from ..component import ReadFrame
+from .protocol import Protocol, ProtocolReadFrame
 
 
 class Raw(Protocol[bytes, bytes]):
@@ -39,10 +37,10 @@ class Raw(Protocol[bytes, bytes]):
     def __str__(self) -> str:
         return f"Raw({self._adapter})"
 
-    def _adapter_to_protocol(self, adapter_frame: Frame[bytes]) -> ProtocolFrame[bytes]:
+    def _adapter_to_protocol(self, adapter_frame: ReadFrame[bytes]) -> ProtocolReadFrame[bytes]:
         payload = adapter_frame.data
 
-        return ProtocolFrame(
+        return ProtocolReadFrame(
             data=payload,
             stop_timestamp=adapter_frame.stop_timestamp,
             stop_condition_type=adapter_frame.stop_condition_type,

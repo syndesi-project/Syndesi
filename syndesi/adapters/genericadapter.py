@@ -13,7 +13,7 @@ from abc import ABC
 from typing import Generic, TypeVar
 
 from syndesi.adapters.utils import Fragment
-from syndesi.component import Descriptor, Frame
+from syndesi.component import Descriptor, Frame, ReadFrame
 
 from .adapter import Adapter
 from .adapterworker import AdapterWorker
@@ -42,7 +42,7 @@ class GenericAdapterWorker(Generic[DataT], AdapterWorker[DataT], ABC):
 
         stop_timestamp = fragment.timestamp
 
-        frame: Frame[DataT] = Frame(
+        frame: ReadFrame[DataT] = ReadFrame(
             data=fragment.data,
             stop_timestamp=stop_timestamp,
             previous_read_buffer_used=False,

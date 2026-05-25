@@ -11,7 +11,7 @@ from abc import abstractmethod
 from collections import deque
 from types import EllipsisType
 
-from ..component import Descriptor, Frame
+from ..component import Descriptor, Frame, ReadFrame
 from .adapter import Adapter
 from .adapterworker import (
     AdapterWorker,
@@ -60,7 +60,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
         self._next_stop_condition_timeout_timestamp: float | None = None
         self._read_start_timestamp: float | None = None
         self._last_fragment_timestamp: float | None = None
-        self._frame_buffer: deque[Frame[bytes]] = deque(maxlen=self._FRAME_BUFFER_MAX)
+        self._frame_buffer: deque[ReadFrame[bytes]] = deque(maxlen=self._FRAME_BUFFER_MAX)
         self._timeout_origin: StopConditionType = StopConditionType.TIMEOUT
 
     # ┌──────────────────────────────┐
@@ -143,7 +143,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                     self._fragments[0].timestamp - self._last_write_timestamp
                 )
 
-            frame = Frame(
+            frame = ReadFrame(
                 data=fuse_fragments(self._fragments),
                 first_fragment_timestamp=self._fragments[0].timestamp,
                 stop_timestamp=stop_timestamp,
@@ -180,7 +180,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                     self._fragments[0].timestamp - self._last_write_timestamp
                 )
 
-            frame = Frame(
+            frame = ReadFrame(
                 data=fuse_fragments(self._fragments),
                 first_fragment_timestamp=self._fragments[0].timestamp,
                 stop_timestamp=timestamp,
