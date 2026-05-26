@@ -60,7 +60,6 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
         self._next_stop_condition_timeout_timestamp: float | None = None
         self._read_start_timestamp: float | None = None
         self._last_fragment_timestamp: float | None = None
-        self._frame_buffer: deque[ReadFrame[bytes]] = deque(maxlen=self._FRAME_BUFFER_MAX)
         self._timeout_origin: StopConditionType = StopConditionType.TIMEOUT
 
     # ┌──────────────────────────────┐

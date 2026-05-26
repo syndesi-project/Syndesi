@@ -245,7 +245,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
 
     def _update_buffer(self):
-        print(f'Clear buffer')
         for tag in self._buffer_items:
             dpg.delete_item(tag)
         self._buffer_items.clear()
@@ -255,7 +254,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         
         else:
             for frame in self._adapter.frame_buffer:
-                print(f'Add buffer frame : {frame}')
                 self._buffer_items.append(dpg.add_text(str(frame.data), parent=self._buffer_group))
             
     def _clear_events(self) -> None:
