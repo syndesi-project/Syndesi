@@ -94,6 +94,7 @@ class Delimited(Protocol[str, bytes]):
 
         return ProtocolReadFrame(
             data=data,
+            id=adapter_frame.id,
             stop_timestamp=adapter_frame.stop_timestamp,
             stop_condition_type=adapter_frame.stop_condition_type,
             previous_read_buffer_used=adapter_frame.previous_read_buffer_used,

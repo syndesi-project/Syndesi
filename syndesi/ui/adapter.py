@@ -27,7 +27,7 @@ from ..adapters.stop_conditions import (
 
 from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP, IPDescriptor
-from ..adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterReadEvent, AdapterOpenedEvent, AdapterWriteEvent
+from ..adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterReadEvent, AdapterOpenedEvent, AdapterWriteEvent, BufferEvent
 from ..component import ReadScope
 
 from .tools import Block, _help, _hsv_to_rgb
@@ -200,7 +200,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         self._start_timestamp = time.time()
         self._add_tab : int | str = -1
         self._right_clicked_tab : StopConditionBlock[Any] | None = None
-        self._buffer_items : list[int | str] = []
+        self._buffer_items : dict[int, int | str] = {}
 
         self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
 
@@ -234,27 +234,24 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                     dpg.add_text(f"↓    {event.fragment} ({first_indicator}frag)", parent=event_tag)
                 elif isinstance(event, AdapterWriteEvent):
                     dpg.add_text(f"→ write {event.frame.data!r}", parent=event_tag)
+                elif isinstance(event, BufferEvent):
+                    if len(event.added_frame_ids) > 0:
+                        for frame in self._adapter.frame_buffer:
+                            if frame.id in event.added_frame_ids:
+                                self._buffer_items[frame.id] = dpg.add_text(str(frame.data), parent=self._buffer_group)
+
+                    for removed_frame_id in event.removed_frame_ids:
+                        tag = self._buffer_items.pop(removed_frame_id, None)
+                        if tag is not None:
+                            dpg.delete_item(tag)
+                            
                 else:
                     dpg.add_text("Unknown event", color=(255, 0, 0))
                 self._events.append(event_tag)
 
-                self._update_buffer()
         except Exception as e:
             print(f'Exception in loop : {traceback.format_exc()}')
-
-
-
-    def _update_buffer(self):
-        for tag in self._buffer_items:
-            dpg.delete_item(tag)
-        self._buffer_items.clear()
-        
-        if self._adapter is None:
-            return
-        
-        else:
-            for frame in self._adapter.frame_buffer:
-                self._buffer_items.append(dpg.add_text(str(frame.data), parent=self._buffer_group))
+                
             
     def _clear_events(self) -> None:
         for tag in self._events:
@@ -332,12 +329,8 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 dpg.add_text("Write", color=(70, 142, 194))
                 dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
 
-                
                 self._write_input : dict[int, int | str] = {}
                 self._write_group : dict[int, int | str] = {}
-
-                
-                    
                 
                 with dpg.group(horizontal=True):
                     with dpg.group(horizontal=False):

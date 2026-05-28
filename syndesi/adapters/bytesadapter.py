@@ -144,6 +144,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
 
             frame = ReadFrame(
                 data=fuse_fragments(self._fragments),
+                id=self.next_frame_id(),
                 first_fragment_timestamp=self._fragments[0].timestamp,
                 stop_timestamp=stop_timestamp,
                 stop_condition_type=stop_condition_type,
@@ -181,6 +182,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
 
             frame = ReadFrame(
                 data=fuse_fragments(self._fragments),
+                id=self.next_frame_id(),
                 first_fragment_timestamp=self._fragments[0].timestamp,
                 stop_timestamp=timestamp,
                 stop_condition_type=self._timeout_origin,

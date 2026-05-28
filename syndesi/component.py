@@ -62,6 +62,7 @@ class Frame(Generic[DataT]):
     
 @dataclass
 class ReadFrame(Generic[DataT], Frame[DataT]):
+    id : int
     stop_timestamp: float
     previous_read_buffer_used: bool
     response_delay: float

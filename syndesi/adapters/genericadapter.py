@@ -44,6 +44,7 @@ class GenericAdapterWorker(Generic[DataT], AdapterWorker[DataT], ABC):
 
         frame: ReadFrame[DataT] = ReadFrame(
             data=fragment.data,
+            id=self.next_frame_id(),
             stop_timestamp=stop_timestamp,
             previous_read_buffer_used=False,
             response_delay=response_delay,

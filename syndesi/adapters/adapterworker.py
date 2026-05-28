@@ -67,6 +67,11 @@ class AdapterFragmentEvent(Generic[DataT], AdapterEvent):
     fragment : Fragment[DataT]
     first : bool
 
+@dataclass
+class BufferEvent(AdapterEvent):
+    added_frame_ids : list[int]
+    removed_frame_ids : list[int]
+
 # ┌───────────────────────────────┐
 # │ Worker commands (composition) │
 # └───────────────────────────────┘
@@ -235,7 +240,7 @@ class AdapterWorker(Generic[DataT]):
 
         # Frames
         self.frame_buffer: deque[ReadFrame[DataT]] = deque(maxlen=self._FRAME_BUFFER_MAX)
-
+        self._next_frame_id = 0
         # Stop-conditions
         self._stop_conditions: list[StopCondition] = []
 
@@ -262,9 +267,10 @@ class AdapterWorker(Generic[DataT]):
         )
         self._worker_thread.start()
 
-    # ┌─────────────────┐
-    # │ Worker plumbing │
-    # └─────────────────┘
+    def next_frame_id(self) -> int:
+        output = self._next_frame_id
+        self._next_frame_id += 1
+        return output
 
     def send_command(self, command: ThreadCommand[Any]) -> None:
         """Send command to the worker thread"""
@@ -364,7 +370,12 @@ class AdapterWorker(Generic[DataT]):
         ):
             raise AdapterOpenError("Descriptor not initialized")
 
-    
+    def _buffer_clear(self) -> None:
+        self._interface._worker_emit_event(BufferEvent(
+            added_frame_ids=[],
+            removed_frame_ids=[frame.id for frame in self.frame_buffer]
+        ))
+        self.frame_buffer.clear()
 
     def _worker_manage_command(self, command: ThreadCommand[Any]) -> None:
         # pylint: disable=too-many-branches
@@ -407,7 +418,7 @@ class AdapterWorker(Generic[DataT]):
                     self._interface._worker_close()  # pylint: disable=protected-access
                     self._opened = False
                     #self._worker_emit_event(AdapterClosedEvent())
-                    self.frame_buffer.clear()
+                    self._buffer_clear()
                     # Cancel any pending read
                     if self._pending_read is not None:
                         self._pending_read.cmd.set_exception(AdapterDisconnected())
@@ -417,7 +428,7 @@ class AdapterWorker(Generic[DataT]):
                     self.stop()
                     command.set_result(None)
                 case FlushReadCommand():
-                    self.frame_buffer.clear()
+                    self._buffer_clear()
                     command.set_result(None)
                 case SetTimeoutCommand():
                     self._timeout = command.timeout
@@ -465,6 +476,10 @@ class AdapterWorker(Generic[DataT]):
         # If buffered scope, serve immediately from buffer if available
         if cmd.scope == ReadScope.BUFFERED and len(self.frame_buffer) > 0:
             frame = self.frame_buffer.popleft()
+            self._interface._worker_emit_event(BufferEvent(
+                added_frame_ids=[],
+                removed_frame_ids=[frame.id]
+            ))
             cmd.set_result(frame)
             return
 
@@ -537,6 +552,10 @@ class AdapterWorker(Generic[DataT]):
 
         # Not consumed by a pending read => buffer it
         self.frame_buffer.append(frame)
+        self._interface._worker_emit_event(BufferEvent(
+            added_frame_ids=[frame.id],
+            removed_frame_ids=[]
+        ))
 
 
     def _worker_fail_pending_read_timeout(self) -> None:
