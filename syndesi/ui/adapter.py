@@ -218,22 +218,22 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
             while True:
                 event = await self._event_queue.get()
                 delta = event.timestamp - self._start_timestamp
-                event_tag = dpg.add_group(horizontal=True, parent=self._event_group)
-                dpg.add_text(f"{delta:+8.3f} ", color=(127, 127, 127), parent=event_tag)
+                color = (255, 255, 255)
+                text : str | None = None
                 if isinstance(event, AdapterClosedEvent):
                     self._status(False)
-                    dpg.add_text("● closed", color=(207, 19, 19), parent=event_tag)
-
+                    text = "● closed"
+                    color = (207, 19, 19)
                 elif isinstance(event, AdapterOpenedEvent):
-                    dpg.add_text("● open", color=(30, 199, 38), parent=event_tag)
-
+                    text = "● open"
+                    color=(30, 199, 38)
                 elif isinstance(event, AdapterReadEvent):
-                    dpg.add_text(f"← read  {event.frame.data!r}", parent=event_tag)
+                    text = f"← read  {event.frame.data!r}"
                 elif isinstance(event, AdapterFragmentEvent) and dpg.get_value(self._show_fragments_checkbox):
                     first_indicator = "*" if event.first else ""
-                    dpg.add_text(f"↓    {event.fragment} ({first_indicator}frag)", parent=event_tag)
+                    text = f"↓    {event.fragment} ({first_indicator}frag)"
                 elif isinstance(event, AdapterWriteEvent):
-                    dpg.add_text(f"→ write {event.frame.data!r}", parent=event_tag)
+                    text = f"→ write {event.frame.data!r}"
                 elif isinstance(event, BufferEvent):
                     if len(event.added_frame_ids) > 0:
                         for frame in self._adapter.frame_buffer:
@@ -244,10 +244,15 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                         tag = self._buffer_items.pop(removed_frame_id, None)
                         if tag is not None:
                             dpg.delete_item(tag)
-                            
                 else:
-                    dpg.add_text("Unknown event", color=(255, 0, 0))
-                self._events.append(event_tag)
+                    text = "Unknown event"
+                    color = (255, 0, 0)
+                
+                if text is not None:
+                    event_tag = dpg.add_group(horizontal=True, parent=self._event_group)
+                    dpg.add_text(f"{delta:+8.3f} ", color=(127, 127, 127), parent=event_tag)
+                    dpg.add_text(text, color=color, parent=event_tag)
+                    self._events.append(event_tag)
 
         except Exception as e:
             print(f'Exception in loop : {traceback.format_exc()}')
@@ -349,10 +354,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                         dpg.add_text("Read", color=(70, 142, 194))
                         dpg.add_combo(label="Scope", items=[x for x in ReadScope], width=132, default_value=ReadScope.BUFFERED.value)
                         dpg.add_button(label="Read", callback=self._read_callback, width=60)
-                        #self._read_output = dpg.add_text("")
-                        #with dpg.group(horizontal=True):
-                        self._read_output = dpg.add_text("")#dpg.add_input_text(readonly=True, width=200)
-                            #bytes_help()
+                        self._read_output = dpg.add_text("")
                     dpg.add_spacer(width=20)
                     with dpg.group(horizontal=False):
                         dpg.add_text("Buffer")
@@ -363,7 +365,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 with dpg.group(horizontal=True):
                     self._show_fragments_checkbox = dpg.add_checkbox(label="Show fragments", default_value=True)
                     dpg.add_button(label="Clear events", callback=self._clear_events)
-                with dpg.child_window(height=100, width=-1) as self._event_window:
+                with dpg.child_window(height=-1, width=-1) as self._event_window:
                     with dpg.theme() as tight:
                         with dpg.theme_component(dpg.mvAll):
                             dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 1)  # 1px vertical
