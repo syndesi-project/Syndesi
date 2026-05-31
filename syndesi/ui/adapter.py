@@ -346,7 +346,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                                 self._write_input[i] = dpg.add_input_text()
                                 if i == 0:
                                     bytes_help()
-                    #dpg.add_spacer()
                 self._write_status = dpg.add_text("")
 
                 with dpg.group(horizontal=True):

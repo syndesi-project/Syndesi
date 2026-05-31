@@ -155,3 +155,6 @@ cython_debug/
 
 # Pylint output
 .pylint
+
+# Drawio
+\.$*.bkp

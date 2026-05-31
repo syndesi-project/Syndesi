@@ -1,0 +1,55 @@
+<mxfile host="Electron" agent="5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/20.7.4 Chrome/106.0.5249.199 Electron/21.3.3 Safari/537.36">
+  <diagram id="7_Xr-5kIEBMBszdj9ZlS" name="Adapter / protocls / drivers">
+    <mxGraphModel dx="1712" dy="1003" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="uTB4sD-DTnMqTQePviXk-7" edge="1" parent="1" source="uTB4sD-DTnMqTQePviXk-1" style="edgeStyle=none;curved=1;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=12;endArrow=block;startSize=8;endSize=8;sourcePerimeterSpacing=8;targetPerimeterSpacing=8;endFill=1;strokeColor=#4D4D4D;strokeWidth=2;shadow=1;startArrow=block;startFill=1;" target="uTB4sD-DTnMqTQePviXk-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;arcSize=12;fillColor=#E6E6E6;gradientColor=#FFFFFF;gradientDirection=east;strokeColor=#808080;strokeWidth=2;" value="User code" vertex="1">
+          <mxGeometry height="60" width="120" x="200" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-8" edge="1" parent="1" source="uTB4sD-DTnMqTQePviXk-2" style="edgeStyle=none;curved=1;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;shadow=1;strokeColor=#4D4D4D;strokeWidth=2;fontSize=12;endArrow=block;endFill=1;startSize=8;endSize=8;sourcePerimeterSpacing=8;targetPerimeterSpacing=8;startArrow=block;startFill=1;" target="uTB4sD-DTnMqTQePviXk-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;arcSize=12;fillColor=#8EA6C4;gradientColor=#C6D2E1;gradientDirection=east;strokeColor=#1D4E89;strokeWidth=2;" value="Driver" vertex="1">
+          <mxGeometry height="60" width="120" x="200" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-9" edge="1" parent="1" source="uTB4sD-DTnMqTQePviXk-3" style="edgeStyle=none;curved=1;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;shadow=1;strokeColor=#4D4D4D;strokeWidth=2;fontSize=12;endArrow=block;endFill=1;startSize=8;endSize=8;sourcePerimeterSpacing=8;targetPerimeterSpacing=8;startArrow=block;startFill=1;" target="uTB4sD-DTnMqTQePviXk-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;arcSize=12;fillColor=#BEE7DA;gradientColor=#DEF3EC;gradientDirection=east;strokeColor=#7DCFB6;strokeWidth=2;" value="Protocol" vertex="1">
+          <mxGeometry height="60" width="120" x="200" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-10" edge="1" parent="1" source="uTB4sD-DTnMqTQePviXk-4" style="edgeStyle=none;curved=1;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;shadow=1;strokeColor=#4D4D4D;strokeWidth=2;fontSize=12;endArrow=block;endFill=1;startSize=8;endSize=8;sourcePerimeterSpacing=8;targetPerimeterSpacing=8;startArrow=block;startFill=1;" target="uTB4sD-DTnMqTQePviXk-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;arcSize=12;fillColor=#FBC8AA;gradientColor=#FDE3D4;strokeColor=#F79256;strokeWidth=2;gradientDirection=east;" value="Adapter" vertex="1">
+          <mxGeometry height="60" width="120" x="200" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;arcSize=12;strokeWidth=2;strokeColor=#808080;fillColor=#E6E6E6;gradientColor=#FFFFFF;gradientDirection=east;" value="Device" vertex="1">
+          <mxGeometry height="60" width="120" x="200" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-11" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;strokeWidth=2;fontSize=16;" value="High-level methods" vertex="1">
+          <mxGeometry height="30" width="160" x="80" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-13" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;strokeWidth=2;fontSize=16;fontColor=#666666;" value="Device specific implementations" vertex="1">
+          <mxGeometry height="30" width="160" x="330" y="275" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-14" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;strokeWidth=2;fontSize=16;fontColor=#666666;" value="Data encapsulation or formatting (Modbus, SCPI, Delimited, Raw, etc...)" vertex="1">
+          <mxGeometry height="30" width="160" x="330" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-15" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;strokeWidth=2;fontSize=16;fontColor=#666666;" value="Interface management (Ethernet, USB, Serial, VISA, etc...)" vertex="1">
+          <mxGeometry height="30" width="160" x="330" y="495" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-16" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;strokeWidth=2;fontSize=16;" value="Low-level read/write calls" vertex="1">
+          <mxGeometry height="30" width="160" x="80" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="uTB4sD-DTnMqTQePviXk-17" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;strokeWidth=2;fontSize=16;" value="Mid-level payload read/write" vertex="1">
+          <mxGeometry height="30" width="160" x="80" y="330" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
