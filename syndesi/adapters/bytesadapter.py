@@ -14,6 +14,7 @@ from types import EllipsisType
 from ..component import Descriptor, Frame, ReadFrame
 from .adapter import Adapter
 from .adapterworker import (
+    AdapterFragmentEvent,
     AdapterWorker,
     AdapterWorkerInterface,
     GetStopConditionsCommand,
@@ -68,6 +69,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
 
     def _worker_manage_fragment(self, fragment: BytesFragment) -> None:
         # pylint: disable=too-many-branches, too-many-statements
+        first_flag = self._first_fragment
         self._last_fragment_timestamp = fragment.timestamp
 
         if self._last_write_timestamp is not None:
@@ -118,7 +120,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
 
             # If there's no stop, break here
             if stop_condition_type is None:
-                # Only upload emit a fragment event if there's no frame
+                # Only emit a fragment event if there's no frame
                 if self._interface.descriptor is not None:
                     if self._last_write_timestamp is None:
                         write_delta = float("nan")
@@ -130,6 +132,12 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                         fragment=kept,
                         write_delta=write_delta,
                     )
+                    self._interface._worker_emit_event(AdapterFragmentEvent(
+                        next_timeout_timestamp=self._next_stop_condition_timeout_timestamp,
+                        fragment=kept,
+                        first=first_flag,
+                        timestamp=kept.timestamp
+                    ))
                 break
 
             # frame complete
