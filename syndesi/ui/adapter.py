@@ -27,7 +27,7 @@ from ..adapters.stop_conditions import (
 
 from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP, IPDescriptor
-from ..adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterReadEvent, AdapterOpenedEvent, AdapterWriteEvent, BufferEvent
+from ..adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterReadEvent, AdapterOpenedEvent, AdapterWriteEvent, AdapterBufferEvent
 from ..component import ReadScope
 
 from .tools import Block, _help, _hsv_to_rgb
@@ -234,7 +234,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                     text = f"↓    {event.fragment} ({first_indicator}frag)"
                 elif isinstance(event, AdapterWriteEvent):
                     text = f"→ write {event.frame.data!r}"
-                elif isinstance(event, BufferEvent):
+                elif isinstance(event, AdapterBufferEvent):
                     if len(event.added_frame_ids) > 0:
                         for frame in self._adapter.frame_buffer:
                             if frame.id in event.added_frame_ids:

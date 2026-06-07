@@ -16,12 +16,13 @@ Syndesi is particulary well suited for testbench creation and is aimed at engine
 To install Syndesi, use the following:
 
 .. code-block:: bash
+
     pip install syndesi
 
 **Quickstart Example:**
 
 .. code-block:: python
-    
+
     # Send a command to a device and read a response
     from syndesi import IP
 
@@ -37,6 +38,3 @@ Depending on the application, the user can select the most approriate layer
 - Adapter (low-level)
 - Protocol
 - Driver (high-level)
-
-
-.. image:: ../diagrams/layers.svg

@@ -63,12 +63,12 @@ class AdapterReadEvent(Generic[DataT], AdapterEvent):
 @dataclass
 class AdapterFragmentEvent(Generic[DataT], AdapterEvent):
     """Adapter fragment event"""
-    next_timeout_timestamp: float | None
     fragment : Fragment[DataT]
+    next_timeout_timestamp: float | None
     first : bool
 
 @dataclass
-class BufferEvent(AdapterEvent):
+class AdapterBufferEvent(AdapterEvent):
     added_frame_ids : list[int]
     removed_frame_ids : list[int]
 
@@ -371,7 +371,7 @@ class AdapterWorker(Generic[DataT]):
             raise AdapterOpenError("Descriptor not initialized")
 
     def _buffer_clear(self) -> None:
-        self._interface._worker_emit_event(BufferEvent(
+        self._interface._worker_emit_event(AdapterBufferEvent(
             added_frame_ids=[],
             removed_frame_ids=[frame.id for frame in self.frame_buffer]
         ))
@@ -442,10 +442,7 @@ class AdapterWorker(Generic[DataT]):
                     self._interface._event_callbacks.clear()
                     command.set_result(None)
                 case ReadCommand():
-                    if self._last_write_timestamp is None and command.scope == ReadScope.LAST_WRITE:
-                        command.set_exception(AdapterReadError("Cannot read with scope=LAST_WRITE without a previous write"))
-                    else:
-                        self._worker_begin_read(command)
+                    self._worker_begin_read(command)
                 case SetStopConditionsCommand():
                     self._stop_conditions = command.stop_conditions
                     command.set_result(None)
@@ -469,14 +466,23 @@ class AdapterWorker(Generic[DataT]):
 
         if self._pending_read is not None:
             cmd.set_exception(
-                WorkerThreadError("Concurrent read_detailed is not supported")
+                WorkerThreadError("Concurrent read is not supported")
             )
             return
+                    
+        # Check if an element from the buffer should be poped
+        if cmd.scope == ReadScope.BUFFERED:
+            pop = True
+        elif cmd.scope == ReadScope.LAST_WRITE:    
+            if self._last_write_timestamp is None:
+                cmd.set_exception(AdapterReadError("Cannot read with scope=LAST_WRITE without a previous write"))
+                return
+            pop = self.frame_buffer[0].first_fragment_timestamp >= self._last_write_timestamp
 
-        # If buffered scope, serve immediately from buffer if available
-        if cmd.scope == ReadScope.BUFFERED and len(self.frame_buffer) > 0:
+        # If the buffer is not empty, pop the first element (oldest one)
+        if len(self.frame_buffer) > 0 and pop:
             frame = self.frame_buffer.popleft()
-            self._interface._worker_emit_event(BufferEvent(
+            self._interface._worker_emit_event(AdapterBufferEvent(
                 added_frame_ids=[],
                 removed_frame_ids=[frame.id]
             ))
@@ -552,7 +558,7 @@ class AdapterWorker(Generic[DataT]):
 
         # Not consumed by a pending read => buffer it
         self.frame_buffer.append(frame)
-        self._interface._worker_emit_event(BufferEvent(
+        self._interface._worker_emit_event(AdapterBufferEvent(
             added_frame_ids=[frame.id],
             removed_frame_ids=[]
         ))

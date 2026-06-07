@@ -23,8 +23,6 @@ Component
 	     - ``close``
 	     - Adapter / Protocol
 	     - Close communication with the target
-
-
 	 * - ``aflush_read``
 		 - ``flush_read``
 		 - Adapter / Protocol
@@ -40,10 +38,13 @@ Component
 	 * - ``awrite``
 		 - ``write``
 		 - Adapter / Protocol subclass
+		 - - asd
 	 * - ``aquery_detailed``
 		 - ``query_detailed``
 		 - Default helper implemented in ``Component.aquery_detailed``: flushes read buffer, writes payload and awaits ``aread_detailed``. Returns an ``AdapterPayload``.  (flush_read + write + read)
+		 - - asd
 	 * - ``aquery``
 		 - ``query``
 		 - Default helper implemented in ``Component.aquery``: calls ``aquery_detailed`` and returns the payload contents.  (flush_read + write + read -> data)
+		 - asd
 
