@@ -31,7 +31,7 @@ from typing import Any, Generic, TypeVar, get_args, get_origin
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.tools.errors import AdapterError
 
-from ..component import Component, Descriptor, Frame, ReadFrame, ReadScope, WriteFrame
+from ..component import Component, Descriptor, ReadFrame, ReadScope, WriteFrame
 from ..tools.log_settings import LoggerAlias
 from .adapterworker import (
     AdapterEvent,
@@ -203,6 +203,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
 
     @property
     def frame_buffer(self) -> list[ReadFrame[Any]]:
+        """Return a list of ReadFrame available in the frame buffer"""
         return list(self._worker.frame_buffer)
 
     # ==== open ====

@@ -5,9 +5,11 @@
 Driver subclass for SCPI instruments that provides common functions like *IDN, *RST, *CLS, etc...
 """
 from abc import abstractmethod
-from .driver import Driver
+
 from ..adapters.bytesadapter import BytesAdapter
 from ..protocols.scpi import SCPI
+from .driver import Driver
+
 
 class SCPIDriver(Driver):
     """

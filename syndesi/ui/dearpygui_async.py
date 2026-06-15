@@ -6,8 +6,7 @@ import asyncio
 import time
 from typing import Any
 
-import dearpygui.dearpygui as dpg # type: ignore[import-untyped]
-
+import dearpygui.dearpygui as dpg  # type: ignore[import-untyped]
 
 CallbackJob = tuple[Any, ...]
 
@@ -78,7 +77,7 @@ class DearPyGuiAsync:
             asyncio.create_task(self.run_callbacks(dpg.get_callback_queue()))
             dpg.render_dearpygui_frame()
             await _sleep(0.0095)
-        await self.teardown() 
+        await self.teardown()
 
     async def start(self) -> None:
         '''
@@ -87,8 +86,8 @@ class DearPyGuiAsync:
         Usually to add a gui to another async process
         '''
         await self.setup()
-        self._callback_task = asyncio.create_task(self.callback_loop()) 
-    
+        self._callback_task = asyncio.create_task(self.callback_loop())
+
     async def __start(self) -> None:
         await self.setup()
         await self.callback_loop()

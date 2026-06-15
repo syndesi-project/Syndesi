@@ -5,17 +5,17 @@
 Syndesi UI
 """
 
-import asyncio
-from enum import StrEnum
 import argparse
+import asyncio
 import importlib
-import dearpygui.dearpygui as dpg # type: ignore[import-untyped]
-from .dearpygui_async import DearPyGuiAsync
-
 import importlib.resources
+from enum import StrEnum
 
-from .tools import Block
+import dearpygui.dearpygui as dpg  # type: ignore[import-untyped]
+
 from .adapter import IPBlock
+from .dearpygui_async import DearPyGuiAsync
+from .tools import Block
 
 CLASS_NAME_SEPARATOR = ':'
 
@@ -51,16 +51,16 @@ class UIBase:
 
         dpg_async.run()
         dpg.destroy_context()
-    
+
     def _build(self) -> None:
         dpg.create_context()
         dpg.create_viewport(
-            title="Syndesi UI", 
+            title="Syndesi UI",
             width=self._width,
             height=self._height,
             min_width=self._width,
         )
-        
+
         self.window = dpg.add_window(
             width=self._width,
             height=self._height,
@@ -72,7 +72,7 @@ class UIBase:
 
         dpg.setup_dearpygui()
 
-        
+
 
     def add_block(self, block : Block) -> None:
         """Add a display block to the window"""
@@ -133,7 +133,7 @@ def main(args : list[str] | None = None) -> None:
 
     arguments = parser.parse_args(args=args)
 
-    
+
 
     command = Command(arguments.command)
 
@@ -157,7 +157,7 @@ def main(args : list[str] | None = None) -> None:
     #     elif protocol_name == Protocol.MODBUS:
     #         protocol = Modbus
     #     ui = UIProtocol(protocol)
-    
+
     ui.start()
 
 if __name__ == '__main__':

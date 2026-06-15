@@ -11,8 +11,9 @@ from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.utils import TimeoutType
 
 from ..adapters.stop_conditions import StopCondition, Termination
-from ..component import Frame, ReadFrame, ReadScope
+from ..component import ReadFrame, ReadScope
 from .protocol import Protocol, ProtocolReadFrame
+
 
 class Delimited(Protocol[str, bytes]):
     """

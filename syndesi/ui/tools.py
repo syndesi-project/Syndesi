@@ -5,11 +5,13 @@
 Syndesi UI tools
 """
 
-from abc import ABC, abstractmethod
 import inspect
-from typing import Any, get_type_hints
 import sys
-import dearpygui.dearpygui as dpg
+from abc import ABC, abstractmethod
+from typing import Any, get_type_hints
+
+import dearpygui.dearpygui as dpg  # type: ignore
+
 
 # From dearpygui's demo.py
 def _hsv_to_rgb(h : float, s : float, v : float) -> tuple[float, float, float]:
@@ -33,7 +35,7 @@ def _hsv_to_rgb(h : float, s : float, v : float) -> tuple[float, float, float]:
         return (255*v, 255*p, 255*q)
     return (0,0,0)
 
-def _help(message):
+def _help(message : str) -> None:
     last_item = dpg.last_item()
     with dpg.group(horizontal=True) as group:
         dpg.move_item(last_item, parent=group)

@@ -4,11 +4,7 @@
 """
 Log manager implementation
 """
-import logging
-import threading
-from typing import TextIO
 
-from .log_settings import LoggerAlias
 
 # class LogManager:
 #     """

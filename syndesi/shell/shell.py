@@ -2,8 +2,9 @@
 # Author : Sébastien Deriaz
 # License : GPL
 
-from typing import ParamSpec, TypeVar, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import ParamSpec, TypeVar
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -22,10 +23,6 @@ def shell_command(
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         cmd_name = name or func.__name__
-        setattr(func, "__shell_command__", ShellCommandInfo(
-            name=cmd_name,
-            aliases=aliases,
-            help=help,
-        ))
+        func.__shell_command__ = ShellCommandInfo(name=cmd_name, aliases=aliases, help=help)
         return func
     return decorator

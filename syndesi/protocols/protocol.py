@@ -7,9 +7,10 @@ of incoming data
 """
 
 from abc import abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import EllipsisType
-from typing import Callable, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from syndesi.adapters.adapterworker import (
     AdapterClosedEvent,
@@ -70,6 +71,8 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         super().__init__(LoggerAlias.PROTOCOL)
         self._adapter = adapter
 
+        self._frame_id = 0
+
         self._adapter.register_event_callback(self._on_event)
 
         if timeout is not ...:
@@ -81,6 +84,11 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
             self._adapter.set_timeout(timeout)
 
         self._event_callbacks : list[Callable[[ProtocolEvent], None]] = []
+
+    def _next_frame_id(self) -> int:
+        output = self._frame_id
+        self._frame_id += 1
+        return output
 
     @staticmethod
     @abstractmethod

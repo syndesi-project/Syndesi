@@ -16,6 +16,7 @@ adapter/protocol management
 from abc import abstractmethod
 from typing import ClassVar
 
+
 class SubDriver:
     """
     A subdriver can be a single channel of an instrument, it doesn't need open/close/test but
