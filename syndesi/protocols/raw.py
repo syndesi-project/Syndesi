@@ -35,7 +35,7 @@ class Raw(Protocol[bytes, bytes]):
         return 2.0
 
     def __str__(self) -> str:
-        return f"Raw({self._adapter})"
+        return f"Raw({self.adapter})"
 
     def _adapter_to_protocol(self, adapter_frame: ReadFrame[bytes]) -> ProtocolReadFrame[bytes]:
         payload = adapter_frame.data

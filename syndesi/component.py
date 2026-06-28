@@ -306,7 +306,7 @@ class Component(ABC, Generic[DataT]):
     def register_event_callback(self, event_callback: Callable[[Any], None]) -> None:
         """
         Register an event callback
-        
+
         Parameters
         ----------
         event_callback : Callable[[Event], None]

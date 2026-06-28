@@ -200,7 +200,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         self._combo : int | str = -1
         self._timeout_input : int | str = -1
         self._title = title
-        #self._write_input : int | str = -1
         self._write_status : int | str = -1
         self._read_output : int | str = -1
         self._read_start : float = 0

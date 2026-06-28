@@ -17,7 +17,7 @@ async def _sleep(seconds:float) -> None:
 
     Args:
         seconds (float): Seconds to sleep for.
-    
+
     '''
     await asyncio.get_running_loop().run_in_executor(None, time.sleep, seconds)
 
@@ -106,6 +106,6 @@ class DearPyGuiAsync:
         |blocking|
         Run DearPyGui with async compatibility
         Use this in place of `dpg.start_gui()`
-        
+
         '''
         self.loop.run_until_complete(self.__start())

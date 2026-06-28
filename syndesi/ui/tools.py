@@ -119,8 +119,13 @@ def get_method_arguments(
 
     return result
 
+    
+
 class Block(ABC):
     """A collection of dearpygui items"""
     @abstractmethod
     def build(self, parent : int | str) -> None:
         """Construct the block in dearpygui"""
+
+class Tab(Block):
+    ...

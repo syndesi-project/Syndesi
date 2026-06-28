@@ -1400,9 +1400,9 @@ class Modbus(Protocol[ModbusSDU, bytes]):
         super().__init__(adapter, timeout)
         self._logger.debug("Initializing Modbus protocol...")
 
-        if isinstance(self._adapter, IP):
+        if isinstance(self.adapter, IP):
             # self._adapter: IP
-            self._adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
+            self.adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
             self._modbus_type = ModbusType.TCP
         elif isinstance(adapter, SerialPort):
             self._modbus_type = ModbusType(_type)

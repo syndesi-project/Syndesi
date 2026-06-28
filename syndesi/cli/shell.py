@@ -119,7 +119,6 @@ class ListSerialPortsAction(argparse.Action):
         )
 
     def __call__(self, parser, namespace, values, option_string=None):
-        print("Available serial ports : ")
         ports = SerialPort.list_ports()
         for port in ports:
             print(f"{port}")
