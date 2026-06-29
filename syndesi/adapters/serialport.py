@@ -14,6 +14,7 @@ from enum import StrEnum
 from types import EllipsisType
 
 import serial
+from serial.tools import list_ports
 from serial.serialutil import PortNotOpenError
 
 from syndesi.adapters.bytesadapter import BytesAdapter
@@ -141,6 +142,9 @@ class SerialPort(BytesAdapter):
     @property
     def descriptor(self) -> SerialPortDescriptor:
         return self._descriptor
+
+    def list_ports(self) -> list[str]:
+        return list([str(x) for x in list_ports.comports()])
 
     @staticmethod
     def default_timeout() -> float | None:
