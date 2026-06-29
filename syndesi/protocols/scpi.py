@@ -25,7 +25,7 @@ class SCPI(Delimited):
         '\n' by default
     receive_termination : str
         A custom different termination when receiving datas.
-        
+
         None by default (copy value from termination)
     timeout : float | int | None | ...
         Set device timeout
@@ -77,6 +77,6 @@ class SCPI(Delimited):
         termination : bool
             Add termination to the data, False by default
         """
-        self._adapter.write(
+        self.adapter.write(
             data + (self._termination.encode(self._encoding) if termination else b"")
         )

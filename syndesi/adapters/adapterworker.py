@@ -22,7 +22,7 @@ from typing import Any, Generic, TypeVar
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.tools.log_settings import LoggerAlias
 
-from ..component import Descriptor, Event, Frame, ReadFrame, ReadScope, ThreadCommand, WriteFrame
+from ..component import Descriptor, Event, ReadFrame, ReadScope, ThreadCommand, WriteFrame
 from ..tools.errors import (
     AdapterDisconnected,
     AdapterOpenError,
@@ -63,12 +63,13 @@ class AdapterReadEvent(Generic[DataT], AdapterEvent):
 @dataclass
 class AdapterFragmentEvent(Generic[DataT], AdapterEvent):
     """Adapter fragment event"""
-    next_timeout_timestamp: float | None
     fragment : Fragment[DataT]
+    next_timeout_timestamp: float | None
     first : bool
 
 @dataclass
-class BufferEvent(AdapterEvent):
+class AdapterBufferEvent(AdapterEvent):
+    """Event in the adapter frame buffer (frames added or removed)"""
     added_frame_ids : list[int]
     removed_frame_ids : list[int]
 
@@ -240,7 +241,7 @@ class AdapterWorker(Generic[DataT]):
 
         # Frames
         self.frame_buffer: deque[ReadFrame[DataT]] = deque(maxlen=self._FRAME_BUFFER_MAX)
-        self._next_frame_id = 0
+        self._frame_id = 0
         # Stop-conditions
         self._stop_conditions: list[StopCondition] = []
 
@@ -267,9 +268,9 @@ class AdapterWorker(Generic[DataT]):
         )
         self._worker_thread.start()
 
-    def next_frame_id(self) -> int:
-        output = self._next_frame_id
-        self._next_frame_id += 1
+    def _next_frame_id(self) -> int:
+        output = self._frame_id
+        self._frame_id += 1
         return output
 
     def send_command(self, command: ThreadCommand[Any]) -> None:
@@ -371,7 +372,7 @@ class AdapterWorker(Generic[DataT]):
             raise AdapterOpenError("Descriptor not initialized")
 
     def _buffer_clear(self) -> None:
-        self._interface._worker_emit_event(BufferEvent(
+        self._interface._worker_emit_event(AdapterBufferEvent(  # pylint: disable=protected-access
             added_frame_ids=[],
             removed_frame_ids=[frame.id for frame in self.frame_buffer]
         ))
@@ -410,7 +411,7 @@ class AdapterWorker(Generic[DataT]):
                             self._opened = True
                             if self._interface.descriptor is not None:
                                 tracehub.emit_open(str(self._interface.descriptor))
-                            # pylint: disable=protected-access 
+                            # pylint: disable=protected-access
                             self._interface._worker_emit_event(AdapterOpenedEvent())
                             self._first_opened = True
                             command.set_result(None)
@@ -442,10 +443,7 @@ class AdapterWorker(Generic[DataT]):
                     self._interface._event_callbacks.clear()
                     command.set_result(None)
                 case ReadCommand():
-                    if self._last_write_timestamp is None and command.scope == ReadScope.LAST_WRITE:
-                        command.set_exception(AdapterReadError("Cannot read with scope=LAST_WRITE without a previous write"))
-                    else:
-                        self._worker_begin_read(command)
+                    self._worker_begin_read(command)
                 case SetStopConditionsCommand():
                     self._stop_conditions = command.stop_conditions
                     command.set_result(None)
@@ -469,14 +467,25 @@ class AdapterWorker(Generic[DataT]):
 
         if self._pending_read is not None:
             cmd.set_exception(
-                WorkerThreadError("Concurrent read_detailed is not supported")
+                WorkerThreadError("Concurrent read is not supported")
             )
             return
 
-        # If buffered scope, serve immediately from buffer if available
-        if cmd.scope == ReadScope.BUFFERED and len(self.frame_buffer) > 0:
+        # Check if an element from the buffer should be poped
+        if cmd.scope == ReadScope.BUFFERED:
+            pop = True
+        elif cmd.scope == ReadScope.LAST_WRITE:
+            if self._last_write_timestamp is None:
+                cmd.set_exception(
+                    AdapterReadError("Cannot read with scope=LAST_WRITE without a previous write")
+                )
+                return
+            pop = self.frame_buffer[0].first_fragment_timestamp >= self._last_write_timestamp
+
+        # If the buffer is not empty, pop the first element (oldest one)
+        if len(self.frame_buffer) > 0 and pop:
             frame = self.frame_buffer.popleft()
-            self._interface._worker_emit_event(BufferEvent(
+            self._interface._worker_emit_event(AdapterBufferEvent(
                 added_frame_ids=[],
                 removed_frame_ids=[frame.id]
             ))
@@ -552,7 +561,7 @@ class AdapterWorker(Generic[DataT]):
 
         # Not consumed by a pending read => buffer it
         self.frame_buffer.append(frame)
-        self._interface._worker_emit_event(BufferEvent(
+        self._interface._worker_emit_event(AdapterBufferEvent(
             added_frame_ids=[frame.id],
             removed_frame_ids=[]
         ))

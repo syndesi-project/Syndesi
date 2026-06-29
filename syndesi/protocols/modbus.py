@@ -40,11 +40,10 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from math import ceil
-from types import EllipsisType
 from typing import cast
 
 from syndesi.adapters.utils import TimeoutType
-from syndesi.component import Frame, ReadFrame
+from syndesi.component import ReadFrame
 
 from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP
@@ -1401,9 +1400,9 @@ class Modbus(Protocol[ModbusSDU, bytes]):
         super().__init__(adapter, timeout)
         self._logger.debug("Initializing Modbus protocol...")
 
-        if isinstance(self._adapter, IP):
+        if isinstance(self.adapter, IP):
             # self._adapter: IP
-            self._adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
+            self.adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
             self._modbus_type = ModbusType.TCP
         elif isinstance(adapter, SerialPort):
             self._modbus_type = ModbusType(_type)
@@ -1486,11 +1485,12 @@ class Modbus(Protocol[ModbusSDU, bytes]):
         sdu = self._last_sdu.parse_sdu(data)
 
         return ModbusFrame(
+            data=sdu,
+            id=self._next_frame_id(),
             stop_timestamp=adapter_frame.stop_timestamp,
             stop_condition_type=adapter_frame.stop_condition_type,
             previous_read_buffer_used=adapter_frame.previous_read_buffer_used,
             response_delay=adapter_frame.response_delay,
-            data=sdu,
         )
 
     # ┌────────────┐

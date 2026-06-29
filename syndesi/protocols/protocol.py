@@ -7,9 +7,10 @@ of incoming data
 """
 
 from abc import abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import EllipsisType
-from typing import Callable, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from syndesi.adapters.adapterworker import (
     AdapterClosedEvent,
@@ -68,19 +69,26 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         timeout: TimeoutType = ...,
     ) -> None:
         super().__init__(LoggerAlias.PROTOCOL)
-        self._adapter = adapter
+        self.adapter = adapter # adapter is public as it is used in ui
 
-        self._adapter.register_event_callback(self._on_event)
+        self._frame_id = 0
+
+        self.adapter.register_event_callback(self._on_event)
 
         if timeout is not ...:
-            self._adapter.set_default_timeout(timeout)
+            self.adapter.set_default_timeout(timeout)
 
         if timeout is ...:
-            self._adapter.set_timeout(self.default_timeout())
+            self.adapter.set_timeout(self.default_timeout())
         else:
-            self._adapter.set_timeout(timeout)
+            self.adapter.set_timeout(timeout)
 
         self._event_callbacks : list[Callable[[ProtocolEvent], None]] = []
+
+    def _next_frame_id(self) -> int:
+        output = self._frame_id
+        self._frame_id += 1
+        return output
 
     @staticmethod
     @abstractmethod
@@ -126,13 +134,13 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         """
         Open protocol communication with the target (blocking)
         """
-        self._adapter.open()
+        self.adapter.open()
 
     async def aopen(self) -> None:
         """
         Open protocol communication with the target (async)
         """
-        await self._adapter.aopen()
+        await self.adapter.aopen()
 
     # ==== close ====
 
@@ -140,13 +148,13 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         """
         Close protocol communication with the target (blocking)
         """
-        self._adapter.close()
+        self.adapter.close()
 
     async def aclose(self) -> None:
         """
         Close protocol communication with the target (async)
         """
-        await self._adapter.aclose()
+        await self.adapter.aclose()
 
     # ==== read_detailed ====
 
@@ -156,7 +164,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
-        adapter_frame = await self._adapter.aread_detailed(
+        adapter_frame = await self.adapter.aread_detailed(
             timeout=timeout, stop_conditions=stop_conditions, scope=scope
         )
         return self._adapter_to_protocol(adapter_frame)
@@ -167,7 +175,7 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
-        adapter_frame = self._adapter.read_detailed(
+        adapter_frame = self.adapter.read_detailed(
             timeout=timeout, scope=scope, stop_conditions=stop_conditions
         )
         return self._adapter_to_protocol(adapter_frame)
@@ -202,21 +210,21 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         """
         Clear read buffer (blocking)
         """
-        self._adapter.flush_read()
+        self.adapter.flush_read()
 
     async def aflush_read(self) -> None:
         """
         Clear read buffer (async)
         """
-        await self._adapter.aflush_read()
+        await self.adapter.aflush_read()
 
     # ==== write ====
 
     async def awrite(self, data: ProtocolFrameT) -> None:
-        await self._adapter.awrite(self._protocol_to_adapter(data))
+        await self.adapter.awrite(self._protocol_to_adapter(data))
 
     def write(self, data: ProtocolFrameT) -> None:
-        self._adapter.write(self._protocol_to_adapter(data))
+        self.adapter.write(self._protocol_to_adapter(data))
 
     # ==== query_detailed ====
 
@@ -252,4 +260,4 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
         """
         Return True if the protocol is opened
         """
-        return self._adapter.is_open()
+        return self.adapter.is_open()

@@ -5,7 +5,6 @@
 Type tools
 """
 
-from typing import Any
 
 
 def to_bytes(data: str | bytes) -> bytes:

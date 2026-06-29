@@ -20,7 +20,7 @@ from typing import Any
 from syndesi.adapters.stop_conditions import StopConditionType
 from syndesi.adapters.utils import Fragment
 
-from ..component import Frame, ReadFrame, WriteFrame
+from ..component import ReadFrame, WriteFrame
 
 STOP_CONDITION_INDICATOR = {
     StopConditionType.CONTINUATION: "Cont",
@@ -175,8 +175,8 @@ class _TraceHub:
 
         str_data = repr(data)[2:-1]
 
-        return self._format_generic(str_data)        
-    
+        return self._format_generic(str_data)
+
     def _format_generic(self, str_data : str) -> str:
         if len(str_data) > self.TRUNCATE_LENGTH:
             return (
@@ -184,7 +184,7 @@ class _TraceHub:
                 + self.TRUNCATION_TERMINATION
             )
         return str_data
-        
+
 
     def emit_fragment(
         self, descriptor: str, fragment: Fragment[Any], write_delta: float
@@ -217,7 +217,7 @@ class _TraceHub:
             message = self._format_bytes(frame.data)
         else:
             message = self._format_generic(str(frame.data))
-        
+
         self._emit_event(
             ReadEvent(
                 descriptor=descriptor,

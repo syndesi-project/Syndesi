@@ -5,17 +5,22 @@
 Syndesi UI
 """
 
-import asyncio
-from enum import StrEnum
 import argparse
+import asyncio
 import importlib
-import dearpygui.dearpygui as dpg # type: ignore[import-untyped]
-from .dearpygui_async import DearPyGuiAsync
-
 import importlib.resources
+from enum import StrEnum
 
+import dearpygui.dearpygui as dpg
+
+from syndesi.adapters.bytesadapter import BytesAdapter
+from syndesi.drivers.driver import Driver
+from syndesi.protocols.protocol import Protocol
+from syndesi.ui.protocol import ProtocolBlock
+
+from .adapter import BytesAdapterBlock, IPBlock
+from .dearpygui_async import DearPyGuiAsync
 from .tools import Block
-from .adapter import IPBlock
 
 CLASS_NAME_SEPARATOR = ':'
 
@@ -38,7 +43,8 @@ class UIBase:
         self._width = width
         self._height = height
         self._build()
-        self._blocks : list[Block] = []
+        self._tabs : list[Block] = []
+        self._tab_bar : int | str = -1
 
     def start(self) -> None:
         """Start the UI"""
@@ -51,16 +57,16 @@ class UIBase:
 
         dpg_async.run()
         dpg.destroy_context()
-    
+
     def _build(self) -> None:
         dpg.create_context()
         dpg.create_viewport(
-            title="Syndesi UI", 
+            title="Syndesi UI",
             width=self._width,
             height=self._height,
             min_width=self._width,
         )
-        
+
         self.window = dpg.add_window(
             width=self._width,
             height=self._height,
@@ -72,12 +78,26 @@ class UIBase:
 
         dpg.setup_dearpygui()
 
-        
+    def adapter(self, adapter_block : BytesAdapterBlock):
+        # Only display the adapter
+        adapter_block.build(self.window)
 
-    def add_block(self, block : Block) -> None:
-        """Add a display block to the window"""
-        block.build(self.window)
-        self._blocks.append(block)
+    def _tab(self, a : Block, b : Block):
+        self._tab_bar = dpg.add_tab_bar()
+        a.build(self._tab_bar)
+        b.build(self._tab_bar)
+
+
+    def protocol(self, protocol_block : ProtocolBlock):
+        self._tab(protocol_block, protocol_block._protocol.adapter)
+
+    def driver(self, driver : Driver):
+        self._tab()
+
+    # def add_tab(self, tab : Block) -> None:
+    #     """Add a display block to the window"""
+    #     tab.build(self.window)
+    #     self._tabs.append(tab)
 
 class Command(StrEnum):
     """Syndesi ui CLI mode"""
@@ -109,8 +129,6 @@ def main(args : list[str] | None = None) -> None:
     #parser.add_argument('command', choices=list(Command), type=str)
     subarsers = parser.add_subparsers(dest='command')
 
-
-
     # Driver module
     driver_module_parser = subarsers.add_parser(Command.DRIVER_MODULE.value, help=COMMAND_HELP)
     driver_module_parser.add_argument('module', help="Module location")
@@ -133,7 +151,7 @@ def main(args : list[str] | None = None) -> None:
 
     arguments = parser.parse_args(args=args)
 
-    
+
 
     command = Command(arguments.command)
 
@@ -149,7 +167,7 @@ def main(args : list[str] | None = None) -> None:
     #     c = getattr(m, class_name)
     #     ui = UIDriver(c)
     if command == Command.IP:
-        ui.add_block(IPBlock())
+        ui.add_tab(IPBlock())
     # elif command == Command.PROTOCOL:
     #     protocol_name = Protocol(argument)
     #     if protocol_name == Protocol.DELIMTIED:
@@ -157,7 +175,7 @@ def main(args : list[str] | None = None) -> None:
     #     elif protocol_name == Protocol.MODBUS:
     #         protocol = Modbus
     #     ui = UIProtocol(protocol)
-    
+
     ui.start()
 
 if __name__ == '__main__':

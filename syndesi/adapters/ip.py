@@ -161,7 +161,7 @@ class IP(BytesAdapter):
             alias=alias,
             auto_open=auto_open,
         )
-    
+
     @property
     def descriptor(self) -> IPDescriptor:
         return self._descriptor
@@ -184,12 +184,11 @@ class IP(BytesAdapter):
             data = self._socket.recv(BUFFER_SIZE)
         except (ConnectionRefusedError, OSError) as e:
             raise AdapterReadError() from e
-            #fragment = Fragment(b"", fragment_timestamp)
-        else:
-            if data == b"":
-                raise AdapterDisconnected()
-            fragment = Fragment(data, fragment_timestamp)
-        return fragment
+
+        if data == b"":
+            raise AdapterDisconnected()
+
+        return Fragment(data, fragment_timestamp)
 
     def _worker_write(self, data: bytes) -> None:
         if self._socket is not None:

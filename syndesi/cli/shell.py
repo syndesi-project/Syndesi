@@ -6,10 +6,10 @@ Syndesi shell, used to communicate with adapters, protocols and drivers directly
 """
 
 
+import argparse
 import logging
-from argparse import ArgumentParser
-from enum import Enum
 import math
+from enum import Enum
 from typing import Any
 
 from syndesi.adapters.bytesadapter import BytesAdapter
@@ -106,6 +106,24 @@ def parse_end_argument(arg: str | None) -> str | None:
     # Otherwise parse "\\n" -> "\n"
     return arg.replace("\\n", "\n").replace("\\r", "\r")
 
+class ListSerialPortsAction(argparse.Action):
+    def __init__(self, option_strings, dest, default=False, required=False, help=None):
+        super().__init__(
+            option_strings=option_strings,
+            dest=dest,
+            nargs=0,
+            const=True,
+            default=default,
+            required=required,
+            help=help,
+        )
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        ports = SerialPort.list_ports()
+        for port in ports:
+            print(f"{port}")
+        parser.exit()
+
 class AdapterShell:
     """
     Adapter shell, allows direct communication with an adapter
@@ -114,10 +132,8 @@ class AdapterShell:
     DEFAULT_TERMINATION = "\n"
 
     def __init__(self, kind: AdapterType, input_arguments: list[str]) -> None:
-
         logging.basicConfig(level=logging.CRITICAL + 1)
-        
-        self._parser = ArgumentParser()
+        self._parser = argparse.ArgumentParser()
         self._parser.add_argument(
             "-t",
             "--timeout",
@@ -167,17 +183,19 @@ class AdapterShell:
             self._parser.add_argument(
                 "--rtscts", action="store_true", default=False, help="Enable RTS/CTS"
             )
+            self._parser.add_argument('--list', action=ListSerialPortsAction, default=False, help="List available serial ports")
+
         elif kind == AdapterType.VISA:
             self._parser.add_argument("descriptor", type=str)
         else:
             raise ValueError("Unsupported Kind")
         args = self._parser.parse_args(input_arguments)
-        
+
         try:
             timeout_arg = float(args.timeout)
         except ValueError as e:
             raise ValueError(f"Invalid timeout : {args.timeout}") from e
-        
+
         if math.isnan(timeout_arg):
             timeout = None
         else:

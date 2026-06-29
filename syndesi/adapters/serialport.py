@@ -8,6 +8,8 @@ the OS layers (COMx, /dev/ttyUSBx or /dev/ttyACMx)
 
 """
 
+import re
+import sys
 import threading
 from dataclasses import dataclass
 from enum import StrEnum
@@ -16,6 +18,7 @@ from types import EllipsisType
 import serial
 from serial.tools import list_ports
 from serial.serialutil import PortNotOpenError
+from serial.tools.list_ports import comports
 
 from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.component import Descriptor
@@ -145,6 +148,23 @@ class SerialPort(BytesAdapter):
 
     def list_ports(self) -> list[str]:
         return list([str(x) for x in list_ports.comports()])
+
+    @staticmethod
+    def list_ports() -> list[str]:
+        """
+        List available serial ports (excluding ttyn and ttySn on linux) as
+        usable paths / names
+        """
+        if sys.platform in ["linux", "linux2", "darwin"]:
+            # linux
+            # Return all ports except ttyn, ttySn, etc...
+            return [p.device for p in comports() if not re.match(r'ttyS?(\d+)', p.name)]
+
+        if sys.platform == "win32":
+            # Windows
+            return [p.device for p in comports()]
+
+        raise RuntimeError(f"Invalid platform : {sys.platform}")
 
     @staticmethod
     def default_timeout() -> float | None:

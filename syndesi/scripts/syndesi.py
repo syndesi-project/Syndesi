@@ -6,13 +6,13 @@ Main syndesi CLI script
 """
 
 import argparse
-from enum import Enum
 import logging
+from enum import Enum
 
-from syndesi.tools.log_settings import LoggerAlias
 from syndesi.ui.ui import main as start_ui
 
 from ..cli.shell import AdapterShell, AdapterType
+
 #from ..tools.logmanager import log
 from ..version import __version__
 

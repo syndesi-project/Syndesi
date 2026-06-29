@@ -6,13 +6,14 @@ Component is the base of the main syndesi classes : Adapters, Protocols and Driv
 """
 
 import logging
+import math
+import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
-import time
-from typing import Any, Callable, Generic, TypeVar
-import math
+from typing import Any, Generic, TypeVar
 
 from .adapters.stop_conditions import StopConditionType
 from .adapters.utils import TimeoutType
@@ -59,9 +60,10 @@ class Frame(Generic[DataT]):
     A complete frame of data
     """
     data: DataT
-    
+
 @dataclass
 class ReadFrame(Generic[DataT], Frame[DataT]):
+    """A data unit received from a device"""
     id : int
     stop_timestamp: float
     previous_read_buffer_used: bool
@@ -74,7 +76,7 @@ class ReadFrame(Generic[DataT], Frame[DataT]):
 
 @dataclass
 class WriteFrame(Generic[DataT], Frame[DataT]):
-
+    """A data unit sent to a device"""
     def __str__(self) -> str:
         return f"WriteFrame({self.data})"
 
@@ -304,7 +306,7 @@ class Component(ABC, Generic[DataT]):
     def register_event_callback(self, event_callback: Callable[[Any], None]) -> None:
         """
         Register an event callback
-        
+
         Parameters
         ----------
         event_callback : Callable[[Event], None]

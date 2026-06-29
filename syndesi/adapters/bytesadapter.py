@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import time
 from abc import abstractmethod
-from collections import deque
 from types import EllipsisType
 
-from ..component import Descriptor, Frame, ReadFrame
+from ..component import ReadFrame
 from .adapter import Adapter
 from .adapterworker import (
     AdapterFragmentEvent,
@@ -28,7 +27,7 @@ from .stop_conditions import (
     Total,
 )
 from .tracehub import tracehub
-from .utils import nmin, TimeoutType
+from .utils import TimeoutType, nmin
 
 
 def fuse_fragments(fragments: list[BytesFragment]) -> bytes:
@@ -152,7 +151,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
 
             frame = ReadFrame(
                 data=fuse_fragments(self._fragments),
-                id=self.next_frame_id(),
+                id=self._next_frame_id(),
                 first_fragment_timestamp=self._fragments[0].timestamp,
                 stop_timestamp=stop_timestamp,
                 stop_condition_type=stop_condition_type,
@@ -190,7 +189,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
 
             frame = ReadFrame(
                 data=fuse_fragments(self._fragments),
-                id=self.next_frame_id(),
+                id=self._next_frame_id(),
                 first_fragment_timestamp=self._fragments[0].timestamp,
                 stop_timestamp=timestamp,
                 stop_condition_type=self._timeout_origin,

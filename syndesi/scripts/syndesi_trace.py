@@ -49,17 +49,17 @@ from syndesi.adapters.tracehub import (
     CloseEvent,
     FragmentEvent,
     OpenEvent,
-    TraceEvent,
     ReadEvent,
+    TraceEvent,
     WriteEvent,
     json_to_trace_event,
 )
 
 if os.name == "posix":
-    import termios #pylint: disable=import-error
-    import tty #pylint: disable=import-error
+    import termios  #pylint: disable=import-error
+    import tty  #pylint: disable=import-error
 elif os.name == "nt":
-    import msvcrt #pylint: disable=import-error
+    import msvcrt  #pylint: disable=import-error
 
 if TYPE_CHECKING:
     from rich.align import Align
@@ -224,7 +224,7 @@ class Trace:
             ]
             if not isnan(event.write_delta):
                 fragments.append(Text(f" {event.write_delta:+.3f}s", style="dim"))
-        elif isinstance(event, ReadEvent):  
+        elif isinstance(event, ReadEvent):
             fragments += [
                 Text("read  ←", style="bold dim"),
                 Text(f"{event.length:4d}B ", style="dim"),

@@ -5,31 +5,43 @@
 Adapter UI elements
 """
 
-import traceback
-from typing import Generic, TypeVar, Any
-import time
-import asyncio
-from abc import abstractmethod
 import ast
-import dearpygui.dearpygui as dpg # type: ignore[import-untyped]
+import asyncio
+import time
+import traceback
+from abc import abstractmethod
+from typing import Any, Generic, TypeVar
 
-from syndesi.tools.errors import AdapterOpenError, AdapterReadError, AdapterTimeoutError, AdapterWriteError
+import dearpygui.dearpygui as dpg  # type: ignore[import-untyped]
 
-from ..adapters.stop_conditions import (
-    StopCondition,
-    Termination,
-    Continuation,
-    Length,
-    Total,
-    FragmentSC,
-    StopConditionType
+from syndesi.tools.errors import (
+    AdapterOpenError,
+    AdapterReadError,
+    AdapterTimeoutError,
+    AdapterWriteError,
 )
 
+from ..adapters.adapterworker import (
+    AdapterBufferEvent,
+    AdapterClosedEvent,
+    AdapterEvent,
+    AdapterFragmentEvent,
+    AdapterOpenedEvent,
+    AdapterReadEvent,
+    AdapterWriteEvent,
+)
 from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP, IPDescriptor
-from ..adapters.adapterworker import AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterReadEvent, AdapterOpenedEvent, AdapterWriteEvent, BufferEvent
+from ..adapters.stop_conditions import (
+    Continuation,
+    FragmentSC,
+    Length,
+    StopCondition,
+    StopConditionType,
+    Termination,
+    Total,
+)
 from ..component import ReadScope
-
 from .tools import Block, _help, _hsv_to_rgb
 
 StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
@@ -37,7 +49,7 @@ StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
 loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
 
-def bytes_help():
+def bytes_help() -> None:
     _help("bytes formatting can be used such as \\n and \\r")
 
 class StopConditionBlock(Generic[StopConditionT], Block):
@@ -74,7 +86,6 @@ class TerminationBlock(StopConditionBlock[Termination]):
                     default_value=repr(self._stop_condition.sequence)[2:-1]
                 )
                 bytes_help()
-                
 
             self._error_text = dpg.add_text("", color=(255,0,0), show=False)
 
@@ -118,9 +129,10 @@ class ContinuationBlock(StopConditionBlock[Continuation]):
     """Continuation stop-condition block"""
     DEFAULT_CONTINUATION = 0.2
     def __init__(self, stop_condition : Continuation) -> None:
-        continuation = self.DEFAULT_CONTINUATION if stop_condition is None else stop_condition.continuation
+        continuation = self.DEFAULT_CONTINUATION if stop_condition is None \
+            else stop_condition.continuation
         self._stop_condition  = Continuation(continuation)
-    
+
     def build(self, parent : int | str) -> None:
         with dpg.tab(label=str(self._stop_condition), parent=parent) as self.tab:
             self._continuation_input = dpg.add_input_float(
@@ -133,7 +145,7 @@ class ContinuationBlock(StopConditionBlock[Continuation]):
             )
 
         self.items += [self._continuation_input, self.tab]
-    
+
     def _continuation_callback(self, _ : int | str, app_data : float) -> None:
         self._stop_condition = Continuation(app_data)
 
@@ -144,7 +156,7 @@ class TotalBlock(StopConditionBlock[Total]):
         total = self.DEFAULT_TOTAL if stop_condition is None else stop_condition.total
         self._stop_condition = Total(total)
         self._total_input : int | str = -1
-    
+
     def build(self, parent : int | str) -> None:
         with dpg.tab(label=str(self._stop_condition), parent=parent) as self.tab:
             self._total_input = dpg.add_input_float(
@@ -156,7 +168,7 @@ class TotalBlock(StopConditionBlock[Total]):
                 callback=self._total_callback
             )
         self.items += [self._total_input, self.tab]
-    
+
     def _total_callback(self, _ : int | str, app_data : float) -> None:
         self._stop_condition = Total(app_data)
 
@@ -172,7 +184,7 @@ AdapterT = TypeVar("AdapterT", bound=BytesAdapter)
 
 class BytesAdapterBlock(Generic[AdapterT], Block):
     """BytesAdapter UI block"""
-    _adapter : AdapterT
+    _adapter : AdapterT | None
     #on_close : Callable[[], None] | None = None
     #on_open : Callable[[], None] | None = None
     DEFAULT_TIMEOUT = 0
@@ -188,7 +200,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         self._combo : int | str = -1
         self._timeout_input : int | str = -1
         self._title = title
-        #self._write_input : int | str = -1
         self._write_status : int | str = -1
         self._read_output : int | str = -1
         self._read_start : float = 0
@@ -201,6 +212,12 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         self._add_tab : int | str = -1
         self._right_clicked_tab : StopConditionBlock[Any] | None = None
         self._buffer_items : dict[int, int | str] = {}
+        self._edit_stop_condition_popup : int | str = -1
+        self._add_stop_condition_popup : int | str = -1
+        self._show_fragments_checkbox : int | str = -1
+        self._buffer_group : int | str = -1
+        self._write_input : dict[int, int | str] = {}
+        self._write_group : dict[int, int | str] = {}
 
         self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
 
@@ -229,41 +246,46 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                     color=(30, 199, 38)
                 elif isinstance(event, AdapterReadEvent):
                     text = f"← read  {event.frame.data!r}"
-                elif isinstance(event, AdapterFragmentEvent) and dpg.get_value(self._show_fragments_checkbox):
+                elif isinstance(event, AdapterFragmentEvent) and \
+                    dpg.get_value(self._show_fragments_checkbox):
                     first_indicator = "*" if event.first else ""
                     text = f"↓    {event.fragment} ({first_indicator}frag)"
                 elif isinstance(event, AdapterWriteEvent):
                     text = f"→ write {event.frame.data!r}"
-                elif isinstance(event, BufferEvent):
-                    if len(event.added_frame_ids) > 0:
-                        for frame in self._adapter.frame_buffer:
-                            if frame.id in event.added_frame_ids:
-                                self._buffer_items[frame.id] = dpg.add_text(str(frame.data), parent=self._buffer_group)
+                elif isinstance(event, AdapterBufferEvent):
+                    if self._adapter is not None:
+                        if len(event.added_frame_ids) > 0:
+                            for frame in self._adapter.frame_buffer:
+                                if frame.id in event.added_frame_ids:
+                                    self._buffer_items[frame.id] = dpg.add_text(
+                                        str(frame.data),
+                                        parent=self._buffer_group
+                                    )
 
-                    for removed_frame_id in event.removed_frame_ids:
-                        tag = self._buffer_items.pop(removed_frame_id, None)
-                        if tag is not None:
-                            dpg.delete_item(tag)
+                        for removed_frame_id in event.removed_frame_ids:
+                            tag = self._buffer_items.pop(removed_frame_id, None)
+                            if tag is not None:
+                                dpg.delete_item(tag)
                 else:
                     text = "Unknown event"
                     color = (255, 0, 0)
-                
+
                 if text is not None:
                     event_tag = dpg.add_group(horizontal=True, parent=self._event_group)
                     dpg.add_text(f"{delta:+8.3f} ", color=(127, 127, 127), parent=event_tag)
                     dpg.add_text(text, color=color, parent=event_tag)
                     self._events.append(event_tag)
 
-        except Exception as e:
+        except Exception:
             print(f'Exception in loop : {traceback.format_exc()}')
-                
-            
+
+
     def _clear_events(self) -> None:
         for tag in self._events:
             dpg.delete_item(tag)
         self._events.clear()
 
-    def _write_advanced_callback(self, sender : int | str, enabled : bool):
+    def _write_advanced_callback(self, sender : int | str, enabled : bool) -> None:
         for i in range(1, self.N_WRITE_LINES):
             if enabled:
                 dpg.show_item(self._write_group[i])
@@ -292,8 +314,14 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 with dpg.theme() as green_button_theme:
                     with dpg.theme_component(dpg.mvButton):
                         dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0.40, 0.6, 0.6))
-                        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _hsv_to_rgb(0.40, 0.8, 0.8))
-                        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _hsv_to_rgb(0.40, 0.7, 0.7))
+                        dpg.add_theme_color(
+                            dpg.mvThemeCol_ButtonActive,
+                            _hsv_to_rgb(0.40, 0.8, 0.8)
+                        )
+                        dpg.add_theme_color(
+                            dpg.mvThemeCol_ButtonHovered,
+                            _hsv_to_rgb(0.40, 0.7, 0.7)
+                        )
 
                 dpg.add_button(label="Open", callback=self.open)
                 dpg.bind_item_theme(dpg.last_item(), green_button_theme)
@@ -307,15 +335,14 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                             policy=dpg.mvTable_SizingStretchSame):
                     dpg.add_table_column()
                     dpg.add_table_column()
-                    
+
                     with dpg.table_row():
                         with dpg.table_cell():
                             with dpg.group(horizontal=False):
                                 self._build_descriptor(dpg.last_item())
-                                #timeout = self._adapter.default_timeout()
                                 self._timeout_input = dpg.add_input_float(
                                     label="Timeout",
-                                    default_value=self.DEFAULT_TIMEOUT,#timeout if timeout is not None else -1,
+                                    default_value=self.DEFAULT_TIMEOUT,
                                     width=100
                                 )
                         with dpg.table_cell():
@@ -325,33 +352,42 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                                     dpg.add_text("Stop-conditions", color=(70, 142, 194))
                                     with dpg.tab_bar(reorderable=True) as self._tab_bar:
                                         ...
-                    
+
                 dpg.add_spacer(height=5)
                 dpg.add_separator()
                 dpg.add_spacer(height=5)
 
-                #with dpg.group(horizontal=True):
                 dpg.add_text("Write", color=(70, 142, 194))
                 dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
 
-                self._write_input : dict[int, int | str] = {}
-                self._write_group : dict[int, int | str] = {}
-                
+                self._write_input = {}
+                self._write_group = {}
+
                 with dpg.group(horizontal=True):
                     with dpg.group(horizontal=False):
                         for i in range(self.N_WRITE_LINES):
                             with dpg.group(horizontal=True, show=i==0):
                                 self._write_group[i] = dpg.last_item()
-                                dpg.add_button(label="Write", callback=self._write_callback, user_data=i, width=100)
+                                dpg.add_button(
+                                    label="Write",
+                                    callback=self._write_callback,
+                                    user_data=i,
+                                    width=100
+                                )
                                 self._write_input[i] = dpg.add_input_text()
                                 if i == 0:
                                     bytes_help()
                 self._write_status = dpg.add_text("")
 
                 with dpg.group(horizontal=True):
-                    with dpg.group(horizontal=False):    
+                    with dpg.group(horizontal=False):
                         dpg.add_text("Read", color=(70, 142, 194))
-                        dpg.add_combo(label="Scope", items=[x for x in ReadScope], width=132, default_value=ReadScope.BUFFERED.value)
+                        dpg.add_combo(
+                            label="Scope",
+                            items=[x for x in ReadScope],
+                            width=132,
+                            default_value=ReadScope.BUFFERED.value
+                        )
                         dpg.add_button(label="Read", callback=self._read_callback, width=60)
                         self._read_output = dpg.add_text("")
                     dpg.add_spacer(width=20)
@@ -362,7 +398,10 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
                 dpg.add_text("Events", color=(70, 142, 194))
                 with dpg.group(horizontal=True):
-                    self._show_fragments_checkbox = dpg.add_checkbox(label="Show fragments", default_value=True)
+                    self._show_fragments_checkbox = dpg.add_checkbox(
+                        label="Show fragments",
+                        default_value=True
+                    )
                     dpg.add_button(label="Clear events", callback=self._clear_events)
                 with dpg.child_window(height=-1, width=-1) as self._event_window:
                     with dpg.theme() as tight:
@@ -376,10 +415,17 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
                 with dpg.popup(self._header) as self._add_stop_condition_popup:
                     for stop_condition in self.STOP_CONDITIONS:
-                        dpg.add_selectable(label=stop_condition.value, callback=self._add_default_stop_condition, user_data=stop_condition)
+                        dpg.add_selectable(
+                            label=stop_condition.value,
+                            callback=self._add_default_stop_condition,
+                            user_data=stop_condition
+                        )
 
                 with dpg.popup(self._header) as self._edit_stop_condition_popup:
-                    dpg.add_selectable(label="Delete", callback=self._remove_stop_condition_callback)
+                    dpg.add_selectable(
+                        label="Delete",
+                        callback=self._remove_stop_condition_callback
+                    )
 
             self._adapter_to_cache_stop_conditions()
 
@@ -401,13 +447,15 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
             for slot in slots.values():
                 for children in slot:
                     dpg.delete_item(children)
-        
+
         for block in self._stop_conditions_cache:
             block.build(self._tab_bar)
 
         self._add_tab = dpg.add_tab(label="+", parent=self._tab_bar)
 
     async def _read_callback(self) -> None:
+        if self._adapter is None:
+            return
         self._read_start = time.time()
         asyncio.create_task(self._read_task())
         try:
@@ -428,12 +476,11 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
     async def _read_task(self) -> None:
         self._read_task_running = True
-            
         while self._read_task_running:
             dpg.set_value(self._read_output, f"{time.time() - self._read_start:.3f}s")
             await asyncio.sleep(1/60)
 
-    def _update_write_status(self, text : str, status : str = "neutral"):
+    def _update_write_status(self, text : str, status : str = "neutral") -> None:
         if status == "ok":
             dpg.configure_item(self._write_status, color=(30, 199, 38))
         elif status == "error":
@@ -442,19 +489,17 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
             dpg.configure_item(self._write_status, color=(255,255,255))
         dpg.set_value(self._write_status, text)
 
-        
-
-    def _write_callback(self, sender : int | str, app_data : Any, index : int) -> None:
+    def _write_callback(self, _ : int | str, __ : Any, index : int) -> None:
         try:
             data : bytes = ast.literal_eval(f"b'{dpg.get_value(self._write_input[index])}'")
         except SyntaxError as e:
             self._update_write_status(str(e), "error")
             return
-        
+
         if self._adapter is None:
             self._update_write_status("Adapter has not been opened", "error")
             return
-        
+
         try:
             self._adapter.write(data)
         except AdapterWriteError as e:
@@ -466,7 +511,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
     def _remove_stop_condition_callback(self) -> None:
         if self._right_clicked_tab is not None:
             self._stop_conditions_cache.remove(self._right_clicked_tab)
-        
         self._build_tabs()
 
     def _remove_callback(self) -> None:
@@ -481,7 +525,7 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 dpg.set_value(self._status_text, f"Closed : {text}")
             else:
                 dpg.set_value(self._status_text, "Closed")
-            
+
             dpg.configure_item(self._status_text, color=(255,0,0))
 
     def open(self) -> None:
@@ -502,8 +546,8 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
     def _add_default_stop_condition(
             self,
-            sender : int | str,
-            app_data : Any,
+            _ : int | str,
+            __ : Any,
             _type : StopConditionType
         ) -> None:
         stop_condition : StopCondition
@@ -559,8 +603,8 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
     def close(self) -> None:
         """Close adapter"""
-        self._adapter.close()
-        
+        if self._adapter is not None:
+            self._adapter.close()
 
     def _on_adapter_event(self, event : AdapterEvent) -> None:
         loop.call_soon_threadsafe(self._event_queue.put_nowait, event)
@@ -568,13 +612,13 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 class IPBlock(BytesAdapterBlock[IP]):
     """IP adapter block"""
     def __init__(self) -> None:
-        self._adapter : IP | None = None#IP(address="", port=0, auto_open=False)
+        self._adapter : IP | None = None
         super().__init__("IP Adapter")
         self._address_input : int | str = -1
         self._port_input : int | str = -1
         self._port_details : int | str = -1
         self._transport_input : int | str = -1
-        
+
     def _build_descriptor(self, parent : int | str) -> None:
         dpg.add_text("Descriptor", color=(70, 142, 194), parent=parent)
         self._address_input = dpg.add_input_text(
@@ -594,7 +638,7 @@ class IPBlock(BytesAdapterBlock[IP]):
             default_value=IPDescriptor.Transport.TCP.value,
             width=100
         )
-    
+
     def open(self) -> None:
         address = dpg.get_value(self._address_input)
         try:
@@ -602,8 +646,8 @@ class IPBlock(BytesAdapterBlock[IP]):
         except ValueError:
             dpg.set_value(self._port_details, "Invalid port")
             return
-        else:
-            dpg.set_value(self._port_details, "")
+
+        dpg.set_value(self._port_details, "")
         transport = IPDescriptor.Transport(dpg.get_value(self._transport_input))
         timeout = float(dpg.get_value(self._timeout_input))
         self._adapter = IP(
