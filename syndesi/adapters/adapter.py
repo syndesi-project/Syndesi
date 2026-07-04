@@ -154,7 +154,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
     # ┌────────────┐
     # │ Public API │
     # └────────────┘
-
+    
     def set_timeout(self, timeout: ValidTimeoutType) -> None:
         """
         Set adapter timeout

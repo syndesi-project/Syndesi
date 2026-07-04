@@ -74,7 +74,6 @@ class GenericAdapterWorker(Generic[DataT], AdapterWorker[DataT], ABC):
             if dl is not None and timestamp >= dl:
                 self._worker_fail_pending_read_timeout()
 
-
 class GenericAdapter(Generic[DataT], Adapter[DataT]):
     """
     Adapter with generic data and no stop-conditions

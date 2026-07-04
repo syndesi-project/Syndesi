@@ -10,17 +10,22 @@ import asyncio
 import importlib
 import importlib.resources
 from enum import StrEnum
+from typing import Type, TypeVar
 
 import dearpygui.dearpygui as dpg
 
 from syndesi.adapters.bytesadapter import BytesAdapter
+from syndesi.adapters.ip import IP
+from syndesi.adapters.serialport import SerialPort
+from syndesi.component import Component, Event
 from syndesi.drivers.driver import Driver
+from syndesi.protocols.delimited import Delimited
 from syndesi.protocols.protocol import Protocol
-from syndesi.ui.protocol import ProtocolBlock
+from syndesi.ui.protocol import DelimitedBlock, ProtocolBlock
 
 from .adapter import BytesAdapterBlock, IPBlock
 from .dearpygui_async import DearPyGuiAsync
-from .tools import Block
+from .tools import Block, _hsv_to_rgb
 
 CLASS_NAME_SEPARATOR = ':'
 
@@ -33,6 +38,29 @@ loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 # ● ○ ◆ ◇ ▲ △ ■ □
 # ← → ↑ ↓ ↔ ⇒ ⇐ ⇑ ⇓ ➔
 
+def adapter_block(adapter : BytesAdapter) -> BytesAdapterBlock:
+    if isinstance(adapter, IP):
+        return IPBlock(adapter)
+    
+    raise RuntimeError(f"Invalid adapter : {adapter}")
+
+def protocol_block(protocol : Protocol) -> ProtocolBlock:
+    if isinstance(protocol, Delimited):
+        return DelimitedBlock(protocol)
+    raise RuntimeError(f"Invalid protocol : {protocol}")
+
+
+t = TypeVar("t", bound=Component)
+
+def default_ip() -> IP:
+    return IP(address="", port=0, auto_open=False)
+
+def default_serialport() -> SerialPort:
+    return SerialPort(port="", baudrate=9600)
+
+def default_delimited(adapter : BytesAdapter) -> Delimited:
+    return Delimited(adapter, termination='\n')
+
 class UIBase:
     """Main UI window"""
     def __init__(
@@ -42,9 +70,10 @@ class UIBase:
         ) -> None:
         self._width = width
         self._height = height
-        self._build()
-        self._tabs : list[Block] = []
         self._tab_bar : int | str = -1
+        self.toplevel_component : Component | None = None
+        self._tab_blocks : list[int | str] = []
+        self._build()
 
     def start(self) -> None:
         """Start the UI"""
@@ -67,37 +96,117 @@ class UIBase:
             min_width=self._width,
         )
 
-        self.window = dpg.add_window(
+        with dpg.window(
             width=self._width,
             height=self._height,
             no_resize=True,
             no_title_bar=True
-        )
+        ) as self._window:
 
-        dpg.set_primary_window(self.window, True)
+            with dpg.group(horizontal=True, width=100):
+                dpg.add_text("Status : ")
+                self._status_text = dpg.add_text("", wrap=500)
+                dpg.add_spacer()
+
+            with dpg.group(horizontal=True):
+                with dpg.theme() as red_button_theme:
+                    with dpg.theme_component(dpg.mvButton):
+                        dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0, 0.6, 0.6))
+                        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _hsv_to_rgb(0, 0.8, 0.8))
+                        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _hsv_to_rgb(0, 0.7, 0.7))
+
+                with dpg.theme() as green_button_theme:
+                    with dpg.theme_component(dpg.mvButton):
+                        dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0.40, 0.6, 0.6))
+                        dpg.add_theme_color(
+                            dpg.mvThemeCol_ButtonActive,
+                            _hsv_to_rgb(0.40, 0.8, 0.8)
+                        )
+                        dpg.add_theme_color(
+                            dpg.mvThemeCol_ButtonHovered,
+                            _hsv_to_rgb(0.40, 0.7, 0.7)
+                        )
+
+                dpg.add_button(label="Open", callback=self.open)
+                dpg.bind_item_theme(dpg.last_item(), green_button_theme)
+                dpg.add_button(label="Close", callback=self.close)
+                dpg.bind_item_theme(dpg.last_item(), red_button_theme)
+
+            self._tab_bar = dpg.add_tab_bar()
+
+        dpg.set_primary_window(self._window, True)
 
         dpg.setup_dearpygui()
 
-    def adapter(self, adapter_block : BytesAdapterBlock):
-        # Only display the adapter
-        adapter_block.build(self.window)
+    def _add_adapter(self, adapter : BytesAdapter):
+        block = adapter_block(adapter)
+        adapter_tab = dpg.add_tab(label=block.title, parent=self._tab_bar)
+        self._tab_blocks.append(adapter_tab)
+        block.build(adapter_tab)
 
-    def _tab(self, a : Block, b : Block):
-        self._tab_bar = dpg.add_tab_bar()
-        a.build(self._tab_bar)
-        b.build(self._tab_bar)
+    def load_adapter(self, adapter : BytesAdapter):
+        self._add_adapter(adapter)
+        adapter.register_event_callback(self._event_callback)
 
+    def _add_protocol(self, protocol : Protocol):
+        _protocol_block = protocol_block(protocol)
+        protocol_tab = dpg.add_tab(label=_protocol_block.title, parent=self._tab_bar)
+        self._tab_blocks.append(protocol_tab)
+        _protocol_block.build(protocol_tab)
 
-    def protocol(self, protocol_block : ProtocolBlock):
-        self._tab(protocol_block, protocol_block._protocol.adapter)
+    def load_protocol(self, protocol : Protocol):
+        if not isinstance(protocol.adapter, BytesAdapter):
+            raise RuntimeError("Non-bytes adapter are not yet supported")
+        self._add_adapter(protocol.adapter)
+        self._add_protocol(protocol)
+        protocol.register_event_callback(self._event_callback)
 
-    def driver(self, driver : Driver):
-        self._tab()
+    def load_driver(self, driver : Driver):
+        ...
 
-    # def add_tab(self, tab : Block) -> None:
-    #     """Add a display block to the window"""
-    #     tab.build(self.window)
-    #     self._tabs.append(tab)
+    def _add_driver(self, driver):
+        ...
+
+    def open(self):
+        """Open the top-level component (driver, protocol or adapter)"""
+        if self.toplevel_component is None:
+            raise RuntimeError("Top-level component hasn't been set")
+        self.toplevel_component.open()
+
+        """Open adapter"""
+        self._clear_events()
+        self._start_timestamp = time.time()
+        self._adapter_to_cache_stop_conditions()
+        dpg.set_value(self._write_status, "")
+
+        if self._adapter is not None:
+            self._adapter.register_event_callback(self._on_adapter_event)
+            try:
+                self._adapter.open()
+            except AdapterOpenError as e:
+                self._status(False, str(e))
+            else:
+                self._status(True)
+
+    def close(self):
+        if self.toplevel_component is None:
+            raise RuntimeError("Top-level component hasn't been set")
+        self.toplevel_component.close()
+
+    def _event_callback(self, event : Event):
+        ...
+
+    def _status(self, opened : bool, text : str = "") -> None:
+        if opened:
+            dpg.set_value(self._status_text, "Opened")
+            dpg.configure_item(self._status_text, color=(0,255,0))
+        else:
+            if text:
+                dpg.set_value(self._status_text, f"Closed : {text}")
+            else:
+                dpg.set_value(self._status_text, "Closed")
+
+            dpg.configure_item(self._status_text, color=(255,0,0))
 
 class Command(StrEnum):
     """Syndesi ui CLI mode"""
@@ -107,7 +216,7 @@ class Command(StrEnum):
     SERIAL = 'serial'
     VISA = 'visa'
     MODBUS = 'modbus'
-    DELIMTIED = 'delimited'
+    DELIMITED = 'delimited'
 
 COMMAND_HELP = """The type of UI to open. Choose between :
 
@@ -127,31 +236,33 @@ def main(args : list[str] | None = None) -> None:
     #parser.add_argument("--verbose", "-v", action="count", default=0, help="-v = INFO, -vv = DEBUG")
     #debug_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
     #parser.add_argument('command', choices=list(Command), type=str)
-    subarsers = parser.add_subparsers(dest='command')
+    subparsers = parser.add_subparsers(dest='command')
 
     # Driver module
-    driver_module_parser = subarsers.add_parser(Command.DRIVER_MODULE.value, help=COMMAND_HELP)
+    driver_module_parser = subparsers.add_parser(Command.DRIVER_MODULE, help=COMMAND_HELP)
     driver_module_parser.add_argument('module', help="Module location")
 
     # Driver path
-    driver_path_parser = subarsers.add_parser(Command.DRIVER_PATH.value)
+    driver_path_parser = subparsers.add_parser(Command.DRIVER_PATH)
     driver_path_parser.add_argument('path', help="Driver path")
 
     # IP
-    ip_parser = subarsers.add_parser(Command.IP.value)
+    ip_parser = subparsers.add_parser(Command.IP)
     # ip_parser.add_argument('address', help="IP address")
     # ip_parser.add_argument('port', help="IP port")
 
     # Serial
-    serial_parser = subarsers.add_parser(Command.SERIAL.value)
+    serial_parser = subparsers.add_parser(Command.SERIAL)
     # serial_parser.add_argument("port", help="Serial port")
     # serial_parser.add_argument("")
 
     #parser.add_argument('argument', type=str, help="The mode argument, see the mode help")
 
+    # Delimited
+    delimited_parser = subparsers.add_parser(Command.DELIMITED)
+    delimited_parser.add_argument('adapter', choices=[Command.IP, Command.SERIAL])
+
     arguments = parser.parse_args(args=args)
-
-
 
     command = Command(arguments.command)
 
@@ -167,14 +278,14 @@ def main(args : list[str] | None = None) -> None:
     #     c = getattr(m, class_name)
     #     ui = UIDriver(c)
     if command == Command.IP:
-        ui.add_tab(IPBlock())
-    # elif command == Command.PROTOCOL:
-    #     protocol_name = Protocol(argument)
-    #     if protocol_name == Protocol.DELIMTIED:
-    #         protocol = Delimited
-    #     elif protocol_name == Protocol.MODBUS:
-    #         protocol = Modbus
-    #     ui = UIProtocol(protocol)
+        ui.load_adapter(default_ip())
+    if command == Command.DELIMITED:
+        adapter = arguments.adapter
+        if adapter == Command.IP:
+            ui.load_protocol(default_delimited(default_ip()))
+        elif adapter == Command.SERIAL:
+            ui.load_protocol(default_delimited(default_serialport()))
+    
 
     ui.start()
 

@@ -184,7 +184,8 @@ AdapterT = TypeVar("AdapterT", bound=BytesAdapter)
 
 class BytesAdapterBlock(Generic[AdapterT], Block):
     """BytesAdapter UI block"""
-    _adapter : AdapterT | None
+    _adapter : AdapterT
+    title = ""
     #on_close : Callable[[], None] | None = None
     #on_open : Callable[[], None] | None = None
     DEFAULT_TIMEOUT = 0
@@ -238,7 +239,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 color = (255, 255, 255)
                 text : str | None = None
                 if isinstance(event, AdapterClosedEvent):
-                    self._status(False)
                     text = "● closed"
                     color = (207, 19, 19)
                 elif isinstance(event, AdapterOpenedEvent):
@@ -294,39 +294,10 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
     def build(self, parent : int | str) -> None:
         with dpg.group(parent=parent):
-            # with dpg.menu_bar():
-            #     dpg.add_menu_item(label="Adapter")
             with dpg.handler_registry():
                 dpg.add_mouse_click_handler(dpg.mvMouseButton_Right, callback=self._right_click)
                 dpg.add_mouse_click_handler(dpg.mvMouseButton_Left, callback=self._left_click)
-            with dpg.group(horizontal=True, width=100):
-                dpg.add_text("Status : ")
-                self._status_text = dpg.add_text("", wrap=500)
-                dpg.add_spacer()
 
-            with dpg.group(horizontal=True):
-                with dpg.theme() as red_button_theme:
-                    with dpg.theme_component(dpg.mvButton):
-                        dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0, 0.6, 0.6))
-                        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _hsv_to_rgb(0, 0.8, 0.8))
-                        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _hsv_to_rgb(0, 0.7, 0.7))
-
-                with dpg.theme() as green_button_theme:
-                    with dpg.theme_component(dpg.mvButton):
-                        dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0.40, 0.6, 0.6))
-                        dpg.add_theme_color(
-                            dpg.mvThemeCol_ButtonActive,
-                            _hsv_to_rgb(0.40, 0.8, 0.8)
-                        )
-                        dpg.add_theme_color(
-                            dpg.mvThemeCol_ButtonHovered,
-                            _hsv_to_rgb(0.40, 0.7, 0.7)
-                        )
-
-                dpg.add_button(label="Open", callback=self.open)
-                dpg.bind_item_theme(dpg.last_item(), green_button_theme)
-                dpg.add_button(label="Close", callback=self.close)
-                dpg.bind_item_theme(dpg.last_item(), red_button_theme)
             with dpg.collapsing_header(
                 label=self._title,
                 default_open=True
@@ -429,8 +400,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
             self._adapter_to_cache_stop_conditions()
 
-            self._status(False)
-
     def _left_click(self) -> None:
         if self._add_tab != -1 and dpg.is_item_hovered(self._add_tab):
             dpg.show_item(self._add_stop_condition_popup)
@@ -516,33 +485,9 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
     def _remove_callback(self) -> None:
         self._cache_stop_conditions_to_adapter()
 
-    def _status(self, opened : bool, text : str = "") -> None:
-        if opened:
-            dpg.set_value(self._status_text, "Opened")
-            dpg.configure_item(self._status_text, color=(0,255,0))
-        else:
-            if text:
-                dpg.set_value(self._status_text, f"Closed : {text}")
-            else:
-                dpg.set_value(self._status_text, "Closed")
+    
 
-            dpg.configure_item(self._status_text, color=(255,0,0))
 
-    def open(self) -> None:
-        """Open adapter"""
-        self._clear_events()
-        self._start_timestamp = time.time()
-        self._adapter_to_cache_stop_conditions()
-        dpg.set_value(self._write_status, "")
-
-        if self._adapter is not None:
-            self._adapter.register_event_callback(self._on_adapter_event)
-            try:
-                self._adapter.open()
-            except AdapterOpenError as e:
-                self._status(False, str(e))
-            else:
-                self._status(True)
 
     def _add_default_stop_condition(
             self,
@@ -611,8 +556,9 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
 class IPBlock(BytesAdapterBlock[IP]):
     """IP adapter block"""
-    def __init__(self) -> None:
-        self._adapter : IP | None = None
+    title = "IP Adapter"
+    def __init__(self, adapter : IP) -> None:
+        self._adapter = adapter
         super().__init__("IP Adapter")
         self._address_input : int | str = -1
         self._port_input : int | str = -1
@@ -650,11 +596,8 @@ class IPBlock(BytesAdapterBlock[IP]):
         dpg.set_value(self._port_details, "")
         transport = IPDescriptor.Transport(dpg.get_value(self._transport_input))
         timeout = float(dpg.get_value(self._timeout_input))
-        self._adapter = IP(
-            address=address,
-            port=port,
-            transport=transport,
-            timeout=timeout if timeout != self.DEFAULT_TIMEOUT else None,
-            auto_open=False
-        )
+        self._adapter.descriptor.address = address
+        self._adapter.descriptor.port = port
+        self._adapter.descriptor.transport = transport
+        self._adapter.set_timeout(timeout if timeout != self.DEFAULT_TIMEOUT else None)
         super().open()

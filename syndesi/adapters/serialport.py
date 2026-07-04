@@ -146,9 +146,6 @@ class SerialPort(BytesAdapter):
     def descriptor(self) -> SerialPortDescriptor:
         return self._descriptor
 
-    def list_ports(self) -> list[str]:
-        return list([str(x) for x in list_ports.comports()])
-
     @staticmethod
     def list_ports() -> list[str]:
         """

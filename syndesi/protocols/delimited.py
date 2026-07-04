@@ -17,7 +17,7 @@ from .protocol import Protocol, ProtocolReadFrame
 
 class Delimited(Protocol[str, bytes]):
     """
-    Protocol with delimiter, like LF, CR, etc... LF is used by default
+    Protocol with string decoding and delimiter, like LF, CR, etc... LF is used by default
 
     No presentation or application layers
 
@@ -40,7 +40,7 @@ class Delimited(Protocol[str, bytes]):
     def __init__(
         self,
         adapter: BytesAdapter,
-        termination: str = "\n",
+        termination: str | bytes = "\n",
         *,
         format_response: bool = True,
         encoding: str = "utf-8",
@@ -54,10 +54,16 @@ class Delimited(Protocol[str, bytes]):
             raise ValueError(
                 f"end argument must be of type str or bytes, not {type(termination)}"
             )
+        
+         
+
         if receive_termination is None:
+            self._identical_terminations = True
             self._receive_termination = termination
         else:
+            self._identical_terminations = False
             self._receive_termination = receive_termination
+
         self._termination = termination
         self._response_formatting = format_response
 
@@ -82,12 +88,6 @@ class Delimited(Protocol[str, bytes]):
         """Default timeout"""
         return 2.0
 
-    # ┌────────────┐
-    # │ Public API │
-    # └────────────┘
-
-    # ==== read_detailed ====
-
     def _adapter_to_protocol(self, adapter_frame: ReadFrame[bytes]) -> ProtocolReadFrame[str]:
         data = adapter_frame.data.decode(self._encoding)
         if data.endswith(self._receive_termination):
@@ -105,6 +105,21 @@ class Delimited(Protocol[str, bytes]):
     def _protocol_to_adapter(self, protocol_payload: str) -> bytes:
         terminated_payload = protocol_payload + self._termination
         return terminated_payload.encode(self._encoding)
+    
+    @property
+    def termination(self) -> str: 
+        return self._termination
+
+    @termination.setter
+    def termination(self, value : str) -> None:
+        self._termination = value
+        if self._identical_terminations:
+            self._receive_termination = value
+            self.adapter.
+    
+    # ┌────────────┐
+    # │ Public API │
+    # └────────────┘
 
     def read_raw(
         self,
