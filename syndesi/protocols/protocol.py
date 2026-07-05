@@ -10,7 +10,7 @@ from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from types import EllipsisType
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from syndesi.adapters.adapterworker import (
     AdapterClosedEvent,
@@ -26,9 +26,7 @@ from ..tools.log_settings import LoggerAlias
 
 ProtocolFrameT = TypeVar("ProtocolFrameT")
 
-AdapterDataT = TypeVar("AdapterDataT")
-# AdapterT = TypeVar("AdapterT", bound=AdapterBase[AdapterDataT])
-
+AdapterT = TypeVar("AdapterT", bound=Adapter)
 
 @dataclass
 class ProtocolReadFrame(Generic[ProtocolFrameT], ReadFrame[ProtocolFrameT]):
@@ -42,14 +40,11 @@ class ProtocolReadFrame(Generic[ProtocolFrameT], ReadFrame[ProtocolFrameT]):
     def __str__(self) -> str:
         return f"ProtocolFrame({self.data!r})"
 
-
 class ProtocolEvent(Event):
     """Protocol event"""
 
-
 class ProtocolDisconnectedEvent(ProtocolEvent):
     """Protocol disconnected event"""
-
 
 @dataclass
 class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
@@ -57,15 +52,14 @@ class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
 
     frame: ProtocolReadFrame[ProtocolFrameT]
 
-
-class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT]):
+class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     """
     Protocol base class
     """
 
     def __init__(
         self,
-        adapter: Adapter[AdapterDataT],
+        adapter: AdapterT,
         timeout: TimeoutType = ...,
     ) -> None:
         super().__init__(LoggerAlias.PROTOCOL)
@@ -110,13 +104,13 @@ class Protocol(Generic[ProtocolFrameT, AdapterDataT], Component[ProtocolFrameT])
 
     @abstractmethod
     def _adapter_to_protocol(
-        self, adapter_frame: ReadFrame[AdapterDataT]
+        self, adapter_frame: ReadFrame[Any]
     ) -> ProtocolReadFrame[ProtocolFrameT]: ...
 
     @abstractmethod
     def _protocol_to_adapter(
         self, protocol_payload: ProtocolFrameT
-    ) -> AdapterDataT: ...
+    ) -> Any: ...
 
     def register_event_callback(self, event_callback: Callable[[ProtocolEvent], None]) -> None:
         self._event_callbacks.append(event_callback)

@@ -283,11 +283,31 @@ class AdapterWorker(Generic[DataT]):
             # Worker may already be stopped
             pass
 
-    @abstractmethod
-    def _on_select_timeout(self, timestamp: float) -> None: ...
+    # @abstractmethod
+    # def _on_select_timeout(self, timestamp: float) -> None: ...
 
-    @abstractmethod
-    def _select_timeout(self) -> float | None: ...
+    def _select_timeout(self) -> float | None:
+        """This function can be overriden"""
+        now = time.time()
+        # Refresh next stop-condition timeout from current fragment state
+        select_timeout = None
+        if (
+            self._pending_read is not None
+            and self._pending_read.response_deadline is not None
+        ):
+            select_timeout = max(0.0, self._pending_read.response_deadline - now)
+
+        return select_timeout
+
+    def _on_select_timeout(self, timestamp: float) -> None:
+        """This function can be overriden"""
+        if self._pending_read is not None:
+            dl = self._pending_read.response_deadline
+            if dl is not None and timestamp >= dl:
+                self._worker_fail_pending_read_timeout()
+
+    # @abstractmethod
+    # def _select_timeout(self) -> float | None: ...
 
     # pylint: disable=too-many-branches
     def _worker_thread_method(self) -> None:
@@ -526,8 +546,31 @@ class AdapterWorker(Generic[DataT]):
             stop_override=stop_override,
         )
 
-    @abstractmethod
-    def _worker_manage_fragment(self, fragment: Fragment[DataT]) -> None: ...
+    # @abstractmethod
+    # def _worker_manage_fragment(self, fragment: Fragment[DataT]) -> None: ...
+
+    def _worker_manage_fragment(self, fragment: Fragment[DataT]) -> None:
+        # pylint: disable=too-many-branches, too-many-statements
+        """This function can be overriden"""
+
+        if self._last_write_timestamp is not None:
+            response_delay = fragment.timestamp - self._last_write_timestamp
+        else:
+            response_delay = float("nan")
+
+        self._worker_logger.debug("New fragment %+.3f %s", response_delay, fragment)
+
+        stop_timestamp = fragment.timestamp
+
+        frame: ReadFrame[DataT] = ReadFrame(
+            data=fragment.data,
+            id=self._next_frame_id(),
+            stop_timestamp=stop_timestamp,
+            previous_read_buffer_used=False,
+            response_delay=response_delay,
+        )
+        self._worker_logger.debug("Frame %s", repr(frame.data))
+        self._worker_deliver_frame(frame)
 
     def _worker_deliver_frame(self, frame: ReadFrame[DataT]) -> None:
         """

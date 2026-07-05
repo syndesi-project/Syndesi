@@ -11,8 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from types import EllipsisType
 
+from syndesi.adapters.adapter import Adapter
 from syndesi.adapters.adapterworker import AdapterEvent, AdapterReadEvent
-from syndesi.adapters.genericadapter import GenericAdapter
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
 
@@ -33,7 +33,7 @@ class Client:
 
 
 # pylint: disable=too-many-instance-attributes
-class IPServer(GenericAdapter[Client]):
+class IPServer(Adapter[Client]):
     """
     IP server stack adapter. The IP Adapter reads and writes bytes units (frames)
 

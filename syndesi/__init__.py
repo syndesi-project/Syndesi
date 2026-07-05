@@ -9,7 +9,6 @@ from .adapters.adapterworker import (
     AdapterReadEvent,
 )
 from .adapters.bytesadapter import BytesAdapter
-from .adapters.genericadapter import GenericAdapter
 from .adapters.ip import IP
 from .adapters.ipserver import IPServer
 from .adapters.serialport import SerialPort
@@ -33,7 +32,6 @@ __all__ = [
     "Raw",
     "SCPI",
     "Protocol",
-    "GenericAdapter",
     "BytesAdapter",
     "Continuation",
     "Length",

@@ -115,7 +115,7 @@ class Delimited(Protocol[str, bytes]):
         self._termination = value
         if self._identical_terminations:
             self._receive_termination = value
-            self.adapter.
+            
     
     # ┌────────────┐
     # │ Public API │
