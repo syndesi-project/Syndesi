@@ -22,17 +22,16 @@ from syndesi.adapters.utils import TimeoutType
 from syndesi.component import Component, Event, ReadFrame, ReadScope
 
 from ..adapters.adapter import Adapter
+from ..adapters.bytesadapter import BytesAdapter
 from ..tools.log_settings import LoggerAlias
 
 ProtocolFrameT = TypeVar("ProtocolFrameT")
 
-AdapterT = TypeVar("AdapterT", bound=Adapter)
+AdapterT = TypeVar("AdapterT", bound=Adapter[Any])
 
 @dataclass
 class ProtocolReadFrame(Generic[ProtocolFrameT], ReadFrame[ProtocolFrameT]):
-    """
-    Adapter signal containing received data
-    """
+    """Adapter signal containing received data"""
 
     # payload: ProtocolFrameT
 
@@ -54,7 +53,11 @@ class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
 
 class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     """
-    Protocol base class
+    Base class for protocol layers.
+
+    The first generic parameter describes the adapter type expected by the
+    protocol (for example ``BytesAdapter`` or a more specific adapter class).
+    The second parameter describes the protocol payload type.
     """
 
     def __init__(
@@ -219,6 +222,12 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
 
     def write(self, data: ProtocolFrameT) -> None:
         self.adapter.write(self._protocol_to_adapter(data))
+
+
+class BytesProtocol(Protocol[BytesAdapter, ProtocolFrameT], Generic[ProtocolFrameT]):
+    """Convenience base class for protocols that operate on byte-oriented adapters."""
+
+    pass
 
     # ==== query_detailed ====
 

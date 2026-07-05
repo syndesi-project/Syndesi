@@ -12,10 +12,10 @@ from syndesi.adapters.utils import TimeoutType
 
 from ..adapters.stop_conditions import StopCondition, Termination
 from ..component import ReadFrame, ReadScope
-from .protocol import Protocol, ProtocolReadFrame
+from .protocol import BytesProtocol, ProtocolReadFrame
 
 
-class Delimited(Protocol[str, bytes]):
+class Delimited(BytesProtocol[str]):
     """
     Protocol with string decoding and delimiter, like LF, CR, etc... LF is used by default
 

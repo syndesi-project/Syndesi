@@ -49,7 +49,7 @@ from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..tools.errors import ProtocolError, ProtocolReadError
-from .protocol import Protocol, ProtocolReadFrame
+from .protocol import BytesProtocol, ProtocolReadFrame
 
 MODBUS_TCP_DEFAULT_PORT = 502
 
@@ -1375,7 +1375,7 @@ class ModbusFrame(ProtocolReadFrame[ModbusSDU]):
 
 
 # pylint: disable=too-many-public-methods
-class Modbus(Protocol[ModbusSDU, bytes]):
+class Modbus(BytesProtocol[ModbusSDU]):
     """
     Modbus protocol
 

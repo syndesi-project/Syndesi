@@ -9,10 +9,10 @@ from syndesi.adapters.utils import TimeoutType
 
 from ..adapters.bytesadapter import BytesAdapter
 from ..component import ReadFrame
-from .protocol import Protocol, ProtocolReadFrame
+from .protocol import BytesProtocol, ProtocolReadFrame
 
 
-class Raw(Protocol[bytes, bytes]):
+class Raw(BytesProtocol[bytes]):
     """
     Raw device, no presentation and application layers, data is returned as bytes directly
 

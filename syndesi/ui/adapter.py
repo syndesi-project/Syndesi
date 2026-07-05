@@ -485,10 +485,6 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
     def _remove_callback(self) -> None:
         self._cache_stop_conditions_to_adapter()
 
-    
-
-
-
     def _add_default_stop_condition(
             self,
             _ : int | str,
