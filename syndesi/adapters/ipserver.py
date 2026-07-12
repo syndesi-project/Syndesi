@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from types import EllipsisType
 
 from syndesi.adapters.adapter import Adapter
-from syndesi.adapters.adapterworker import AdapterEvent, AdapterReadEvent
+from syndesi.adapters.adapterworker import AdapterEvent, AdapterReadEvent, AdapterWorker
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
 
@@ -113,7 +113,10 @@ class IPServer(Adapter[Client]):
             raise ValueError("Invalid stop-conditions")
 
         super().__init__(
-            timeout=None, alias=alias, auto_open=auto_open
+            worker=AdapterWorker(self),
+            timeout=None,
+            alias=alias,
+            auto_open=auto_open
         )
 
         self.register_event_callback(self._on_event)

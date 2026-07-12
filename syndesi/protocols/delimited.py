@@ -54,14 +54,10 @@ class Delimited(BytesProtocol[str]):
             raise ValueError(
                 f"end argument must be of type str or bytes, not {type(termination)}"
             )
-        
-         
 
         if receive_termination is None:
-            self._identical_terminations = True
             self._receive_termination = termination
         else:
-            self._identical_terminations = False
             self._receive_termination = receive_termination
 
         self._termination = termination
@@ -106,16 +102,28 @@ class Delimited(BytesProtocol[str]):
         terminated_payload = protocol_payload + self._termination
         return terminated_payload.encode(self._encoding)
     
+    def set_termination(self, termination : str, receive_termination : str | None = None) -> None:
+        """Set Delimited termination.
+        If receive_termination is not specified, termination parameter is used both
+        for send and receive
+
+        Parameters
+        ----------
+        termination : str
+        receive_termination : str
+            Optional, specific termination for receive only
+        """
+        self._termination = termination
+        self._receive_termination = \
+            termination if receive_termination is None else receive_termination
+
     @property
     def termination(self) -> str: 
         return self._termination
 
-    @termination.setter
-    def termination(self, value : str) -> None:
-        self._termination = value
-        if self._identical_terminations:
-            self._receive_termination = value
-            
+    @property
+    def receive_termination(self) -> str:
+        return self._receive_termination       
     
     # ┌────────────┐
     # │ Public API │

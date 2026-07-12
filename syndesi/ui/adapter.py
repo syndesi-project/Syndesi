@@ -42,7 +42,7 @@ from ..adapters.stop_conditions import (
     Total,
 )
 from ..component import ReadScope
-from .tools import Block, _help, _hsv_to_rgb
+from .tools import Block, Tab, _help, _hsv_to_rgb
 
 StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
 
@@ -182,7 +182,7 @@ class FragmentBlock(StopConditionBlock[FragmentSC]):
 AdapterT = TypeVar("AdapterT", bound=BytesAdapter)
 
 
-class BytesAdapterBlock(Generic[AdapterT], Block):
+class BytesAdapterBlock(Generic[AdapterT], Tab):
     """BytesAdapter UI block"""
     _adapter : AdapterT
     title = ""
@@ -194,7 +194,10 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
 
     N_WRITE_LINES = 5
 
-    def __init__(self, title : str) -> None:
+    def __init__(self, title : str, adapter : AdapterT) -> None:
+        self._adapter = adapter
+        self._adapter.register_event_callback(self._on_adapter_event)
+
         self._status_text : int | str = 0
         self._stop_conditions_cache : list[StopConditionBlock[Any]] = []
         self._tab_bar : int | str = -1
@@ -223,6 +226,12 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
         self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
 
         asyncio.ensure_future(self.loop())
+
+    def reset(self):
+        self._clear_events()
+        self._start_timestamp = time.time()
+        self._adapter_to_cache_stop_conditions()
+        dpg.set_value(self._write_status, "")
 
     @abstractmethod
     def _build_descriptor(self, parent : int | str) -> None:
@@ -328,7 +337,22 @@ class BytesAdapterBlock(Generic[AdapterT], Block):
                 dpg.add_separator()
                 dpg.add_spacer(height=5)
 
-                dpg.add_text("Write", color=(70, 142, 194))
+
+                dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default=True)
+                with dpg.child_window(height=-1, width=-1) as self._read_write_window:
+                    # W -> : 
+                    # R <- : 
+                    # Q -> :
+                    # Q <- :
+                    ...
+
+
+
+
+
+
+                
+                #dpg.add_text("Write", color=(70, 142, 194))
                 dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
 
                 self._write_input = {}
@@ -554,8 +578,7 @@ class IPBlock(BytesAdapterBlock[IP]):
     """IP adapter block"""
     title = "IP Adapter"
     def __init__(self, adapter : IP) -> None:
-        self._adapter = adapter
-        super().__init__("IP Adapter")
+        super().__init__("IP Adapter", adapter)
         self._address_input : int | str = -1
         self._port_input : int | str = -1
         self._port_details : int | str = -1
@@ -596,4 +619,4 @@ class IPBlock(BytesAdapterBlock[IP]):
         self._adapter.descriptor.port = port
         self._adapter.descriptor.transport = transport
         self._adapter.set_timeout(timeout if timeout != self.DEFAULT_TIMEOUT else None)
-        super().open()
+

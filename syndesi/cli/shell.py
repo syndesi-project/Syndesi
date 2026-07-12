@@ -10,7 +10,7 @@ import argparse
 import logging
 import math
 from enum import Enum
-from typing import Any
+from typing import Any, Sequence
 
 from syndesi.adapters.bytesadapter import BytesAdapter
 
@@ -107,7 +107,13 @@ def parse_end_argument(arg: str | None) -> str | None:
     return arg.replace("\\n", "\n").replace("\\r", "\r")
 
 class ListSerialPortsAction(argparse.Action):
-    def __init__(self, option_strings, dest, default=False, required=False, help=None):
+    def __init__(self,
+                 option_strings : Sequence[str],
+                 dest : str,
+                 default : bool = False,
+                 required : bool = False,
+                 help : Any | None = None
+        ) -> None:
         super().__init__(
             option_strings=option_strings,
             dest=dest,
@@ -118,7 +124,12 @@ class ListSerialPortsAction(argparse.Action):
             help=help,
         )
 
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(self,
+                 parser : argparse.ArgumentParser,
+                 namespace : argparse.Namespace,
+                 values : str | Sequence[str] | None,
+                 option_string : str | None = None
+        ) -> None:
         ports = SerialPort.list_ports()
         for port in ports:
             print(f"{port}")

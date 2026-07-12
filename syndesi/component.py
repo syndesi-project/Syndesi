@@ -129,6 +129,8 @@ class Component(ABC, Generic[DataT]):
 
     A Component is the elementary class of Syndesi. It is the base
     of all classes the user will be using
+
+    A generic is used to define the data type of the component (used when reading and writing)
     """
 
     def __init__(self, logger_alias: LoggerAlias) -> None:

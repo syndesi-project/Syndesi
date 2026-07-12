@@ -62,7 +62,6 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
 
     class WorkerTimeout(Enum):
         """Timeout value for each worker command scenario"""
-
         OPEN = 2
         STOP = 1
         IMMEDIATE_COMMAND = 0.2

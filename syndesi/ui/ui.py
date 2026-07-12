@@ -10,10 +10,11 @@ import asyncio
 import importlib
 import importlib.resources
 from enum import StrEnum
-from typing import Type, TypeVar
+from typing import Any, Tuple, Type, TypeVar, overload
 
-import dearpygui.dearpygui as dpg
+import dearpygui.dearpygui as dpg #type: ignore
 
+from syndesi.adapters.adapter import Adapter
 from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.ip import IP
 from syndesi.adapters.serialport import SerialPort
@@ -21,11 +22,12 @@ from syndesi.component import Component, Event
 from syndesi.drivers.driver import Driver
 from syndesi.protocols.delimited import Delimited
 from syndesi.protocols.protocol import Protocol
+from syndesi.tools.errors import AdapterOpenError
 from syndesi.ui.protocol import DelimitedBlock, ProtocolBlock
 
 from .adapter import BytesAdapterBlock, IPBlock
 from .dearpygui_async import DearPyGuiAsync
-from .tools import Block, _hsv_to_rgb
+from .tools import Block, Tab, _hsv_to_rgb
 
 CLASS_NAME_SEPARATOR = ':'
 
@@ -38,19 +40,32 @@ loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 # ● ○ ◆ ◇ ▲ △ ■ □
 # ← → ↑ ↓ ↔ ⇒ ⇐ ⇑ ⇓ ➔
 
-def adapter_block(adapter : BytesAdapter) -> BytesAdapterBlock:
+AdapterT = TypeVar("AdapterT", bound=BytesAdapter)
+
+@overload
+def adapter_block(adapter: IP) -> IPBlock: ...
+
+@overload
+def adapter_block(adapter: BytesAdapter) -> BytesAdapterBlock[Any]: ...
+
+def adapter_block(adapter : BytesAdapter) -> BytesAdapterBlock[Any]:
     if isinstance(adapter, IP):
         return IPBlock(adapter)
     
     raise RuntimeError(f"Invalid adapter : {adapter}")
 
-def protocol_block(protocol : Protocol) -> ProtocolBlock:
+@overload
+def protocol_block(protocol : Delimited) -> DelimitedBlock: ...
+@overload
+def protocol_block(protocol : Protocol[Any, Any]) -> ProtocolBlock[Any]: ...
+
+def protocol_block(protocol : Protocol[Any, Any]) -> ProtocolBlock[Any]:
     if isinstance(protocol, Delimited):
         return DelimitedBlock(protocol)
     raise RuntimeError(f"Invalid protocol : {protocol}")
 
 
-t = TypeVar("t", bound=Component)
+t = TypeVar("t", bound=Component[Any])
 
 def default_ip() -> IP:
     return IP(address="", port=0, auto_open=False)
@@ -71,8 +86,8 @@ class UIBase:
         self._width = width
         self._height = height
         self._tab_bar : int | str = -1
-        self.toplevel_component : Component | None = None
-        self._tab_blocks : list[int | str] = []
+        self.toplevel_component : Component[Any] | None = None
+        self._tabs : list[Tuple[Tab, int | str]] = []
         self._build()
 
     def start(self) -> None:
@@ -138,55 +153,55 @@ class UIBase:
 
         dpg.setup_dearpygui()
 
-    def _add_adapter(self, adapter : BytesAdapter):
+    def _add_adapter(self, adapter : BytesAdapter) -> None:
         block = adapter_block(adapter)
         adapter_tab = dpg.add_tab(label=block.title, parent=self._tab_bar)
-        self._tab_blocks.append(adapter_tab)
+        self._tabs.append((block, adapter_tab))
         block.build(adapter_tab)
 
-    def load_adapter(self, adapter : BytesAdapter):
+    def load_adapter(self, adapter : BytesAdapter) -> None:
         self._add_adapter(adapter)
         adapter.register_event_callback(self._event_callback)
 
-    def _add_protocol(self, protocol : Protocol):
+    def _add_protocol(self, protocol : Protocol[Any, Any]) -> None:
         _protocol_block = protocol_block(protocol)
         protocol_tab = dpg.add_tab(label=_protocol_block.title, parent=self._tab_bar)
-        self._tab_blocks.append(protocol_tab)
+        self._tabs.append((_protocol_block, protocol_tab))
         _protocol_block.build(protocol_tab)
 
-    def load_protocol(self, protocol : Protocol):
+    def load_protocol(self, protocol : Protocol[Any, Any]) -> None:
         if not isinstance(protocol.adapter, BytesAdapter):
             raise RuntimeError("Non-bytes adapter are not yet supported")
         self._add_adapter(protocol.adapter)
         self._add_protocol(protocol)
         protocol.register_event_callback(self._event_callback)
 
-    def load_driver(self, driver : Driver):
+    def load_driver(self, driver : Driver) -> None:
         ...
 
-    def _add_driver(self, driver):
+    def _add_driver(self, driver : Driver) -> None:
         ...
 
-    def open(self):
+    def open(self) -> None:
         """Open the top-level component (driver, protocol or adapter)"""
         if self.toplevel_component is None:
             raise RuntimeError("Top-level component hasn't been set")
         self.toplevel_component.open()
 
-        """Open adapter"""
-        self._clear_events()
-        self._start_timestamp = time.time()
-        self._adapter_to_cache_stop_conditions()
-        dpg.set_value(self._write_status, "")
+        for block, _ in self._tabs:
+            block.reset()
 
-        if self._adapter is not None:
-            self._adapter.register_event_callback(self._on_adapter_event)
-            try:
-                self._adapter.open()
-            except AdapterOpenError as e:
-                self._status(False, str(e))
+        try:
+            if isinstance(self.toplevel_component, Adapter):
+                self.toplevel_component.open()
+            elif isinstance(self.toplevel_component, (Protocol, Driver)):
+                self.toplevel_component.adapter.open()
             else:
-                self._status(True)
+                raise RuntimeError("Invalid top-level component")
+        except AdapterOpenError as e:
+            self._status(False, str(e))
+        else:
+            self._status(True)
 
     def close(self):
         if self.toplevel_component is None:

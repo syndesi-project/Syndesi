@@ -131,4 +131,5 @@ class Block(ABC):
         """Construct the block in dearpygui"""
 
 class Tab(Block):
-    ...
+    @abstractmethod
+    def reset(self): ...
