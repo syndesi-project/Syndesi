@@ -80,8 +80,8 @@ class UIBase:
     """Main UI window"""
     def __init__(
             self,
-            width : int = 600,
-            height : int = 800
+            width : int = 1000,
+            height : int = 600
         ) -> None:
         self._width = width
         self._height = height
@@ -118,56 +118,67 @@ class UIBase:
             no_title_bar=True
         ) as self._window:
 
-            with dpg.group(horizontal=True, width=100):
-                dpg.add_text("Status : ")
-                self._status_text = dpg.add_text("", wrap=500)
-                dpg.add_spacer()
-
             with dpg.group(horizontal=True):
-                with dpg.theme() as red_button_theme:
-                    with dpg.theme_component(dpg.mvButton):
-                        dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0, 0.6, 0.6))
-                        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _hsv_to_rgb(0, 0.8, 0.8))
-                        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _hsv_to_rgb(0, 0.7, 0.7))
+                # Left panel (configuration)
+                with dpg.child_window(width=300):
+                    dpg.add_text("Configuration")
+                    with dpg.group(horizontal=True):
+                        dpg.add_text("Status : ")
+                        self._status_text = dpg.add_text("", wrap=300)
+                        dpg.add_spacer()
+                    with dpg.group(horizontal=True):
+                        with dpg.theme() as red_button_theme:
+                            with dpg.theme_component(dpg.mvButton):
+                                dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0, 0.6, 0.6))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _hsv_to_rgb(0, 0.8, 0.8))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _hsv_to_rgb(0, 0.7, 0.7))
 
-                with dpg.theme() as green_button_theme:
-                    with dpg.theme_component(dpg.mvButton):
-                        dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0.40, 0.6, 0.6))
-                        dpg.add_theme_color(
-                            dpg.mvThemeCol_ButtonActive,
-                            _hsv_to_rgb(0.40, 0.8, 0.8)
-                        )
-                        dpg.add_theme_color(
-                            dpg.mvThemeCol_ButtonHovered,
-                            _hsv_to_rgb(0.40, 0.7, 0.7)
-                        )
+                        with dpg.theme() as green_button_theme:
+                            with dpg.theme_component(dpg.mvButton):
+                                dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0.40, 0.6, 0.6))
+                                dpg.add_theme_color(
+                                    dpg.mvThemeCol_ButtonActive,
+                                    _hsv_to_rgb(0.40, 0.8, 0.8)
+                                )
+                                dpg.add_theme_color(
+                                    dpg.mvThemeCol_ButtonHovered,
+                                    _hsv_to_rgb(0.40, 0.7, 0.7)
+                                )
 
-                dpg.add_button(label="Open", callback=self.open)
-                dpg.bind_item_theme(dpg.last_item(), green_button_theme)
-                dpg.add_button(label="Close", callback=self.close)
-                dpg.bind_item_theme(dpg.last_item(), red_button_theme)
+                        self._open_button = dpg.add_button(label="Open", callback=self.open, width=100)
+                        dpg.bind_item_theme(dpg.last_item(), green_button_theme)
+                        self._close_button = dpg.add_button(label="Close", callback=self.close, width=100)
+                        dpg.bind_item_theme(dpg.last_item(), red_button_theme)
 
-            self._tab_bar = dpg.add_tab_bar()
+                    self._tab_bar = dpg.add_tab_bar()
+
+                # Right panel (testing)
+                with dpg.child_window(width=-1, height=-1) as self._testing_window:
+                    dpg.add_text("Testing")
+
+
+        self._status(False)
 
         dpg.set_primary_window(self._window, True)
 
         dpg.setup_dearpygui()
 
-    def _add_adapter(self, adapter : BytesAdapter) -> None:
-        block = adapter_block(adapter)
+    def _add_adapter(self, block : BytesAdapterBlock) -> None:
         adapter_tab = dpg.add_tab(label=block.title, parent=self._tab_bar)
         self._tabs.append((block, adapter_tab))
-        block.build(adapter_tab)
+        block.build_configuration_tab(adapter_tab)
 
     def load_adapter(self, adapter : BytesAdapter) -> None:
-        self._add_adapter(adapter)
+        block = adapter_block(adapter)
+        self._add_adapter(block)
         adapter.register_event_callback(self._event_callback)
+        block.build_testing_window(self._testing_window)
 
     def _add_protocol(self, protocol : Protocol[Any, Any]) -> None:
         _protocol_block = protocol_block(protocol)
         protocol_tab = dpg.add_tab(label=_protocol_block.title, parent=self._tab_bar)
         self._tabs.append((_protocol_block, protocol_tab))
-        _protocol_block.build(protocol_tab)
+        _protocol_block.build_configuration_tab(protocol_tab)
 
     def load_protocol(self, protocol : Protocol[Any, Any]) -> None:
         if not isinstance(protocol.adapter, BytesAdapter):
@@ -213,9 +224,13 @@ class UIBase:
 
     def _status(self, opened : bool, text : str = "") -> None:
         if opened:
+            dpg.disable_item(self._open_button)
+            dpg.enable_item(self._close_button)
             dpg.set_value(self._status_text, "Opened")
             dpg.configure_item(self._status_text, color=(0,255,0))
         else:
+            dpg.enable_item(self._open_button)
+            dpg.disable_item(self._close_button)
             if text:
                 dpg.set_value(self._status_text, f"Closed : {text}")
             else:

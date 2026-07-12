@@ -130,6 +130,12 @@ class Block(ABC):
     def build(self, parent : int | str) -> None:
         """Construct the block in dearpygui"""
 
-class Tab(Block):
+class Tab(ABC):
     @abstractmethod
     def reset(self): ...
+
+    @abstractmethod
+    def build_configuration_tab(self, configuration_tab : int | str): ...
+
+    @abstractmethod
+    def build_testing_window(self, testing_window : int | str): ...
