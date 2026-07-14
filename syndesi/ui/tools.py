@@ -5,10 +5,12 @@
 Syndesi UI tools
 """
 
+from dataclasses import dataclass
+from enum import IntEnum
 import inspect
 import sys
 from abc import ABC, abstractmethod
-from typing import Any, get_type_hints
+from typing import Any, List, Tuple, get_type_hints
 
 import dearpygui.dearpygui as dpg  # type: ignore
 
@@ -139,3 +141,62 @@ class Tab(ABC):
 
     @abstractmethod
     def build_testing_window(self, testing_window : int | str): ...
+
+
+
+class TestingEntryType(IntEnum):
+    WRITE = 0
+    READ = 1
+    EVENT = 2
+
+ENTRY_SYMBOL = {
+    TestingEntryType.WRITE : "→",
+    TestingEntryType.READ : "←",
+    TestingEntryType.EVENT : "◆"
+}
+
+ENTRY_COLOR = {
+    TestingEntryType.WRITE : (212, 235, 197),
+    TestingEntryType.READ : (197, 213, 235),
+    TestingEntryType.EVENT : (127, 127, 127)
+}
+
+# ✗ ▲
+# ● ○ ◆ ◇ ▲ △ ■ □
+# ← → ↑ ↓ ↔ ⇒ ⇐ ⇑ ⇓ ➔ 🡰 🠄 🠘
+
+@dataclass
+class TestingEntry:
+    entry_type : TestingEntryType
+    group_tag : int | str
+
+class TestingWindow(Block):
+    def __init__(self) -> None:
+        super().__init__()
+        self._entries : List[TestingEntry] = []
+        self._testing_window : int | str = -1
+
+    def build(self, parent : int | str):
+        self._testing_window = dpg.add_child_window(parent=parent)
+
+    def _add(self, entry_type : TestingEntryType, text : str):
+        with dpg.group(horizontal=True, parent=self._testing_window) as group_tag:
+            dpg.add_text(ENTRY_SYMBOL[entry_type] + " ", color=ENTRY_COLOR[entry_type])
+
+        self._entries.append(TestingEntry(
+            entry_type=entry_type,
+            group_tag=group_tag
+        ))
+
+    def resize_height(self, height : int) -> None:
+        dpg.configure_item(self._testing_window, height=height)
+
+    def add_write(self, text : str):
+        self._add(TestingEntryType.WRITE, text)
+
+    def add_read(self, text : str):
+        self._add(TestingEntryType.READ, text)
+
+    def add_event(self, text : str):
+        self._add(TestingEntryType.EVENT, text)
+

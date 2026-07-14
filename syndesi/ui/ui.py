@@ -154,7 +154,7 @@ class UIBase:
 
                 # Right panel (testing)
                 with dpg.child_window(width=-1, height=-1) as self._testing_window:
-                    dpg.add_text("Testing")
+                    ...
 
 
         self._status(False)

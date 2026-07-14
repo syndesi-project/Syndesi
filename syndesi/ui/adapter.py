@@ -301,6 +301,8 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
             else:
                 dpg.hide_item(self._write_group[i])
 
+        self._testing_window_resize_callback()
+
     def build_configuration_tab(self, parent : int | str) -> None:
         with dpg.group(parent=parent, horizontal=False):
  
@@ -320,8 +322,6 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
             with dpg.handler_registry():
                 dpg.add_mouse_click_handler(dpg.mvMouseButton_Right, callback=self._right_click)
                 dpg.add_mouse_click_handler(dpg.mvMouseButton_Left, callback=self._left_click)
-
-                
 
                 # with dpg.group(horizontal=True):
                 #     with dpg.group(horizontal=False):
@@ -374,33 +374,54 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
             self._adapter_to_cache_stop_conditions()
 
     def build_testing_window(self, testing_window : int | str):
-        dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default_value=False, parent=testing_window)
-        with dpg.child_window(parent=testing_window, height=-105) as self._read_write_window:
+        self._testing_window = testing_window
+        with dpg.group(horizontal=False, parent=testing_window) as self._testing_top_group:
+            dpg.add_text("Testing")
+            dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default_value=False, parent=testing_window)
+            
+        with dpg.child_window(parent=testing_window, height=-1) as self._read_write_window:
             # W -> :
             # R <- :
-            # Q -> :
-            # Q <- :
             ...
         
-        dpg.add_text("Write", color=(70, 142, 194), parent=testing_window)
-        dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback, parent=testing_window)
-        self._write_input = {}
-        self._write_group = {}
-        with dpg.group(horizontal=True, parent=testing_window):
-            with dpg.group(horizontal=False):
-                for i in range(self.N_WRITE_LINES):
-                    with dpg.group(horizontal=True, show=i==0):
-                        self._write_group[i] = dpg.last_item()
-                        dpg.add_button(
-                            label="Write",
-                            callback=self._write_callback,
-                            user_data=i,
-                            width=100
-                        )
-                        self._write_input[i] = dpg.add_input_text()
-                        if i == 0:
-                            bytes_help()
-        self._write_status = dpg.add_text("", parent=testing_window)
+        with dpg.group(horizontal=False, parent=testing_window) as self._testing_bottom_group:
+            dpg.add_text("Write", color=(70, 142, 194))
+            dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
+            self._write_input = {}
+            self._write_group = {}
+            with dpg.group(horizontal=True):
+                with dpg.group(horizontal=False):
+                    for i in range(self.N_WRITE_LINES):
+                        with dpg.group(horizontal=True, show=i==0):
+                            self._write_group[i] = dpg.last_item()
+                            dpg.add_button(
+                                label="Write",
+                                callback=self._write_callback,
+                                user_data=i,
+                                width=100
+                            )
+                            self._write_input[i] = dpg.add_input_text()
+                            if i == 0:
+                                bytes_help()
+            self._write_status = dpg.add_text("")
+
+        with dpg.item_handler_registry() as self._testing_window_resize_handler:
+            dpg.add_item_resize_handler(callback=self._testing_window_resize_callback)
+        dpg.bind_item_handler_registry(self._testing_window, self._testing_window_resize_handler)
+
+        self._testing_window_resize_callback()
+
+    def _testing_window_resize_callback(self):
+        if dpg.is_viewport_ok():
+            dpg.render_dearpygui_frame()
+        total_h = dpg.get_item_rect_size(self._testing_window)[1]
+        a_h = dpg.get_item_rect_size(self._testing_top_group)[1]
+        c_h = dpg.get_item_rect_size(self._testing_bottom_group)[1]
+
+        padding = 20
+
+        b_h = max(total_h - a_h - c_h - 2*padding - 10, 50)
+        dpg.configure_item(self._read_write_window, height=b_h)
 
     def _show_events_callback(self):
         ...
