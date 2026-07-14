@@ -9,8 +9,8 @@ import ast
 import asyncio
 import time
 import traceback
-from abc import abstractmethod
-from typing import Any, Generic, TypeVar
+from abc import ABC, abstractmethod
+from typing import Any, Callable, Generic, TypeVar
 
 import dearpygui.dearpygui as dpg  # type: ignore[import-untyped]
 
@@ -42,7 +42,7 @@ from ..adapters.stop_conditions import (
     Total,
 )
 from ..component import ReadScope
-from .tools import Block, Tab, _help, _hsv_to_rgb
+from .tools import Block, Tab, TestingChildWindow, _help, _hsv_to_rgb
 
 StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
 
@@ -182,7 +182,7 @@ class FragmentBlock(StopConditionBlock[FragmentSC]):
 AdapterT = TypeVar("AdapterT", bound=BytesAdapter)
 
 
-class BytesAdapterBlock(Generic[AdapterT], Tab):
+class BytesAdapterBlock(Generic[AdapterT], Tab, ABC):
     """BytesAdapter UI block"""
     _adapter : AdapterT
     title = ""
@@ -194,9 +194,9 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
 
     N_WRITE_LINES = 5
 
-    def __init__(self, title : str, adapter : AdapterT) -> None:
+    def __init__(self, title : str, adapter : AdapterT, event_callback : Callable[[AdapterEvent], None]) -> None:
         self._adapter = adapter
-        self._adapter.register_event_callback(self._on_adapter_event)
+        self._adapter.register_event_callback(event_callback)
 
         self._status_text : int | str = 0
         self._stop_conditions_cache : list[StopConditionBlock[Any]] = []
@@ -211,8 +211,8 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
         self._header : int | str = -1
         self._event_window : int | str = -1
         self._events : list[int | str] = []
-        self._event_group : int | str = -1
-        self._start_timestamp = time.time()
+        
+        # self._start_timestamp = time.time()
         self._add_tab : int | str = -1
         self._right_clicked_tab : StopConditionBlock[Any] | None = None
         self._buffer_items : dict[int, int | str] = {}
@@ -223,9 +223,11 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
         self._write_input : dict[int, int | str] = {}
         self._write_group : dict[int, int | str] = {}
 
-        self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
+        self._start_timestamp = time.time()
 
-        asyncio.ensure_future(self.loop())
+        # self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
+
+        
 
     def reset(self):
         self._clear_events()
@@ -237,57 +239,56 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
     def _build_descriptor(self, parent : int | str) -> None:
         ...
 
-    async def loop(self) -> None:
-        """
-        Event display loop
-        """
-        try:
-            while True:
-                event = await self._event_queue.get()
-                delta = event.timestamp - self._start_timestamp
-                color = (255, 255, 255)
-                text : str | None = None
-                if isinstance(event, AdapterClosedEvent):
-                    text = "● closed"
-                    color = (207, 19, 19)
-                elif isinstance(event, AdapterOpenedEvent):
-                    text = "● open"
-                    color=(30, 199, 38)
-                elif isinstance(event, AdapterReadEvent):
-                    text = f"← read  {event.frame.data!r}"
-                elif isinstance(event, AdapterFragmentEvent) and \
-                    dpg.get_value(self._show_fragments_checkbox):
-                    first_indicator = "*" if event.first else ""
-                    text = f"↓    {event.fragment} ({first_indicator}frag)"
-                elif isinstance(event, AdapterWriteEvent):
-                    text = f"→ write {event.frame.data!r}"
-                elif isinstance(event, AdapterBufferEvent):
-                    if self._adapter is not None:
-                        if len(event.added_frame_ids) > 0:
-                            for frame in self._adapter.frame_buffer:
-                                if frame.id in event.added_frame_ids:
-                                    self._buffer_items[frame.id] = dpg.add_text(
-                                        str(frame.data),
-                                        parent=self._buffer_group
-                                    )
+    # async def loop(self) -> None:
+    #     """
+    #     Event display loop
+    #     """
+    #     try:
+    #         while True:
+    #             event = await self._event_queue.get()
+    #             delta = event.timestamp - self._start_timestamp
+    #             color = (255, 255, 255)
+    #             text : str | None = None
+    #             if isinstance(event, AdapterClosedEvent):
+    #                 text = "● closed"
+    #                 color = (207, 19, 19)
+    #             elif isinstance(event, AdapterOpenedEvent):
+    #                 text = "● open"
+    #                 color=(30, 199, 38)
+    #             elif isinstance(event, AdapterReadEvent):
+    #                 text = f"← read  {event.frame.data!r}"
+    #             elif isinstance(event, AdapterFragmentEvent) and \
+    #                 dpg.get_value(self._show_fragments_checkbox):
+    #                 first_indicator = "*" if event.first else ""
+    #                 text = f"↓    {event.fragment} ({first_indicator}frag)"
+    #             elif isinstance(event, AdapterWriteEvent):
+    #                 text = f"→ write {event.frame.data!r}"
+    #             elif isinstance(event, AdapterBufferEvent):
+    #                 if self._adapter is not None:
+    #                     if len(event.added_frame_ids) > 0:
+    #                         for frame in self._adapter.frame_buffer:
+    #                             if frame.id in event.added_frame_ids:
+    #                                 self._buffer_items[frame.id] = dpg.add_text(
+    #                                     str(frame.data),
+    #                                     parent=self._buffer_group
+    #                                 )
 
-                        for removed_frame_id in event.removed_frame_ids:
-                            tag = self._buffer_items.pop(removed_frame_id, None)
-                            if tag is not None:
-                                dpg.delete_item(tag)
-                else:
-                    text = "Unknown event"
-                    color = (255, 0, 0)
+    #                     for removed_frame_id in event.removed_frame_ids:
+    #                         tag = self._buffer_items.pop(removed_frame_id, None)
+    #                         if tag is not None:
+    #                             dpg.delete_item(tag)
+    #             else:
+    #                 text = "Unknown event"
+    #                 color = (255, 0, 0)
 
-                if text is not None:
-                    event_tag = dpg.add_group(horizontal=True, parent=self._event_group)
-                    dpg.add_text(f"{delta:+8.3f} ", color=(127, 127, 127), parent=event_tag)
-                    dpg.add_text(text, color=color, parent=event_tag)
-                    self._events.append(event_tag)
+    #             if text is not None:
+    #                 event_tag = dpg.add_group(horizontal=True, parent=self._event_group)
+    #                 dpg.add_text(f"{delta:+8.3f} ", color=(127, 127, 127), parent=event_tag)
+    #                 dpg.add_text(text, color=color, parent=event_tag)
+    #                 self._events.append(event_tag)
 
-        except Exception:
-            print(f'Exception in loop : {traceback.format_exc()}')
-
+    #     except Exception:
+    #         print(f'Exception in loop : {traceback.format_exc()}')
 
     def _clear_events(self) -> None:
         for tag in self._events:
@@ -301,7 +302,7 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
             else:
                 dpg.hide_item(self._write_group[i])
 
-        self._testing_window_resize_callback()
+        #self._testing_window_resize_callback()
 
     def build_configuration_tab(self, parent : int | str) -> None:
         with dpg.group(parent=parent, horizontal=False):
@@ -373,18 +374,8 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
 
             self._adapter_to_cache_stop_conditions()
 
-    def build_testing_window(self, testing_window : int | str):
-        self._testing_window = testing_window
-        with dpg.group(horizontal=False, parent=testing_window) as self._testing_top_group:
-            dpg.add_text("Testing")
-            dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default_value=False, parent=testing_window)
-            
-        with dpg.child_window(parent=testing_window, height=-1) as self._read_write_window:
-            # W -> :
-            # R <- :
-            ...
-        
-        with dpg.group(horizontal=False, parent=testing_window) as self._testing_bottom_group:
+    def build_testing_group(self, testing_window : int | str) -> int | str:
+        with dpg.group(horizontal=False, parent=testing_window) as testing_group:
             dpg.add_text("Write", color=(70, 142, 194))
             dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
             self._write_input = {}
@@ -405,26 +396,9 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
                                 bytes_help()
             self._write_status = dpg.add_text("")
 
-        with dpg.item_handler_registry() as self._testing_window_resize_handler:
-            dpg.add_item_resize_handler(callback=self._testing_window_resize_callback)
-        dpg.bind_item_handler_registry(self._testing_window, self._testing_window_resize_handler)
+        return testing_group
 
-        self._testing_window_resize_callback()
-
-    def _testing_window_resize_callback(self):
-        if dpg.is_viewport_ok():
-            dpg.render_dearpygui_frame()
-        total_h = dpg.get_item_rect_size(self._testing_window)[1]
-        a_h = dpg.get_item_rect_size(self._testing_top_group)[1]
-        c_h = dpg.get_item_rect_size(self._testing_bottom_group)[1]
-
-        padding = 20
-
-        b_h = max(total_h - a_h - c_h - 2*padding - 10, 50)
-        dpg.configure_item(self._read_write_window, height=b_h)
-
-    def _show_events_callback(self):
-        ...
+        
 
     def _left_click(self) -> None:
         if self._add_tab != -1 and dpg.is_item_hovered(self._add_tab):
@@ -468,7 +442,6 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
             dpg.set_value(self._read_output, repr(data))
             dpg.configure_item(self._read_output, color=(86, 178, 245))
 
-
     async def _read_task(self) -> None:
         self._read_task_running = True
         while self._read_task_running:
@@ -490,6 +463,10 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
         except SyntaxError as e:
             self._update_write_status(str(e), "error")
             return
+        
+        print(f"Write {data}")
+
+        print(self._adapter)
 
         if self._adapter is None:
             self._update_write_status("Adapter has not been opened", "error")
@@ -573,14 +550,17 @@ class BytesAdapterBlock(Generic[AdapterT], Tab):
         if self._adapter is not None:
             self._adapter.close()
 
-    def _on_adapter_event(self, event : AdapterEvent) -> None:
-        loop.call_soon_threadsafe(self._event_queue.put_nowait, event)
+    # def _on_adapter_event(self, event : AdapterEvent) -> None:
+    #     loop.call_soon_threadsafe(self._event_queue.put_nowait, event)
+
+    @abstractmethod
+    def open(self): ...
 
 class IPBlock(BytesAdapterBlock[IP]):
     """IP adapter block"""
     title = "IP Adapter"
-    def __init__(self, adapter : IP) -> None:
-        super().__init__("IP Adapter", adapter)
+    def __init__(self, adapter : IP, event_callback : Callable[[AdapterEvent], None]) -> None:
+        super().__init__("IP Adapter", adapter, event_callback)
         self._address_input : int | str = -1
         self._port_input : int | str = -1
         self._port_details : int | str = -1
@@ -621,4 +601,5 @@ class IPBlock(BytesAdapterBlock[IP]):
         self._adapter.descriptor.port = port
         self._adapter.descriptor.transport = transport
         self._adapter.set_timeout(timeout if timeout != self.DEFAULT_TIMEOUT else None)
+        self._adapter.open()
 

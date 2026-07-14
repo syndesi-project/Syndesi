@@ -102,7 +102,7 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
 
             #     self._adapter_to_cache_stop_conditions()
 
-    def build_testing_window(self):
+    def build_testing_group(self):
         ...
 
     def reset(self):
