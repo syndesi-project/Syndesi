@@ -16,7 +16,7 @@ from enum import StrEnum
 from typing import Any, Generic, TypeVar
 
 from .adapters.stop_conditions import StopConditionType
-from .adapters.utils import TimeoutType
+from .adapters.utils import TimeoutParameterType
 from .tools.errors import AdapterOpenError, AdapterReadError, WorkerThreadError
 from .tools.log_settings import LoggerAlias
 
@@ -193,7 +193,7 @@ class Component(ABC, Generic[DataT]):
     @abstractmethod
     async def aread_detailed(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
     ) -> ReadFrame[DataT]:
         """Asynchronously read data from the component and return a Frame object"""
@@ -201,7 +201,7 @@ class Component(ABC, Generic[DataT]):
     @abstractmethod
     def read_detailed(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
     ) -> ReadFrame[DataT]:
         """Read data from the component and return a Frame object"""
@@ -211,7 +211,7 @@ class Component(ABC, Generic[DataT]):
     @abstractmethod
     async def aread(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
     ) -> DataT:
         """Asynchronously read data from the component"""
@@ -219,7 +219,7 @@ class Component(ABC, Generic[DataT]):
     @abstractmethod
     def read(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
     ) -> DataT:
         """Read data from the component"""
@@ -250,7 +250,7 @@ class Component(ABC, Generic[DataT]):
     async def aquery_detailed(
         self,
         payload: DataT,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
     ) -> ReadFrame[DataT]:
         """
@@ -261,7 +261,7 @@ class Component(ABC, Generic[DataT]):
     def query_detailed(
         self,
         payload: DataT,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
     ) -> ReadFrame[DataT]:
         """
@@ -273,7 +273,7 @@ class Component(ABC, Generic[DataT]):
     async def aquery(
         self,
         payload: DataT,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
     ) -> DataT:
         """Asynchronously query the component"""
@@ -287,7 +287,7 @@ class Component(ABC, Generic[DataT]):
     def query(
         self,
         payload: DataT,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
     ) -> DataT:
         """Query the component"""

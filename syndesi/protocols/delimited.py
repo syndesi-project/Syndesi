@@ -8,7 +8,7 @@ command-like formats with specified delimiters (like \\n, \\r, \\r\\n, etc...)
 from types import EllipsisType
 
 from syndesi.adapters.bytesadapter import BytesAdapter
-from syndesi.adapters.utils import TimeoutType
+from syndesi.adapters.utils import TimeoutParameterType
 
 from ..adapters.stop_conditions import StopCondition, Termination
 from ..component import ReadFrame, ReadScope
@@ -44,7 +44,7 @@ class Delimited(BytesProtocol[str]):
         *,
         format_response: bool = True,
         encoding: str = "utf-8",
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         receive_termination: str | None = None,
     ) -> None:
         self._encoding = encoding
@@ -131,7 +131,7 @@ class Delimited(BytesProtocol[str]):
 
     def read_raw(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         scope: str = ReadScope.BUFFERED.value,
     ) -> bytes:

@@ -27,7 +27,7 @@ from .stop_conditions import (
     Total,
 )
 from .tracehub import tracehub
-from .utils import TimeoutType, nmin
+from .utils import TimeoutParameterType, nmin
 
 
 def fuse_fragments(fragments: list[BytesFragment]) -> bytes:
@@ -286,7 +286,7 @@ class BytesAdapter(Adapter[bytes]):
 
     def __init__(
         self,
-        timeout: TimeoutType,
+        timeout: TimeoutParameterType,
         stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
         *,
         alias: str,

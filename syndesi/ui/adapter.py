@@ -196,7 +196,9 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
     def __init__(self, title : str, adapter : AdapterT, event_callback : Callable[[AdapterEvent], None]) -> None:
         self._adapter = adapter
-        self._adapter.register_event_callback(event_callback)
+        self._adapter.register_event_callback(self._event_callback)
+        self._ui_event_callback = event_callback
+
 
         self._status_text : int | str = 0
         self._stop_conditions_cache : list[StopConditionBlock[Any]] = []
@@ -219,15 +221,11 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._edit_stop_condition_popup : int | str = -1
         self._add_stop_condition_popup : int | str = -1
         self._show_fragments_checkbox : int | str = -1
-        self._buffer_group : int | str = -1
+        self._buffer_window : int | str = -1
         self._write_input : dict[int, int | str] = {}
         self._write_group : dict[int, int | str] = {}
 
-        self._start_timestamp = time.time()
-
-        # self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
-
-        
+        self._start_timestamp = time.time()        
 
     def reset(self):
         self._clear_events()
@@ -235,60 +233,29 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._adapter_to_cache_stop_conditions()
         dpg.set_value(self._write_status, "")
 
+    def _event_callback(self, event : AdapterEvent):
+        print('_event_callback')
+        self._ui_event_callback(event)
+        if isinstance(event, AdapterBufferEvent):
+            loop.call_soon_threadsafe(self._buffer_event, event)
+
+    def _buffer_event(self, event : AdapterBufferEvent):
+        if len(event.added_frame_ids) > 0:
+            for frame in self._adapter.frame_buffer:
+                if frame.id in event.added_frame_ids:
+                    self._buffer_items[frame.id] = dpg.add_text(
+                        str(frame.data),
+                        parent=self._buffer_window
+                    )
+
+        for removed_frame_id in event.removed_frame_ids:
+            tag = self._buffer_items.pop(removed_frame_id, None)
+            if tag is not None:
+                dpg.delete_item(tag)
+
     @abstractmethod
     def _build_descriptor(self, parent : int | str) -> None:
         ...
-
-    # async def loop(self) -> None:
-    #     """
-    #     Event display loop
-    #     """
-    #     try:
-    #         while True:
-    #             event = await self._event_queue.get()
-    #             delta = event.timestamp - self._start_timestamp
-    #             color = (255, 255, 255)
-    #             text : str | None = None
-    #             if isinstance(event, AdapterClosedEvent):
-    #                 text = "● closed"
-    #                 color = (207, 19, 19)
-    #             elif isinstance(event, AdapterOpenedEvent):
-    #                 text = "● open"
-    #                 color=(30, 199, 38)
-    #             elif isinstance(event, AdapterReadEvent):
-    #                 text = f"← read  {event.frame.data!r}"
-    #             elif isinstance(event, AdapterFragmentEvent) and \
-    #                 dpg.get_value(self._show_fragments_checkbox):
-    #                 first_indicator = "*" if event.first else ""
-    #                 text = f"↓    {event.fragment} ({first_indicator}frag)"
-    #             elif isinstance(event, AdapterWriteEvent):
-    #                 text = f"→ write {event.frame.data!r}"
-    #             elif isinstance(event, AdapterBufferEvent):
-    #                 if self._adapter is not None:
-    #                     if len(event.added_frame_ids) > 0:
-    #                         for frame in self._adapter.frame_buffer:
-    #                             if frame.id in event.added_frame_ids:
-    #                                 self._buffer_items[frame.id] = dpg.add_text(
-    #                                     str(frame.data),
-    #                                     parent=self._buffer_group
-    #                                 )
-
-    #                     for removed_frame_id in event.removed_frame_ids:
-    #                         tag = self._buffer_items.pop(removed_frame_id, None)
-    #                         if tag is not None:
-    #                             dpg.delete_item(tag)
-    #             else:
-    #                 text = "Unknown event"
-    #                 color = (255, 0, 0)
-
-    #             if text is not None:
-    #                 event_tag = dpg.add_group(horizontal=True, parent=self._event_group)
-    #                 dpg.add_text(f"{delta:+8.3f} ", color=(127, 127, 127), parent=event_tag)
-    #                 dpg.add_text(text, color=color, parent=event_tag)
-    #                 self._events.append(event_tag)
-
-    #     except Exception:
-    #         print(f'Exception in loop : {traceback.format_exc()}')
 
     def _clear_events(self) -> None:
         for tag in self._events:
@@ -302,15 +269,13 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             else:
                 dpg.hide_item(self._write_group[i])
 
-        #self._testing_window_resize_callback()
-
     def build_configuration_tab(self, parent : int | str) -> None:
         with dpg.group(parent=parent, horizontal=False):
  
             self._build_descriptor(dpg.last_item())
             self._timeout_input = dpg.add_input_float(
                 label="Timeout",
-                default_value=self.DEFAULT_TIMEOUT,
+                default_value=0 if self._adapter.timeout is None else self._adapter.timeout,
                 width=100
             )
 
@@ -324,55 +289,11 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
                 dpg.add_mouse_click_handler(dpg.mvMouseButton_Right, callback=self._right_click)
                 dpg.add_mouse_click_handler(dpg.mvMouseButton_Left, callback=self._left_click)
 
-                # with dpg.group(horizontal=True):
-                #     with dpg.group(horizontal=False):
-                #         dpg.add_text("Read", color=(70, 142, 194))
-                #         dpg.add_combo(
-                #             label="Scope",
-                #             items=[x for x in ReadScope],
-                #             width=132,
-                #             default_value=ReadScope.BUFFERED.value
-                #         )
-                #         dpg.add_button(label="Read", callback=self._read_callback, width=60)
-                #         self._read_output = dpg.add_text("")
-                #     dpg.add_spacer(width=20)
-                #     with dpg.group(horizontal=False):
-                #         dpg.add_text("Buffer")
-                #         with dpg.child_window(height=200):
-                #             self._buffer_group = dpg.add_group(horizontal=False)
-
-                # dpg.add_text("Events", color=(70, 142, 194))
-                # with dpg.group(horizontal=True):
-                #     self._show_fragments_checkbox = dpg.add_checkbox(
-                #         label="Show fragments",
-                #         default_value=True
-                #     )
-                #     dpg.add_button(label="Clear events", callback=self._clear_events)
-                # with dpg.child_window(height=-1, width=-1) as self._event_window:
-                #     with dpg.theme() as tight:
-                #         with dpg.theme_component(dpg.mvAll):
-                #             dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 1)  # 1px vertical
-
-                #     with dpg.group(width=-1) as self._event_group:
-                #         ...
-
-                #     dpg.bind_item_theme(self._event_group, tight)
-
-                # with dpg.popup(self._header) as self._add_stop_condition_popup:
-                #     for stop_condition in self.STOP_CONDITIONS:
-                #         dpg.add_selectable(
-                #             label=stop_condition.value,
-                #             callback=self._add_default_stop_condition,
-                #             user_data=stop_condition
-                #         )
-
-                # with dpg.popup(self._header) as self._edit_stop_condition_popup:
-                #     dpg.add_selectable(
-                #         label="Delete",
-                #         callback=self._remove_stop_condition_callback
-                #     )
-
             self._adapter_to_cache_stop_conditions()
+
+            with dpg.child_window(label="Buffer") as self._buffer_window:
+                ...
+                
 
     def build_testing_group(self, testing_window : int | str) -> int | str:
         with dpg.group(horizontal=False, parent=testing_window) as testing_group:
@@ -549,9 +470,6 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         """Close adapter"""
         if self._adapter is not None:
             self._adapter.close()
-
-    # def _on_adapter_event(self, event : AdapterEvent) -> None:
-    #     loop.call_soon_threadsafe(self._event_queue.put_nowait, event)
 
     @abstractmethod
     def open(self): ...

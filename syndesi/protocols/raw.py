@@ -5,7 +5,7 @@
 Raw protocol layer, data is returned as bytes "as-is"
 """
 
-from syndesi.adapters.utils import TimeoutType
+from syndesi.adapters.utils import TimeoutParameterType
 
 from ..adapters.bytesadapter import BytesAdapter
 from ..component import ReadFrame
@@ -25,7 +25,7 @@ class Raw(BytesProtocol[bytes]):
     def __init__(
         self,
         adapter: BytesAdapter,
-        timeout: TimeoutType = ...
+        timeout: TimeoutParameterType = ...
     ) -> None:
         super().__init__(adapter, timeout)
 

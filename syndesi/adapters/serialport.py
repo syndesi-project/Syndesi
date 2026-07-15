@@ -25,7 +25,7 @@ from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
 
 from .stop_conditions import BytesFragment, Continuation, StopCondition
-from .utils import Fragment, HasFileno, TimeoutType
+from .utils import Fragment, HasFileno, TimeoutParameterType
 
 
 class Parity(StrEnum):
@@ -105,7 +105,7 @@ class SerialPort(BytesAdapter):
         port: str,
         baudrate: int | None = None,
         *,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
         alias: str = "",
         bytesize: int = 8,

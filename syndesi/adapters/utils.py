@@ -73,5 +73,5 @@ class Fragment(Generic[FragmentT]):
         return Fragment(cast(SliceableFragmentT, self.data[key]), self.timestamp)
 
 
-TimeoutType = EllipsisType | float | int | None
-ValidTimeoutType = float | int | None
+TimeoutParameterType = EllipsisType | float | int | None
+TimeoutType = float | int | None

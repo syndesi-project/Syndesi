@@ -42,7 +42,7 @@ from enum import Enum
 from math import ceil
 from typing import cast
 
-from syndesi.adapters.utils import TimeoutType
+from syndesi.adapters.utils import TimeoutParameterType
 from syndesi.component import ReadFrame
 
 from ..adapters.bytesadapter import BytesAdapter
@@ -1393,7 +1393,7 @@ class Modbus(BytesProtocol[ModbusSDU]):
     def __init__(
         self,
         adapter: BytesAdapter,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         _type: str = ModbusType.RTU.value,
         slave_address: int | None = None,
     ) -> None:

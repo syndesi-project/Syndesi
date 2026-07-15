@@ -25,7 +25,7 @@ from syndesi.adapters.utils import Fragment, HasFileno
 from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterReadError
 
-from .utils import TimeoutType
+from .utils import TimeoutParameterType
 
 
 class QueueEvent:
@@ -114,7 +114,7 @@ class Visa(BytesAdapter):
         *,
         alias: str = "",
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         # encoding: str = "utf-8",
         auto_open: bool = False,
     ) -> None:

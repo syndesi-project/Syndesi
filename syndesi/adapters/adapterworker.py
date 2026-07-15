@@ -32,7 +32,7 @@ from ..tools.errors import (
     WorkerThreadError,
 )
 from .tracehub import tracehub
-from .utils import Fragment, HasFileno, TimeoutType, ValidTimeoutType
+from .utils import Fragment, HasFileno, TimeoutParameterType, TimeoutType
 
 DataT = TypeVar("DataT")
 
@@ -125,7 +125,7 @@ class WriteCommand(Generic[DataT], ThreadCommand[None]):
 class SetTimeoutCommand(ThreadCommand[None]):
     """Configure adapter timeout"""
 
-    def __init__(self, timeout: ValidTimeoutType) -> None:
+    def __init__(self, timeout: TimeoutType) -> None:
         super().__init__()
         self.timeout = timeout
 
@@ -151,7 +151,7 @@ class ReadCommand(Generic[DataT], ThreadCommand[ReadFrame[DataT]]):
 
     def __init__(
         self,
-        timeout: TimeoutType,
+        timeout: TimeoutParameterType,
         scope: ReadScope,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> None:
@@ -247,8 +247,8 @@ class AdapterWorker(Generic[DataT]):
 
         # Timing
         self._last_write_timestamp: float | None = None
-        self._timeout: ValidTimeoutType = None
-        self._current_timeout: ValidTimeoutType = None
+        self._timeout: TimeoutType = None
+        self._current_timeout: TimeoutType = None
 
         # Adapter status
         self._opened = False

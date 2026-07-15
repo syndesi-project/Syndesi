@@ -48,7 +48,7 @@ from .adapterworker import (
     StopThreadCommand,
     WriteCommand,
 )
-from .utils import TimeoutType, ValidTimeoutType
+from .utils import TimeoutParameterType, TimeoutType
 
 DataT = TypeVar("DataT")
 
@@ -73,7 +73,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         self,
         *,
         worker: AdapterWorker[DataT],
-        timeout: TimeoutType,
+        timeout: TimeoutParameterType,
         # stop_conditions : StopCondition | list[StopCondition] | EllipsisType,
         alias: str,
         # encoding: str = "utf-8",
@@ -85,6 +85,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         self._alias = alias
         self._worker = worker
         self._auto_open = auto_open
+        self._timeout : TimeoutType
 
         # Default timeout
         self.is_default_timeout = timeout is Ellipsis
@@ -154,7 +155,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
     # │ Public API │
     # └────────────┘
     
-    def set_timeout(self, timeout: ValidTimeoutType) -> None:
+    def set_timeout(self, timeout: TimeoutType) -> None:
         """
         Set adapter timeout
 
@@ -166,8 +167,13 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         cmd = SetTimeoutCommand(timeout)
         self._worker.send_command(cmd)
         cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+        self._timeout = timeout
 
-    def set_default_timeout(self, default_timeout: ValidTimeoutType) -> None:
+    @property
+    def timeout(self) -> TimeoutType:
+        return self._timeout
+
+    def set_default_timeout(self, default_timeout: TimeoutType) -> None:
         """
         Configure adapter default timeout. Timeout will only be set if none
         has been configured before
@@ -248,7 +254,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
 
     def _read_detailed_future(
         self,
-        timeout: TimeoutType,
+        timeout: TimeoutParameterType,
         scope: ReadScope,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition],
     ) -> ReadCommand[DataT]:
@@ -260,7 +266,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
 
     def read_detailed(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ReadFrame[DataT]:
@@ -272,7 +278,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
 
     async def aread_detailed(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ReadFrame[DataT]:
@@ -287,7 +293,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
 
     def read(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> DataT:
@@ -298,7 +304,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
 
     async def aread(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> DataT:
@@ -348,7 +354,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
     async def aquery_detailed(
         self,
         payload: DataT,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ReadFrame[DataT]:
@@ -364,7 +370,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
     def query_detailed(
         self,
         payload: DataT,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ReadFrame[DataT]:

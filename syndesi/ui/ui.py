@@ -65,6 +65,7 @@ class TestingEntryType(IntEnum):
     OPEN = 4
     CLOSE = 5
     FRAGMENT = 6
+    FIRST_FRAGMENT = 7
 
 ENTRY_PREFIX = {
     TestingEntryType.WRITE : "→ write",
@@ -72,7 +73,8 @@ ENTRY_PREFIX = {
     TestingEntryType.EVENT : "◆ event",
     TestingEntryType.OPEN : "● opened",
     TestingEntryType.CLOSE : "● closed",
-    TestingEntryType.FRAGMENT : "↓    ", 
+    TestingEntryType.FRAGMENT : "↓ frag", 
+    TestingEntryType.FIRST_FRAGMENT : "↓ frag*", 
     TestingEntryType.UNKNOWN : "Unknown"
 }
 
@@ -83,6 +85,7 @@ ENTRY_COLOR = {
     TestingEntryType.OPEN : (30, 199, 38),
     TestingEntryType.CLOSE : (207, 19, 19),
     TestingEntryType.FRAGMENT : (127, 127, 127),
+    TestingEntryType.FIRST_FRAGMENT : (127, 127, 127),
     TestingEntryType.UNKNOWN : (255, 0, 0)
 }
 
@@ -169,7 +172,7 @@ class UIBase:
                     dpg.add_text("Configuration")
                     with dpg.group(horizontal=True):
                         dpg.add_text("Status : ")
-                        self._status_text = dpg.add_text("", wrap=300)
+                        self._status_text = dpg.add_text("", wrap=200)
                         dpg.add_spacer()
                     with dpg.group(horizontal=True):
                         with dpg.theme() as red_button_theme:
@@ -267,7 +270,6 @@ class UIBase:
     def load_adapter(self, adapter : BytesAdapter) -> None:
         block = self.adapter_block(adapter)
         self._add_adapter(block)
-        adapter.register_event_callback(self._event_callback)
         self._testing_bottom_group = block.build_testing_group(self._testing_window)
         self.toplevel_component = block
         dpg.bind_item_handler_registry(self._testing_bottom_group, self._testing_window_resize_handler)
@@ -283,9 +285,11 @@ class UIBase:
         block = self.protocol_block(protocol)
         self._add_adapter(protocol.adapter)
         self._add_protocol(protocol)
-        protocol.register_event_callback(self._event_callback)
+        #protocol.register_event_callback(self._event_callback)
         self.toplevel_component = block
         self._testing_bottom_group = block.build_testing_group(self._testing_window)
+
+TODO : Replace "read" event with "store" ? This would split "store" for automatic in-buffer storage and "read" for manual user started action
 
     def load_driver(self, driver : Driver) -> None:
         ...
@@ -350,41 +354,25 @@ class UIBase:
             while True:
                 event = await self._event_queue.get()
                 delta = event.timestamp - self._start_timestamp
+                print(f'Event : {event}')
 
                 if isinstance(event, AdapterClosedEvent):
                     self._add_testing_entry(TestingEntryType.CLOSE, delta)
                 elif isinstance(event, AdapterOpenedEvent):
                     self._add_testing_entry(TestingEntryType.OPEN, delta)
                 elif isinstance(event, AdapterReadEvent):
-                    self._add_testing_entry(TestingEntryType.READ, delta, f"{event.frame.data!r}")
-                elif isinstance(event, AdapterFragmentEvent):# and \
-                    #dpg.get_value(self._show_fragments_checkbox):
-                    first_indicator = "*" if event.first else ""
-                    self._add_testing_entry(TestingEntryType.FRAGMENT, delta, f"{event.fragment} ({first_indicator}frag)")
+                    self._add_testing_entry(TestingEntryType.READ, delta, f"{event.frame.data!r} ({event.frame.stop_condition_type.value})")
+                elif isinstance(event, AdapterFragmentEvent):
+                    self._add_testing_entry(
+                        TestingEntryType.FIRST_FRAGMENT if event.first else TestingEntryType.FRAGMENT,
+                        delta, str(event.fragment)
+                    )
                 elif isinstance(event, AdapterWriteEvent):
                     self._add_testing_entry(TestingEntryType.WRITE, delta, f"{event.frame.data!r}")
-                # elif isinstance(event, AdapterBufferEvent):
-                #     if self._adapter is not None:
-                #         if len(event.added_frame_ids) > 0:
-                #             for frame in self._adapter.frame_buffer:
-                #                 if frame.id in event.added_frame_ids:
-                #                     self._buffer_items[frame.id] = dpg.add_text(
-                #                         str(frame.data),
-                #                         parent=self._buffer_group
-                #                     )
-
-                #         for removed_frame_id in event.removed_frame_ids:
-                #             tag = self._buffer_items.pop(removed_frame_id, None)
-                #             if tag is not None:
-                #                 dpg.delete_item(tag)
+                elif isinstance(event, AdapterBufferEvent):
+                    ...
                 else:
                     self._add_testing_entry(TestingEntryType.UNKNOWN, delta)
-
-                # if text is not None:
-                #     event_tag = dpg.add_group(horizontal=True, parent=self._event_group)
-                #     dpg.add_text(f"{delta:+8.3f} ", color=(127, 127, 127), parent=event_tag)
-                #     dpg.add_text(text, color=color, parent=event_tag)
-                #     self._events.append(event_tag)
 
         except Exception:
             print(f'Exception in loop : {traceback.format_exc()}')

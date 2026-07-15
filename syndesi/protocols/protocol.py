@@ -18,7 +18,7 @@ from syndesi.adapters.adapterworker import (
     AdapterReadEvent,
 )
 from syndesi.adapters.stop_conditions import StopCondition
-from syndesi.adapters.utils import TimeoutType
+from syndesi.adapters.utils import TimeoutParameterType
 from syndesi.component import Component, Event, ReadFrame, ReadScope
 
 from ..adapters.adapter import Adapter
@@ -63,7 +63,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     def __init__(
         self,
         adapter: AdapterT,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
     ) -> None:
         super().__init__(LoggerAlias.PROTOCOL)
         self.adapter = adapter # adapter is public as it is used in ui
@@ -157,7 +157,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
 
     async def aread_detailed(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
@@ -168,7 +168,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
 
     def read_detailed(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
@@ -181,7 +181,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
 
     async def aread(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolFrameT:
@@ -192,7 +192,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
 
     def read(
         self,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolFrameT:
@@ -234,7 +234,7 @@ class BytesProtocol(Protocol[BytesAdapter, ProtocolFrameT], Generic[ProtocolFram
     async def aquery_detailed(
         self,
         payload: ProtocolFrameT,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
@@ -247,7 +247,7 @@ class BytesProtocol(Protocol[BytesAdapter, ProtocolFrameT], Generic[ProtocolFram
     def query_detailed(
         self,
         payload: ProtocolFrameT,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolReadFrame[ProtocolFrameT]:

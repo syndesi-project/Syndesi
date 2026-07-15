@@ -22,7 +22,7 @@ from syndesi.tools.errors import (
 
 from .stop_conditions import BytesFragment
 from .tracehub import tracehub
-from .utils import Fragment, HasFileno, TimeoutType
+from .utils import Fragment, HasFileno, TimeoutParameterType
 
 
 @dataclass
@@ -135,7 +135,7 @@ class IP(BytesAdapter):
         port: int | None = None,
         transport: str = IPDescriptor.Transport.TCP.value,
         *,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
         alias: str = "",
         auto_open: bool = True,

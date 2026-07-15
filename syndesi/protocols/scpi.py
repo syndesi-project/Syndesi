@@ -7,7 +7,7 @@ provides extra functionalities
 
 """
 
-from syndesi.adapters.utils import TimeoutType
+from syndesi.adapters.utils import TimeoutParameterType
 
 from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP
@@ -39,7 +39,7 @@ class SCPI(Delimited):
         termination: str = "\n",
         receive_termination: str | None = None,
         *,
-        timeout: TimeoutType = ...,
+        timeout: TimeoutParameterType = ...,
         encoding: str = "utf-8",
     ) -> None:
 
