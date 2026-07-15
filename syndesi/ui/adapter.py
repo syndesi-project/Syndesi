@@ -42,7 +42,7 @@ from ..adapters.stop_conditions import (
     Total,
 )
 from ..component import ReadScope
-from .tools import Block, Tab, TestingChildWindow, _help, _hsv_to_rgb
+from .tools import Block, ComponentBlock, _help, _hsv_to_rgb
 
 StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
 
@@ -182,7 +182,7 @@ class FragmentBlock(StopConditionBlock[FragmentSC]):
 AdapterT = TypeVar("AdapterT", bound=BytesAdapter)
 
 
-class BytesAdapterBlock(Generic[AdapterT], Tab, ABC):
+class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
     """BytesAdapter UI block"""
     _adapter : AdapterT
     title = ""
@@ -602,4 +602,7 @@ class IPBlock(BytesAdapterBlock[IP]):
         self._adapter.descriptor.transport = transport
         self._adapter.set_timeout(timeout if timeout != self.DEFAULT_TIMEOUT else None)
         self._adapter.open()
+
+    def close(self) -> None:
+        self._adapter.close()
 

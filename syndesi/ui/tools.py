@@ -130,12 +130,9 @@ class Block(ABC):
     def build(self, parent : int | str) -> None:
         """Construct the block in dearpygui"""
 
-class Tab(ABC):
+class ComponentBlock(ABC):
     @abstractmethod
     def reset(self): ...
-
-    # @abstractmethod
-    # def load_ui_values(self): ...
 
     @abstractmethod
     def build_configuration_tab(self, configuration_tab : int | str): ...
@@ -143,77 +140,11 @@ class Tab(ABC):
     @abstractmethod
     def build_testing_group(self, testing_window : int | str): ...
 
-class TestingEntryType(IntEnum):
-    UNKNOWN = 0
-    WRITE = 1
-    READ = 2
-    EVENT = 3
-    OPEN = 4
-    CLOSE = 5
-    FRAGMENT = 6
-
-ENTRY_PREFIX = {
-    TestingEntryType.WRITE : "→ write",
-    TestingEntryType.READ : "←  read",
-    TestingEntryType.EVENT : "◆ event",
-    TestingEntryType.OPEN : "● opened",
-    TestingEntryType.CLOSE : "● closed",
-    TestingEntryType.FRAGMENT : "↓    ", 
-    TestingEntryType.UNKNOWN : "Unknown event"
-}
-
-ENTRY_COLOR = {
-    TestingEntryType.WRITE : (212, 235, 197),
-    TestingEntryType.READ : (197, 213, 235),
-    TestingEntryType.EVENT : (127, 127, 127),
-    TestingEntryType.OPEN : (30, 199, 38),
-    TestingEntryType.CLOSE : (207, 19, 19),
-    TestingEntryType.FRAGMENT : (255, 255, 255),
-    TestingEntryType.UNKNOWN : (255, 0, 0)
-}
-
-# ✗ ▲
-# ● ○ ◆ ◇ ▲ △ ■ □
-# ← → ↑ ↓ ↔ ⇒ ⇐ ⇑ ⇓ ➔ 🡰 🠄 🠘
-
-@dataclass
-class TestingEntry:
-    entry_type : TestingEntryType
-    group_tag : int | str
-
-class TestingChildWindow(Block):
-    def __init__(self) -> None:
-        super().__init__()
-        self._entries : List[TestingEntry] = []
-        self._testing_window : int | str = -1
-
-    def build(self, parent : int | str):
-        self._testing_window = dpg.add_child_window(parent=parent)
-
-    def add(self, entry_type : TestingEntryType, text : str = ""):
-        with dpg.group(horizontal=True, parent=self._testing_window) as group_tag:
-            dpg.add_text(ENTRY_PREFIX[entry_type] + " " + text, color=ENTRY_COLOR[entry_type])
-
-        self._entries.append(TestingEntry(
-            entry_type=entry_type,
-            group_tag=group_tag
-        ))
-
-    def fragments(self, enabled : bool):
-        ...
-    
-    def events(self, enabled : bool):
+    @abstractmethod
+    def open(self):
         ...
 
-    def resize_height(self, height : int) -> None:
-        dpg.configure_item(self._testing_window, height=height)
-
-    def add_write(self, text : str):
-        self.add(TestingEntryType.WRITE, text)
-
-    def add_read(self, text : str):
-        self.add(TestingEntryType.READ, text)
-
-    def add_event(self, text : str):
-        self.add(TestingEntryType.EVENT, text)
+    @abstractmethod
+    def close(self):
+        ...
 

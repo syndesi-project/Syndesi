@@ -7,12 +7,13 @@ Syndesi UI
 
 import argparse
 import asyncio
+from dataclasses import dataclass
 import importlib
 import importlib.resources
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 import time
 import traceback
-from typing import Any, Tuple, Type, TypeVar, overload
+from typing import Any, List, Tuple, Type, TypeVar, overload
 
 import dearpygui.dearpygui as dpg #type: ignore
 
@@ -30,7 +31,7 @@ from syndesi.ui.protocol import DelimitedBlock, ProtocolBlock
 
 from .adapter import BytesAdapterBlock, IPBlock
 from .dearpygui_async import DearPyGuiAsync
-from .tools import Block, Tab, TestingChildWindow, TestingEntryType, _hsv_to_rgb
+from .tools import ComponentBlock, ComponentBlock, _hsv_to_rgb
 
 CLASS_NAME_SEPARATOR = ':'
 
@@ -56,6 +57,40 @@ def default_serialport() -> SerialPort:
 def default_delimited(adapter : BytesAdapter) -> Delimited:
     return Delimited(adapter, termination='\n')
 
+class TestingEntryType(IntEnum):
+    UNKNOWN = 0
+    WRITE = 1
+    READ = 2
+    EVENT = 3
+    OPEN = 4
+    CLOSE = 5
+    FRAGMENT = 6
+
+ENTRY_PREFIX = {
+    TestingEntryType.WRITE : "→ write",
+    TestingEntryType.READ : "←  read",
+    TestingEntryType.EVENT : "◆ event",
+    TestingEntryType.OPEN : "● opened",
+    TestingEntryType.CLOSE : "● closed",
+    TestingEntryType.FRAGMENT : "↓    ", 
+    TestingEntryType.UNKNOWN : "Unknown"
+}
+
+ENTRY_COLOR = {
+    TestingEntryType.WRITE : (212, 235, 197),
+    TestingEntryType.READ : (197, 213, 235),
+    TestingEntryType.EVENT : (127, 127, 127),
+    TestingEntryType.OPEN : (30, 199, 38),
+    TestingEntryType.CLOSE : (207, 19, 19),
+    TestingEntryType.FRAGMENT : (127, 127, 127),
+    TestingEntryType.UNKNOWN : (255, 0, 0)
+}
+
+@dataclass
+class TestingEntry:
+    entry_type : TestingEntryType
+    group_tag : int | str
+
 class UIBase:
     """Main UI window"""
     def __init__(
@@ -66,11 +101,15 @@ class UIBase:
         self._width = width
         self._height = height
         self._tab_bar : int | str = -1
-        self.toplevel_block : Block | None = None
-        self._tabs : list[Tuple[Tab, int | str]] = []
+        self.toplevel_component : ComponentBlock | None = None
+        self._tabs : list[Tuple[ComponentBlock, int | str]] = []
         self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
         self._start_timestamp = time.time()
         self._testing_bottom_group : int | str = -1
+        self._entries : List[TestingEntry] = []
+        self._testing_subwindow : int | str = -1
+
+        
         self._build()
         asyncio.ensure_future(self.loop())
 
@@ -160,12 +199,22 @@ class UIBase:
 
                 # Right panel (testing)
                 with dpg.child_window(width=-1, height=-1) as self._testing_window:
-                    self._testing_child_window = TestingChildWindow()
 
                     with dpg.group(horizontal=False, parent=self._testing_window) as self._testing_top_group:
                         dpg.add_text("Testing")
                         dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default_value=False)
-                    self._testing_child_window.build(parent=self._testing_window)
+                
+                    with dpg.child_window(parent=self._testing_window) as self._testing_subwindow:
+                        with dpg.theme() as compact_theme:
+                            with dpg.theme_component(dpg.mvAll):
+                                dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 4, 0, category=dpg.mvThemeCat_Core)
+
+                        with dpg.table(policy=dpg.mvTable_SizingFixedFit) as self._testing_table:
+                            dpg.add_table_column(label="Timestamp")
+                            dpg.add_table_column(label="Event")
+                            dpg.add_table_column(label="Data")
+
+                        dpg.bind_item_theme(self._testing_table, compact_theme)
 
                 with dpg.item_handler_registry() as self._testing_window_resize_handler:
                     dpg.add_item_resize_handler(callback=self._testing_window_resize)
@@ -181,6 +230,17 @@ class UIBase:
 
         dpg.setup_dearpygui()
 
+    def _add_testing_entry(self, entry_type : TestingEntryType, time_delta : float, text : str = ""):
+        with dpg.table_row(parent=self._testing_table) as row_tag:
+            dpg.add_text(f"{time_delta:+8.3f}", color=ENTRY_COLOR[entry_type])
+            dpg.add_text(ENTRY_PREFIX[entry_type], color=ENTRY_COLOR[entry_type])
+            dpg.add_text(text, color=ENTRY_COLOR[entry_type])
+
+        self._entries.append(TestingEntry(
+            entry_type=entry_type,
+            group_tag=row_tag
+        ))
+
     def _testing_window_resize(self):
         if dpg.is_viewport_ok():
             dpg.render_dearpygui_frame()
@@ -194,7 +254,7 @@ class UIBase:
         padding = 20
 
         b_h = max(total_h - a_h - c_h - 2*padding - 10, 50)
-        self._testing_child_window.resize_height(b_h)
+        dpg.configure_item(self._testing_subwindow, height=b_h)
 
     def _show_events_callback(self):
         ...
@@ -209,7 +269,7 @@ class UIBase:
         self._add_adapter(block)
         adapter.register_event_callback(self._event_callback)
         self._testing_bottom_group = block.build_testing_group(self._testing_window)
-        self.toplevel_block = block
+        self.toplevel_component = block
         dpg.bind_item_handler_registry(self._testing_bottom_group, self._testing_window_resize_handler)
 
     def _add_protocol(self, block : ProtocolBlock) -> None:
@@ -224,7 +284,7 @@ class UIBase:
         self._add_adapter(protocol.adapter)
         self._add_protocol(protocol)
         protocol.register_event_callback(self._event_callback)
-        self.toplevel_block = block
+        self.toplevel_component = block
         self._testing_bottom_group = block.build_testing_group(self._testing_window)
 
     def load_driver(self, driver : Driver) -> None:
@@ -235,30 +295,33 @@ class UIBase:
 
     def open(self) -> None:
         """Open the top-level component (driver, protocol or adapter)"""
-        if self.toplevel_block is None:
+        if self.toplevel_component is None:
             raise RuntimeError("Top-level component hasn't been set")
-        self.toplevel_block.open()
+        # self.toplevel_block.open()
 
         for block, _ in self._tabs:
             block.reset()
             #block.load_ui_values()
 
         try:
-            if isinstance(self.toplevel_block, BytesAdapterBlock):
-                self.toplevel_block.open()
-            elif isinstance(self.toplevel_block, ProtocolBlock):
-                self.toplevel_block.adapter.open()
-            else:
-                raise RuntimeError("Invalid top-level component")
+            self.toplevel_component.open()
+            # if isinstance(self.toplevel_block, BytesAdapterBlock):
+            # elif isinstance(self.toplevel_block, ProtocolBlock):
+            #     self.toplevel_block.adapter.open()
+            # else:
+            #     raise RuntimeError("Invalid top-level component")
         except AdapterOpenError as e:
+            print('open failed')
             self._status(False, str(e))
         else:
+            print('open success')
             self._status(True)
 
     def close(self):
-        if self.toplevel_block is None:
+        if self.toplevel_component is None:
             raise RuntimeError("Top-level component hasn't been set")
-        self.toplevel_block.close()
+        self.toplevel_component.close()
+        self._status(False)
 
     def _status(self, opened : bool, text : str = "") -> None:
         if opened:
@@ -277,7 +340,6 @@ class UIBase:
             dpg.configure_item(self._status_text, color=(255,0,0))
     
     def _event_callback(self, event : AdapterEvent | ProtocolEvent) -> None:
-        print(f'Event : {event}')
         loop.call_soon_threadsafe(self._event_queue.put_nowait, event)
 
     async def loop(self) -> None:
@@ -287,26 +349,20 @@ class UIBase:
         try:
             while True:
                 event = await self._event_queue.get()
-                #delta = event.timestamp - self._start_timestamp
+                delta = event.timestamp - self._start_timestamp
 
-
-
-
-
-                color = (255, 255, 255)
-                text : str | None = None
                 if isinstance(event, AdapterClosedEvent):
-                    self._testing_child_window.add(TestingEntryType.CLOSE)
+                    self._add_testing_entry(TestingEntryType.CLOSE, delta)
                 elif isinstance(event, AdapterOpenedEvent):
-                    self._testing_child_window.add(TestingEntryType.OPEN)
+                    self._add_testing_entry(TestingEntryType.OPEN, delta)
                 elif isinstance(event, AdapterReadEvent):
-                    self._testing_child_window.add(TestingEntryType.READ, f"{event.frame.data!r}")
+                    self._add_testing_entry(TestingEntryType.READ, delta, f"{event.frame.data!r}")
                 elif isinstance(event, AdapterFragmentEvent):# and \
                     #dpg.get_value(self._show_fragments_checkbox):
                     first_indicator = "*" if event.first else ""
-                    self._testing_child_window.add(TestingEntryType.FRAGMENT, f"{event.fragment} ({first_indicator}frag)")
+                    self._add_testing_entry(TestingEntryType.FRAGMENT, delta, f"{event.fragment} ({first_indicator}frag)")
                 elif isinstance(event, AdapterWriteEvent):
-                    self._testing_child_window.add(TestingEntryType.WRITE, f"{event.frame.data!r}")
+                    self._add_testing_entry(TestingEntryType.WRITE, delta, f"{event.frame.data!r}")
                 # elif isinstance(event, AdapterBufferEvent):
                 #     if self._adapter is not None:
                 #         if len(event.added_frame_ids) > 0:
@@ -322,7 +378,7 @@ class UIBase:
                 #             if tag is not None:
                 #                 dpg.delete_item(tag)
                 else:
-                    self._testing_child_window.add(TestingEntryType.UNKNOWN)
+                    self._add_testing_entry(TestingEntryType.UNKNOWN, delta)
 
                 # if text is not None:
                 #     event_tag = dpg.add_group(horizontal=True, parent=self._event_group)

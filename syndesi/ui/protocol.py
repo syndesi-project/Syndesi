@@ -6,7 +6,7 @@ from typing import Any, Generic, TypeVar
 
 from syndesi.adapters.adapter import Adapter
 from syndesi.protocols.delimited import Delimited
-from .tools import Tab
+from .tools import ComponentBlock
 from ..protocols.protocol import Protocol
 import dearpygui.dearpygui as dpg
 
@@ -16,7 +16,7 @@ ProtocolT = TypeVar("ProtocolT", bound=Protocol[Any, Any])
 
 N_WRITE_LINES = 5
 
-class ProtocolBlock(Generic[ProtocolT], Tab):
+class ProtocolBlock(Generic[ProtocolT], ComponentBlock):
     title : str = ""
     _protocol : ProtocolT
 
