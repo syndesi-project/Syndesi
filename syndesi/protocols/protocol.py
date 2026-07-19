@@ -15,7 +15,7 @@ from typing import Any, Generic, TypeVar
 from syndesi.adapters.adapterworker import (
     AdapterClosedEvent,
     AdapterEvent,
-    AdapterReadEvent,
+    AdapterFrameEvent,
 )
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.adapters.utils import TimeoutParameterType
@@ -97,7 +97,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
             output_event: ProtocolEvent | None = None
             if isinstance(event, AdapterClosedEvent):
                 output_event = ProtocolDisconnectedEvent()
-            if isinstance(event, AdapterReadEvent):
+            if isinstance(event, AdapterFrameEvent):
                 output_event = ProtocolFrameEvent(
                     frame=self._adapter_to_protocol(event.frame)
                 )

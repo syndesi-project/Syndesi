@@ -6,7 +6,7 @@ from .adapters.adapterworker import (
     AdapterClosedEvent,
     AdapterEvent,
     AdapterFragmentEvent,
-    AdapterReadEvent,
+    AdapterFrameEvent,
 )
 from .adapters.bytesadapter import BytesAdapter
 from .adapters.ip import IP
@@ -39,7 +39,7 @@ __all__ = [
     "Total",
     "AdapterEvent",
     "AdapterClosedEvent",
-    "AdapterReadEvent",
+    "AdapterFrameEvent",
     "AdapterFragmentEvent",
     "Driver",
     "SubDriver",

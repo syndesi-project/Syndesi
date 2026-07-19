@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from types import EllipsisType
 
 from syndesi.adapters.adapter import Adapter
-from syndesi.adapters.adapterworker import AdapterEvent, AdapterReadEvent, AdapterWorker
+from syndesi.adapters.adapterworker import AdapterEvent, AdapterFrameEvent, AdapterWorker
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
 
@@ -230,7 +230,7 @@ class IPServer(Adapter[Client]):
             callback(client, event)
 
     def _on_event(self, event: AdapterEvent) -> None:
-        if isinstance(event, AdapterReadEvent):
+        if isinstance(event, AdapterFrameEvent):
             client = event.frame.data
             if isinstance(client, Client):
                 client_adapter = IP(

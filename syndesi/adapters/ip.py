@@ -207,6 +207,8 @@ class IP(BytesAdapter):
         else:
             raise AdapterOpenError("Invalid transport protocol")
         try:
+            # TODO : Simulate a very long connect time (bad network) and manage timeout
+            # error accordingly
             s.settimeout(self.WorkerTimeout.OPEN.value)
             s.connect((self._descriptor.address, self._descriptor.port))
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:

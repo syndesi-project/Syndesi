@@ -18,7 +18,7 @@ from typing import Any, List, Tuple, Type, TypeVar, overload
 import dearpygui.dearpygui as dpg #type: ignore
 
 from syndesi.adapters.adapter import Adapter
-from syndesi.adapters.adapterworker import AdapterBufferEvent, AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterOpenedEvent, AdapterReadEvent, AdapterWriteEvent
+from syndesi.adapters.adapterworker import AdapterBufferEvent, AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterOpenedEvent, AdapterFrameEvent, AdapterReadEvent, AdapterWriteEvent
 from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.ip import IP
 from syndesi.adapters.serialport import SerialPort
@@ -60,26 +60,29 @@ def default_delimited(adapter : BytesAdapter) -> Delimited:
 class TestingEntryType(IntEnum):
     UNKNOWN = 0
     WRITE = 1
-    READ = 2
-    EVENT = 3
-    OPEN = 4
-    CLOSE = 5
-    FRAGMENT = 6
-    FIRST_FRAGMENT = 7
+    FRAME = 2
+    READ = 3
+    EVENT = 4
+    OPEN = 5
+    CLOSE = 6
+    FRAGMENT = 7
+    FIRST_FRAGMENT = 8
 
 ENTRY_PREFIX = {
     TestingEntryType.WRITE : "→ write",
+    TestingEntryType.FRAME : "↓ frame",
     TestingEntryType.READ : "←  read",
     TestingEntryType.EVENT : "◆ event",
     TestingEntryType.OPEN : "● opened",
     TestingEntryType.CLOSE : "● closed",
     TestingEntryType.FRAGMENT : "↓ frag", 
     TestingEntryType.FIRST_FRAGMENT : "↓ frag*", 
-    TestingEntryType.UNKNOWN : "Unknown"
+    TestingEntryType.UNKNOWN : "Unknown",
 }
 
 ENTRY_COLOR = {
     TestingEntryType.WRITE : (212, 235, 197),
+    TestingEntryType.FRAME : (127, 127, 127),
     TestingEntryType.READ : (197, 213, 235),
     TestingEntryType.EVENT : (127, 127, 127),
     TestingEntryType.OPEN : (30, 199, 38),
@@ -88,6 +91,8 @@ ENTRY_COLOR = {
     TestingEntryType.FIRST_FRAGMENT : (127, 127, 127),
     TestingEntryType.UNKNOWN : (255, 0, 0)
 }
+
+TODO : Find why the _opened property of adapter worker stays True even after an adapter closes itself. _worker_close is correctly called so that's strange
 
 @dataclass
 class TestingEntry:
@@ -285,11 +290,8 @@ class UIBase:
         block = self.protocol_block(protocol)
         self._add_adapter(protocol.adapter)
         self._add_protocol(protocol)
-        #protocol.register_event_callback(self._event_callback)
         self.toplevel_component = block
         self._testing_bottom_group = block.build_testing_group(self._testing_window)
-
-TODO : Replace "read" event with "store" ? This would split "store" for automatic in-buffer storage and "read" for manual user started action
 
     def load_driver(self, driver : Driver) -> None:
         ...
@@ -301,25 +303,16 @@ TODO : Replace "read" event with "store" ? This would split "store" for automati
         """Open the top-level component (driver, protocol or adapter)"""
         if self.toplevel_component is None:
             raise RuntimeError("Top-level component hasn't been set")
-        # self.toplevel_block.open()
 
         for block, _ in self._tabs:
             block.reset()
-            #block.load_ui_values()
 
         try:
             self.toplevel_component.open()
-            # if isinstance(self.toplevel_block, BytesAdapterBlock):
-            # elif isinstance(self.toplevel_block, ProtocolBlock):
-            #     self.toplevel_block.adapter.open()
-            # else:
-            #     raise RuntimeError("Invalid top-level component")
         except AdapterOpenError as e:
-            print('open failed')
             self._status(False, str(e))
-        else:
-            print('open success')
-            self._status(True)
+
+        # No need to update status to True here, it will be done by the event
 
     def close(self):
         if self.toplevel_component is None:
@@ -354,19 +347,22 @@ TODO : Replace "read" event with "store" ? This would split "store" for automati
             while True:
                 event = await self._event_queue.get()
                 delta = event.timestamp - self._start_timestamp
-                print(f'Event : {event}')
 
                 if isinstance(event, AdapterClosedEvent):
                     self._add_testing_entry(TestingEntryType.CLOSE, delta)
+                    self._status(False)
                 elif isinstance(event, AdapterOpenedEvent):
                     self._add_testing_entry(TestingEntryType.OPEN, delta)
-                elif isinstance(event, AdapterReadEvent):
-                    self._add_testing_entry(TestingEntryType.READ, delta, f"{event.frame.data!r} ({event.frame.stop_condition_type.value})")
+                    self._status(True)
+                elif isinstance(event, AdapterFrameEvent):
+                    self._add_testing_entry(TestingEntryType.FRAME, delta, f"{event.frame.data!r} ({event.frame.stop_condition_type.value})")
                 elif isinstance(event, AdapterFragmentEvent):
                     self._add_testing_entry(
                         TestingEntryType.FIRST_FRAGMENT if event.first else TestingEntryType.FRAGMENT,
-                        delta, str(event.fragment)
+                        delta, str(event.fragment.data)
                     )
+                elif isinstance(event, AdapterReadEvent):
+                    self._add_testing_entry(TestingEntryType.READ, delta, f"{event.frame.data}" + " (buffer)" if event.from_buffer else "")
                 elif isinstance(event, AdapterWriteEvent):
                     self._add_testing_entry(TestingEntryType.WRITE, delta, f"{event.frame.data!r}")
                 elif isinstance(event, AdapterBufferEvent):

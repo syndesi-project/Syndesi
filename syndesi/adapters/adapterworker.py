@@ -40,7 +40,6 @@ DataT = TypeVar("DataT")
 # │ Adapter events │
 # └────────────────┘
 
-
 class AdapterEvent(Event):
     """Adapter event"""
 
@@ -55,10 +54,21 @@ class AdapterWriteEvent(Generic[DataT], AdapterEvent):
     """Adapter write event, emitted when data has been written"""
     frame: WriteFrame[DataT]
 
+# Named "AdapterFrameEvent" because "ReadEvent" would imply a read action from the user
+# whereas this is automatic frame detection
+@dataclass
+class AdapterFrameEvent(Generic[DataT], AdapterEvent):
+    """Adapter store event, emitted when a frame has been accepted by the adapter.
+    If a frame is not instantly consummed and stored in the buffer,
+    the buffered property is set to True"""
+    frame: ReadFrame[DataT]
+    buffered : bool
+
 @dataclass
 class AdapterReadEvent(Generic[DataT], AdapterEvent):
-    """Adapter frame event, emitted when new data is available"""
-    frame: ReadFrame[DataT]
+    """Adapter read event, triggered when a read is performed by the user"""
+    frame : ReadFrame[DataT]
+    from_buffer : bool
 
 @dataclass
 class AdapterFragmentEvent(Generic[DataT], AdapterEvent):
@@ -212,6 +222,7 @@ class AdapterWorkerInterface(Generic[DataT]):
         if self.descriptor is not None:
             tracehub.emit_close(str(self.descriptor))
         self._worker_emit_event(AdapterClosedEvent())
+        self._opened = False
 
     @abstractmethod
     def _selectable(self) -> HasFileno | None:
@@ -353,6 +364,7 @@ class AdapterWorker(Generic[DataT]):
                     try:
                         frag = self._interface._worker_read(t)
                     except (AdapterDisconnected, AdapterReadError) as e:
+                        print('adapter disconnected')
                         if self._pending_read is not None:
                             self._pending_read.cmd.set_exception(e)
                             self._pending_read = None
@@ -417,8 +429,10 @@ class AdapterWorker(Generic[DataT]):
                         self._interface._worker_write(command.frame.data)
                         command.set_result(None)
                 case OpenCommand():
+                    print(f'Worker OpenCommand, opened : {self._opened}')
                     if self._opened:
                         self._worker_logger.warning("Adapter already opened")
+                        command.set_result(None)
                     else:
                         self._worker_check_descriptor()
                         try:
@@ -437,8 +451,6 @@ class AdapterWorker(Generic[DataT]):
                             command.set_result(None)
                 case CloseCommand():
                     self._interface._worker_close()  # pylint: disable=protected-access
-                    self._opened = False
-                    #self._worker_emit_event(AdapterClosedEvent())
                     self._buffer_clear()
                     # Cancel any pending read
                     if self._pending_read is not None:
@@ -510,6 +522,7 @@ class AdapterWorker(Generic[DataT]):
                 removed_frame_ids=[frame.id]
             ))
             cmd.set_result(frame)
+            self._interface._worker_emit_event(AdapterReadEvent(frame, from_buffer=True))
             return
 
         # Resolve timeout
@@ -546,9 +559,6 @@ class AdapterWorker(Generic[DataT]):
             stop_override=stop_override,
         )
 
-    # @abstractmethod
-    # def _worker_manage_fragment(self, fragment: Fragment[DataT]) -> None: ...
-
     def _worker_manage_fragment(self, fragment: Fragment[DataT]) -> None:
         # pylint: disable=too-many-branches, too-many-statements
         """This function can be overriden"""
@@ -579,36 +589,40 @@ class AdapterWorker(Generic[DataT]):
         - else buffer it
         - always emit callback event (if configured)
         """
-        self._interface._worker_emit_event(AdapterReadEvent(frame))
         if self._interface.descriptor is not None:
             tracehub.emit_read_frame(str(self._interface.descriptor), frame)
 
         pr = self._pending_read
-        qualifies = False
+        #qualifies = False
+        buffered = True
+
         if pr is not None:
             if pr.scope == ReadScope.BUFFERED:
-                qualifies = True
+                #qualifies = True
+                buffered = False
             elif pr.scope == ReadScope.NEXT:
-                qualifies = frame.stop_timestamp > pr.start_time
+                #qualifies = frame.stop_timestamp > pr.start_time
+                buffered = frame.stop_timestamp <= pr.start_time
             elif pr.scope == ReadScope.LAST_WRITE:
                 if self._last_write_timestamp is not None:
                     # The opposite should technically never happen because we check when the
                     # ReadCommand is received
-                    qualifies = frame.stop_timestamp > self._last_write_timestamp
+                    buffered = frame.stop_timestamp <= self._last_write_timestamp
 
-            if qualifies:
-                # Restore stop conditions if we had applied an override
-                pr.cmd.set_result(frame)
-                self._pending_read = None
-                return
-
-        # Not consumed by a pending read => buffer it
-        self.frame_buffer.append(frame)
-        self._interface._worker_emit_event(AdapterBufferEvent(
-            added_frame_ids=[frame.id],
-            removed_frame_ids=[]
-        ))
-
+        self._interface._worker_emit_event(AdapterFrameEvent(frame, buffered))
+        if buffered:
+            # Not consumed by a pending read => buffer it
+            self.frame_buffer.append(frame)
+            self._interface._worker_emit_event(AdapterBufferEvent(
+                added_frame_ids=[frame.id],
+                removed_frame_ids=[]
+            ))
+        elif pr is not None:
+            # Restore stop conditions if we had applied an override
+            pr.cmd.set_result(frame)
+            self._pending_read = None
+            buffered = False
+            self._interface._worker_emit_event(AdapterReadEvent(frame, False))
 
     def _worker_fail_pending_read_timeout(self) -> None:
         """

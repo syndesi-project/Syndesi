@@ -27,7 +27,7 @@ from ..adapters.adapterworker import (
     AdapterEvent,
     AdapterFragmentEvent,
     AdapterOpenedEvent,
-    AdapterReadEvent,
+    AdapterFrameEvent,
     AdapterWriteEvent,
 )
 from ..adapters.bytesadapter import BytesAdapter
@@ -214,7 +214,6 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._event_window : int | str = -1
         self._events : list[int | str] = []
         
-        # self._start_timestamp = time.time()
         self._add_tab : int | str = -1
         self._right_clicked_tab : StopConditionBlock[Any] | None = None
         self._buffer_items : dict[int, int | str] = {}
@@ -223,18 +222,14 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._show_fragments_checkbox : int | str = -1
         self._buffer_window : int | str = -1
         self._write_input : dict[int, int | str] = {}
-        self._write_group : dict[int, int | str] = {}
-
-        self._start_timestamp = time.time()        
+        self._write_group : dict[int, int | str] = {} 
 
     def reset(self):
         self._clear_events()
-        self._start_timestamp = time.time()
         self._adapter_to_cache_stop_conditions()
         dpg.set_value(self._write_status, "")
 
     def _event_callback(self, event : AdapterEvent):
-        print('_event_callback')
         self._ui_event_callback(event)
         if isinstance(event, AdapterBufferEvent):
             loop.call_soon_threadsafe(self._buffer_event, event)
@@ -291,7 +286,9 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
             self._adapter_to_cache_stop_conditions()
 
-            with dpg.child_window(label="Buffer") as self._buffer_window:
+            dpg.add_spacer(height=10)
+            dpg.add_text("Buffer")
+            with dpg.child_window() as self._buffer_window:
                 ...
                 
 
@@ -316,6 +313,13 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
                             if i == 0:
                                 bytes_help()
             self._write_status = dpg.add_text("")
+
+            dpg.add_spacer(height=5)
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Read", callback=self._read_callback)
+                dpg.add_combo(label="Scope", items=list(ReadScope), width=100)
+
+
 
         return testing_group
 
@@ -344,29 +348,27 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._add_tab = dpg.add_tab(label="+", parent=self._tab_bar)
 
     async def _read_callback(self) -> None:
-        if self._adapter is None:
-            return
         self._read_start = time.time()
         asyncio.create_task(self._read_task())
         try:
             data = await self._adapter.aread()
         except AdapterTimeoutError as e:
             self._read_task_running = False
-            dpg.set_value(self._read_output, f"Read timeout ({e.timeout})")
-            dpg.configure_item(self._read_output, color=(237, 117, 31))
+            #dpg.set_value(self._read_output, f"Read timeout ({e.timeout})")
+            #dpg.configure_item(self._read_output, color=(237, 117, 31))
         except AdapterReadError as e:
             self._read_task_running = False
-            dpg.set_value(self._read_output, str(e))
-            dpg.configure_item(self._read_output, color=(255,0,0))
+            #dpg.set_value(self._read_output, str(e))
+            #dpg.configure_item(self._read_output, color=(255,0,0))
         else:
             self._read_task_running = False
-            dpg.set_value(self._read_output, repr(data))
-            dpg.configure_item(self._read_output, color=(86, 178, 245))
+            #dpg.set_value(self._read_output, repr(data))
+            #dpg.configure_item(self._read_output, color=(86, 178, 245))
 
     async def _read_task(self) -> None:
         self._read_task_running = True
         while self._read_task_running:
-            dpg.set_value(self._read_output, f"{time.time() - self._read_start:.3f}s")
+            #dpg.set_value(self._read_output, f"{time.time() - self._read_start:.3f}s")
             await asyncio.sleep(1/60)
 
     def _update_write_status(self, text : str, status : str = "neutral") -> None:
@@ -398,8 +400,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         except AdapterWriteError as e:
             self._update_write_status(str(e), "error")
         else:
-            t_delta = time.time() - self._start_timestamp
-            self._update_write_status(f"Written {repr(data)} at {t_delta:+.3f}s", "ok")
+            self._update_write_status(f"Written {repr(data)}", "ok")
 
     def _remove_stop_condition_callback(self) -> None:
         if self._right_clicked_tab is not None:
