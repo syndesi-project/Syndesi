@@ -125,6 +125,8 @@ class LengthBlock(StopConditionBlock[Length]):
     def _length_callback(self, _ : int | str, app_data : int) -> None:
         self._stop_condition = Length(app_data)
 
+TODO : Link block stop-condition with adapter stop-condition
+
 class ContinuationBlock(StopConditionBlock[Continuation]):
     """Continuation stop-condition block"""
     DEFAULT_CONTINUATION = 0.2
@@ -319,8 +321,6 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
                 dpg.add_button(label="Read", callback=self._read_callback)
                 dpg.add_combo(label="Scope", items=list(ReadScope), width=100)
 
-
-
         return testing_group
 
         
@@ -495,7 +495,7 @@ class IPBlock(BytesAdapterBlock[IP]):
         with dpg.group(horizontal=True, parent=parent):
         #with dpg.group(horizontal=True):
             #with dpg.group(horizontal=True, parent=parent):
-            self._port_input = dpg.add_input_text(width=100, label="Port", default_value=0)
+            self._port_input = dpg.add_input_text(width=100, label="Port", default_value="0")
             self._port_details = dpg.add_text("")
         self._transport_input = dpg.add_combo(
             parent=parent,

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Generic, TypeVar
 
-from .adapters.stop_conditions import StopConditionType
+from .adapters.stop_conditions import StopCondition, StopConditionType
 from .adapters.utils import TimeoutParameterType
 from .tools.errors import AdapterOpenError, AdapterReadError, WorkerThreadError
 from .tools.log_settings import LoggerAlias
@@ -68,7 +68,8 @@ class ReadFrame(Generic[DataT], Frame[DataT]):
     stop_timestamp: float
     previous_read_buffer_used: bool
     response_delay: float
-    stop_condition_type: StopConditionType = StopConditionType.FRAGMENT
+    #stop_condition_type: StopConditionType = StopConditionType.FRAGMENT
+    stop_condition : StopCondition | None = None
     first_fragment_timestamp: float = float("nan")
 
     def __str__(self) -> str:

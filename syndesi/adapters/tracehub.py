@@ -208,10 +208,10 @@ class _TraceHub:
         """
         Emit a read frame event
         """
-        if frame.stop_condition_type is None:
+        if frame.stop_condition is None:
             sc_indicator = None
         else:
-            sc_indicator = STOP_CONDITION_INDICATOR[frame.stop_condition_type]
+            sc_indicator = STOP_CONDITION_INDICATOR[frame.stop_condition.type]
 
         if isinstance(frame.data, bytes):
             message = self._format_bytes(frame.data)

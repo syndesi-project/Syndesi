@@ -147,4 +147,3 @@ class ComponentBlock(ABC):
     @abstractmethod
     def close(self):
         ...
-

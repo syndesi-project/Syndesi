@@ -192,15 +192,16 @@ class PendingRead(Generic[DataT]):
 class AdapterWorkerInterface(Generic[DataT]):
     """Adapter base class for worker interface.
     The worker will call these methods that the final adapter will implement"""
-    #_descriptor : Descriptor
-
-    # def __init__(self) -> None:
-    #     self._descriptor = descriptor
+    #_opened : bool = False
 
     def __init__(self) -> None:
         self._worker_logger = logging.getLogger(LoggerAlias.ADAPTER_WORKER.value)
         # Events
         self._event_callbacks: set[Callable[[AdapterEvent], None]] = set()
+
+    # @property
+    # def opened(self):
+    #     return self._opened
 
     @property
     @abstractmethod
@@ -222,7 +223,7 @@ class AdapterWorkerInterface(Generic[DataT]):
         if self.descriptor is not None:
             tracehub.emit_close(str(self.descriptor))
         self._worker_emit_event(AdapterClosedEvent())
-        self._opened = False
+        #self._opened = False
 
     @abstractmethod
     def _selectable(self) -> HasFileno | None:
@@ -262,8 +263,8 @@ class AdapterWorker(Generic[DataT]):
         self._current_timeout: TimeoutType = None
 
         # Adapter status
-        self._opened = False
         self._first_opened = False
+        self._opened = False
 
         # Command management
         self._pending_read: PendingRead[DataT] | None = None
@@ -346,6 +347,7 @@ class AdapterWorker(Generic[DataT]):
                 t = time.time()
             except ValueError:  # Negative file descriptor
                 self._interface._worker_close()  # pylint: disable=protected-access
+                self._opened = False
             else:
                 # Manage command
                 if self._command_queue_r in readable:
@@ -364,11 +366,11 @@ class AdapterWorker(Generic[DataT]):
                     try:
                         frag = self._interface._worker_read(t)
                     except (AdapterDisconnected, AdapterReadError) as e:
-                        print('adapter disconnected')
                         if self._pending_read is not None:
                             self._pending_read.cmd.set_exception(e)
                             self._pending_read = None
                         self._interface._worker_close()
+                        self._opened = False
                     else:
                         self._worker_manage_fragment(frag)
                     continue
@@ -429,7 +431,6 @@ class AdapterWorker(Generic[DataT]):
                         self._interface._worker_write(command.frame.data)
                         command.set_result(None)
                 case OpenCommand():
-                    print(f'Worker OpenCommand, opened : {self._opened}')
                     if self._opened:
                         self._worker_logger.warning("Adapter already opened")
                         command.set_result(None)
@@ -451,6 +452,7 @@ class AdapterWorker(Generic[DataT]):
                             command.set_result(None)
                 case CloseCommand():
                     self._interface._worker_close()  # pylint: disable=protected-access
+                    self._opened = False
                     self._buffer_clear()
                     # Cancel any pending read
                     if self._pending_read is not None:

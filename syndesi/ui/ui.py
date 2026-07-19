@@ -22,6 +22,7 @@ from syndesi.adapters.adapterworker import AdapterBufferEvent, AdapterClosedEven
 from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.ip import IP
 from syndesi.adapters.serialport import SerialPort
+from syndesi.adapters.stop_conditions import StopConditionType
 from syndesi.component import Component, Event
 from syndesi.drivers.driver import Driver
 from syndesi.protocols.delimited import Delimited
@@ -91,8 +92,6 @@ ENTRY_COLOR = {
     TestingEntryType.FIRST_FRAGMENT : (127, 127, 127),
     TestingEntryType.UNKNOWN : (255, 0, 0)
 }
-
-TODO : Find why the _opened property of adapter worker stays True even after an adapter closes itself. _worker_close is correctly called so that's strange
 
 @dataclass
 class TestingEntry:
@@ -355,7 +354,12 @@ class UIBase:
                     self._add_testing_entry(TestingEntryType.OPEN, delta)
                     self._status(True)
                 elif isinstance(event, AdapterFrameEvent):
-                    self._add_testing_entry(TestingEntryType.FRAME, delta, f"{event.frame.data!r} ({event.frame.stop_condition_type.value})")
+                    if event.frame.stop_condition is None:
+                        sc_data = "(error)"
+                    else:
+                        sc_data = str(event.frame.stop_condition)
+                    
+                    self._add_testing_entry(TestingEntryType.FRAME, delta, f"{event.frame.data!r} {sc_data}")
                 elif isinstance(event, AdapterFragmentEvent):
                     self._add_testing_entry(
                         TestingEntryType.FIRST_FRAGMENT if event.first else TestingEntryType.FRAGMENT,

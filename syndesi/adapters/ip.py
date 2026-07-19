@@ -150,7 +150,6 @@ class IP(BytesAdapter):
         self._socket: socket.socket | None = None
 
         if server_socket is not None:
-            self._opened = True
             auto_open = False
             tracehub.emit_open(str(self._descriptor))
             self._socket = server_socket
@@ -212,7 +211,6 @@ class IP(BytesAdapter):
             s.settimeout(self.WorkerTimeout.OPEN.value)
             s.connect((self._descriptor.address, self._descriptor.port))
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:
-            self._opened = False
             msg = f"Failed to open adapter {self._descriptor} ({e})"
             raise AdapterOpenError(msg) from None
 

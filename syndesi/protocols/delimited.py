@@ -93,7 +93,7 @@ class Delimited(BytesProtocol[str]):
             data=data,
             id=adapter_frame.id,
             stop_timestamp=adapter_frame.stop_timestamp,
-            stop_condition_type=adapter_frame.stop_condition_type,
+            stop_condition=adapter_frame.stop_condition,
             previous_read_buffer_used=adapter_frame.previous_read_buffer_used,
             response_delay=adapter_frame.response_delay,
         )

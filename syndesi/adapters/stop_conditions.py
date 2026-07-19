@@ -50,6 +50,7 @@ class StopCondition:
         Evaluate incoming fragment and return read information for the next fragment
         """
 
+    @property
     @abstractmethod
     def type(self) -> StopConditionType:
         """
@@ -82,7 +83,7 @@ class Termination(StopCondition):
         if self.sequence == b"":
             raise ValueError(
                 "Empty termination isn't allowed. If you wish "
-                "to stop on any received data, use Datagram stop-conditions instead"
+                "to stop on any received data, use Fragment stop-conditions instead"
             )
         self._sequence_found_length = 0
 
@@ -222,6 +223,7 @@ class Continuation(StopCondition):
 
         return stop, kept, deferred, next_event_timeout
 
+    @property
     def type(self) -> StopConditionType:
         return StopConditionType.CONTINUATION
 
@@ -266,6 +268,7 @@ class Total(StopCondition):
 
         return stop, kept, deferred, total_timestamp
 
+    @property
     def type(self) -> StopConditionType:
         return StopConditionType.TOTAL
 

@@ -60,7 +60,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
         self._next_stop_condition_timeout_timestamp: float | None = None
         self._read_start_timestamp: float | None = None
         self._last_fragment_timestamp: float | None = None
-        self._timeout_origin: StopConditionType = StopConditionType.TIMEOUT
+        self._timeout_origin: StopCondition | None = None
 
     # ┌──────────────────────────────┐
     # │ Worker: fragment/frame logic │
@@ -96,7 +96,8 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                     stop_condition.initiate_read(initiate_timestamp)
 
             stop = False
-            stop_condition_type: StopConditionType | None = None
+            frame_stop_condition : StopCondition | None = None
+            #stop_condition_type: StopConditionType | None = None
 
             for stop_condition in self._stop_conditions:
                 (
@@ -111,14 +112,14 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                     self._next_stop_condition_timeout_timestamp,
                 )
                 if stop:
-                    stop_condition_type = stop_condition.type()
+                    frame_stop_condition = stop_condition
                     stop_timestamp = kept.timestamp
                     break
 
             self._fragments.append(kept)
 
             # If there's no stop, break here
-            if stop_condition_type is None:
+            if frame_stop_condition is None:
                 # Only emit a fragment event if there's no frame
                 if self._interface.descriptor is not None:
                     if self._last_write_timestamp is None:
@@ -154,14 +155,15 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                 id=self._next_frame_id(),
                 first_fragment_timestamp=self._fragments[0].timestamp,
                 stop_timestamp=stop_timestamp,
-                stop_condition_type=stop_condition_type,
+                stop_condition=frame_stop_condition,
+                #stop_condition_type=stop_condition_type,
                 previous_read_buffer_used=False,
                 response_delay=response_delay,
             )
             self._worker_logger.debug(
                 "Frame %s (%s)",
                 "+".join(repr(f.data) for f in self._fragments),
-                stop_condition_type.value if stop_condition_type is not None else "---",
+                frame_stop_condition.type.value if frame_stop_condition.type is not None else "---",
             )
             self._worker_deliver_frame(frame)
 
@@ -192,7 +194,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                 id=self._next_frame_id(),
                 first_fragment_timestamp=self._fragments[0].timestamp,
                 stop_timestamp=timestamp,
-                stop_condition_type=self._timeout_origin,
+                stop_condition=self._timeout_origin,
                 previous_read_buffer_used=False,
                 response_delay=response_delay,
             )
@@ -207,7 +209,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
         self._last_write_timestamp = None
         self._fragments = []
         self._next_stop_condition_timeout_timestamp = None
-        self._timeout_origin = StopConditionType.TIMEOUT
+        self._timeout_origin = None
 
     def _worker_next_timeout_timestamp(self) -> float | None:
         next_timestamp = None
@@ -219,14 +221,14 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                         next_timestamp,
                         self._last_fragment_timestamp + stop_condition.continuation,
                     )
-                    self._timeout_origin = stop_condition.type()
+                    self._timeout_origin = stop_condition
             elif isinstance(stop_condition, Total):
                 if self._first_fragment_timestamp is not None:
                     next_timestamp = nmin(
                         next_timestamp,
                         self._first_fragment_timestamp + stop_condition.total,
                     )
-                    self._timeout_origin = stop_condition.type()
+                    self._timeout_origin = stop_condition
 
         return next_timestamp
 
