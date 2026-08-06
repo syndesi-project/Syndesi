@@ -52,20 +52,26 @@ class Delimited(BytesProtocol[str]):
             termination = termination.decode(self._encoding)
         elif not isinstance(termination, str):
             raise ValueError(
-                f"end argument must be of type str or bytes, not {type(termination)}"
+                f"termination argument must be of type str or bytes, not {type(termination)}"
             )
+        self._termination = termination
 
         if receive_termination is None:
             self._receive_termination = termination
         else:
             self._receive_termination = receive_termination
 
-        self._termination = termination
-        self._response_formatting = format_response
-
+            if isinstance(receive_termination, bytes):
+                receive_termination = receive_termination.decode(self._encoding)
+            elif not isinstance(receive_termination, str):
+                raise ValueError(
+                    f"termination argument must be of type str or bytes, not {type(termination)}"
+                )
+        
         adapter.set_stop_conditions(
             stop_conditions=Termination(sequence=self._receive_termination)
         )
+
         super().__init__(adapter, timeout=timeout)
 
     def __str__(self) -> str:
@@ -73,7 +79,7 @@ class Delimited(BytesProtocol[str]):
             return f"Delimited({self.adapter},{repr(self._termination)})"
         return (
             f"Delimited({self.adapter},{repr(self._termination)}"
-            "/{repr(self._receive_termination)})"
+            f"/{repr(self._receive_termination)})"
         )
 
     def __repr__(self) -> str:
@@ -102,20 +108,40 @@ class Delimited(BytesProtocol[str]):
         terminated_payload = protocol_payload + self._termination
         return terminated_payload.encode(self._encoding)
     
-    def set_termination(self, termination : str, receive_termination : str | None = None) -> None:
+    def set_termination(self, termination : str | bytes, receive_termination : str | bytes | None = None) -> None:
         """Set Delimited termination.
         If receive_termination is not specified, termination parameter is used both
         for send and receive
 
         Parameters
         ----------
-        termination : str
-        receive_termination : str
+        termination : str | bytes
+        receive_termination : str | bytes
             Optional, specific termination for receive only
         """
+
+        if isinstance(termination, bytes):
+            termination = termination.decode(self._encoding)
+        elif not isinstance(termination, str):
+            raise ValueError(
+                f"termination argument must be of type str or bytes, not {type(termination)}"
+            )
         self._termination = termination
-        self._receive_termination = \
-            termination if receive_termination is None else receive_termination
+        
+        if receive_termination is None:
+            self._receive_termination = self._termination
+        else:
+            if isinstance(receive_termination, bytes):
+                receive_termination = receive_termination.decode(self._encoding)
+            elif not isinstance(receive_termination, str):
+                raise ValueError(
+                    f"receive_termination argument must be of type str or bytes, not {type(termination)}"
+                )
+            self._receive_termination = receive_termination
+        
+        self.adapter.set_stop_conditions(
+            stop_conditions=Termination(sequence=self._receive_termination)
+        )
 
     @property
     def termination(self) -> str: 

@@ -287,8 +287,8 @@ class UIBase:
         if not isinstance(protocol.adapter, BytesAdapter):
             raise RuntimeError("Non-bytes adapter are not yet supported")
         block = self.protocol_block(protocol)
-        self._add_adapter(protocol.adapter)
-        self._add_protocol(protocol)
+        self._add_adapter(self.adapter_block(protocol.adapter))
+        self._add_protocol(block)
         self.toplevel_component = block
         self._testing_bottom_group = block.build_testing_group(self._testing_window)
 
@@ -303,8 +303,11 @@ class UIBase:
         if self.toplevel_component is None:
             raise RuntimeError("Top-level component hasn't been set")
 
+        # for block, _ in self._tabs:
+        #     block.reset()
+
         for block, _ in self._tabs:
-            block.reset()
+            block.sync_block_to_component()
 
         try:
             self.toplevel_component.open()
@@ -359,8 +362,9 @@ class UIBase:
                     else:
                         sc_data = str(event.frame.stop_condition)
                     
-                    self._add_testing_entry(TestingEntryType.FRAME, delta, f"{event.frame.data!r} {sc_data}")
+                    self._add_testing_entry(TestingEntryType.FRAME, delta, f"{event.frame.data!r} ({sc_data})")
                 elif isinstance(event, AdapterFragmentEvent):
+TODO : No more fragments ?
                     self._add_testing_entry(
                         TestingEntryType.FIRST_FRAGMENT if event.first else TestingEntryType.FRAGMENT,
                         delta, str(event.fragment.data)

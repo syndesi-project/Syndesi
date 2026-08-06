@@ -2,24 +2,22 @@
 # Author : Sébastien Deriaz
 # License : GPL
 
+import ast
 from typing import Any, Generic, TypeVar
 
 from syndesi.adapters.adapter import Adapter
+from syndesi.component import ReadScope
 from syndesi.protocols.delimited import Delimited
-from .tools import ComponentBlock
+from .tools import StringTestingGroup, ComponentBlock
 from ..protocols.protocol import Protocol
 import dearpygui.dearpygui as dpg
-
-#AdapterT = TypeVar("AdapterT", bound=Adapter)
 
 ProtocolT = TypeVar("ProtocolT", bound=Protocol[Any, Any])
 
 N_WRITE_LINES = 5
 
 class ProtocolBlock(Generic[ProtocolT], ComponentBlock):
-    title : str = ""
     _protocol : ProtocolT
-
 
 class DelimitedBlock(ProtocolBlock[Delimited]):
     title : str = "Delimited"
@@ -29,81 +27,58 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
         self._protocol = protocol
 
     def build_configuration_tab(self, parent: int | str) -> None:
-        with dpg.group(parent=parent):
-            dpg.add_text("Write", color=(70, 142, 194))
-            # dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
+        with dpg.group(horizontal=False, parent=parent):
+            dpg.add_text("Termination", color=(70, 142, 194))
+            self._termination_input = dpg.add_input_text(width=150, callback=self.sync_block_to_component)
+            dpg.add_text("Receive termination", color=(70, 142, 194))
+            self._checkbox = dpg.add_checkbox(label="Different receive termination", default_value=False, callback=self._different_receive_termination_callback)
+            self._receive_termination_input = dpg.add_input_text(width=150, callback=self.sync_block_to_component)
 
-            # self._write_input = {}
-            # self._write_group = {}
+        self.sync_component_to_block()
 
-            # with dpg.group(horizontal=True):
-            #     with dpg.group(horizontal=False):
-            #         for i in range(self.N_WRITE_LINES):
-            #             with dpg.group(horizontal=True, show=i==0):
-            #                 self._write_group[i] = dpg.last_item()
-            #                 dpg.add_button(
-            #                     label="Write",
-            #                     callback=self._write_callback,
-            #                     user_data=i,
-            #                     width=100
-            #                 )
-            #                 self._write_input[i] = dpg.add_input_text()
-            #                 if i == 0:
-            #                     bytes_help()
-            # self._write_status = dpg.add_text("")
+    def _different_receive_termination_callback(self):
+        different = dpg.get_value(self._checkbox)
+        if different:
+            dpg.enable_item(self._receive_termination_input)
+        else:
+            dpg.disable_item(self._receive_termination_input)
+            dpg.set_value(self._receive_termination_input, dpg.get_value(self._termination_input))
 
-            # with dpg.group(horizontal=True):
-            #     with dpg.group(horizontal=False):
-            #         dpg.add_text("Read", color=(70, 142, 194))
-            #         dpg.add_combo(
-            #             label="Scope",
-            #             items=[x for x in ReadScope],
-            #             width=132,
-            #             default_value=ReadScope.BUFFERED.value
-            #         )
-            #         dpg.add_button(label="Read", callback=self._read_callback, width=60)
-            #         self._read_output = dpg.add_text("")
-            #     dpg.add_spacer(width=20)
-            #     with dpg.group(horizontal=False):
-            #         dpg.add_text("Buffer")
-            #         with dpg.child_window(height=200):
-            #             self._buffer_group = dpg.add_group(horizontal=False)
+        self.sync_block_to_component()
 
-            # dpg.add_text("Events", color=(70, 142, 194))
-            # with dpg.group(horizontal=True):
-            #     self._show_fragments_checkbox = dpg.add_checkbox(
-            #         label="Show fragments",
-            #         default_value=True
-            #     )
-            #     dpg.add_button(label="Clear events", callback=self._clear_events)
-            # with dpg.child_window(height=-1, width=-1) as self._event_window:
-            #     with dpg.theme() as tight:
-            #         with dpg.theme_component(dpg.mvAll):
-            #             dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 1)  # 1px vertical
+    def build_testing_group(self, testing_window : int | str) -> int | str:
+        return StringTestingGroup(self._write_callback, self._read_callback, 5).build(testing_window)
 
-            #     with dpg.group(width=-1) as self._event_group:
-            #         ...
+    def _write_callback(self, raw_data : str):
+        self._protocol.write(raw_data)
 
-            #     dpg.bind_item_theme(self._event_group, tight)
-
-            # with dpg.popup(self._header) as self._add_stop_condition_popup:
-            #     for stop_condition in self.STOP_CONDITIONS:
-            #         dpg.add_selectable(
-            #             label=stop_condition.value,
-            #             callback=self._add_default_stop_condition,
-            #             user_data=stop_condition
-            #         )
-
-            # with dpg.popup(self._header) as self._edit_stop_condition_popup:
-            #     dpg.add_selectable(
-            #         label="Delete",
-            #         callback=self._remove_stop_condition_callback
-            #     )
-
-            #     self._adapter_to_cache_stop_conditions()
-
-    def build_testing_group(self):
-        ...
+    def _read_callback(self, scope : ReadScope):
+        self._protocol.read(scope=scope)
 
     def reset(self):
-        ...
+        self.sync_component_to_block()
+
+    def sync_component_to_block(self):
+        termination = self._protocol.termination
+        receive_termination = self._protocol.receive_termination
+
+        if termination != receive_termination:
+            dpg.set_value(self._checkbox, False)
+
+        dpg.set_value(self._termination_input, repr(termination)[1:-1])
+        dpg.set_value(self._receive_termination_input, repr(receive_termination)[1:-1])
+
+    def sync_block_to_component(self):
+        termination_raw = dpg.get_value(self._termination_input)
+        print(f"b'{termination_raw}'")
+        termination = ast.literal_eval(f"b'{termination_raw}'")
+        receive_termination_raw = dpg.get_value(self._receive_termination_input)
+        receive_termination = ast.literal_eval(f"b'{receive_termination_raw}'")
+
+        self._protocol.set_termination(termination, receive_termination)
+
+    def close(self):
+        self._protocol.close()
+
+    def open(self):
+        self._protocol.open()

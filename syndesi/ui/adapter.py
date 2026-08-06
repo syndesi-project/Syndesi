@@ -42,15 +42,11 @@ from ..adapters.stop_conditions import (
     Total,
 )
 from ..component import ReadScope
-from .tools import Block, ComponentBlock, _help, _hsv_to_rgb
+from .tools import Block, StringTestingGroup, ComponentBlock, _help, _hsv_to_rgb, bytes_help
 
 StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
 
 loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
-
-
-def bytes_help() -> None:
-    _help("bytes formatting can be used such as \\n and \\r")
 
 class StopConditionBlock(Generic[StopConditionT], Block):
     """Single stop-condition block (tab)"""
@@ -93,7 +89,7 @@ class TerminationBlock(StopConditionBlock[Termination]):
 
     def _termination_callback(self, _ : int | str, app_data : str) -> None:
         try:
-            sequence_bytes = ast.literal_eval(f"b{app_data!r}")
+            sequence_bytes = ast.literal_eval(f"b'{app_data}'")
         except ValueError:
             dpg.set_value(self._error_text, "Could not parse sequence")
             dpg.show_item(self._error_text)
@@ -124,8 +120,6 @@ class LengthBlock(StopConditionBlock[Length]):
 
     def _length_callback(self, _ : int | str, app_data : int) -> None:
         self._stop_condition = Length(app_data)
-
-TODO : Link block stop-condition with adapter stop-condition
 
 class ContinuationBlock(StopConditionBlock[Continuation]):
     """Continuation stop-condition block"""
@@ -194,13 +188,12 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
     STOP_CONDITIONS = [x for x in StopConditionType if x != StopConditionType.TIMEOUT]
 
-    N_WRITE_LINES = 5
-
     def __init__(self, title : str, adapter : AdapterT, event_callback : Callable[[AdapterEvent], None]) -> None:
         self._adapter = adapter
         self._adapter.register_event_callback(self._event_callback)
         self._ui_event_callback = event_callback
 
+        self._testing_window : StringTestingGroup | None = None
 
         self._status_text : int | str = 0
         self._stop_conditions_cache : list[StopConditionBlock[Any]] = []
@@ -208,7 +201,6 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._combo : int | str = -1
         self._timeout_input : int | str = -1
         self._title = title
-        self._write_status : int | str = -1
         self._read_output : int | str = -1
         self._read_start : float = 0
         self._read_task_running = False
@@ -229,7 +221,8 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
     def reset(self):
         self._clear_events()
         self._adapter_to_cache_stop_conditions()
-        dpg.set_value(self._write_status, "")
+        if self._testing_window is not None:
+            self._testing_window.write_status("")
 
     def _event_callback(self, event : AdapterEvent):
         self._ui_event_callback(event)
@@ -259,13 +252,6 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             dpg.delete_item(tag)
         self._events.clear()
 
-    def _write_advanced_callback(self, sender : int | str, enabled : bool) -> None:
-        for i in range(1, self.N_WRITE_LINES):
-            if enabled:
-                dpg.show_item(self._write_group[i])
-            else:
-                dpg.hide_item(self._write_group[i])
-
     def build_configuration_tab(self, parent : int | str) -> None:
         with dpg.group(parent=parent, horizontal=False):
  
@@ -293,37 +279,9 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             with dpg.child_window() as self._buffer_window:
                 ...
                 
-
     def build_testing_group(self, testing_window : int | str) -> int | str:
-        with dpg.group(horizontal=False, parent=testing_window) as testing_group:
-            dpg.add_text("Write", color=(70, 142, 194))
-            dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
-            self._write_input = {}
-            self._write_group = {}
-            with dpg.group(horizontal=True):
-                with dpg.group(horizontal=False):
-                    for i in range(self.N_WRITE_LINES):
-                        with dpg.group(horizontal=True, show=i==0):
-                            self._write_group[i] = dpg.last_item()
-                            dpg.add_button(
-                                label="Write",
-                                callback=self._write_callback,
-                                user_data=i,
-                                width=100
-                            )
-                            self._write_input[i] = dpg.add_input_text()
-                            if i == 0:
-                                bytes_help()
-            self._write_status = dpg.add_text("")
-
-            dpg.add_spacer(height=5)
-            with dpg.group(horizontal=True):
-                dpg.add_button(label="Read", callback=self._read_callback)
-                dpg.add_combo(label="Scope", items=list(ReadScope), width=100)
-
-        return testing_group
-
-        
+        self._testing_window = StringTestingGroup(self._write_callback, self._read_callback, 5)
+        return self._testing_window.build(testing_window)                
 
     def _left_click(self) -> None:
         if self._add_tab != -1 and dpg.is_item_hovered(self._add_tab):
@@ -347,11 +305,11 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
         self._add_tab = dpg.add_tab(label="+", parent=self._tab_bar)
 
-    async def _read_callback(self) -> None:
+    def _read_callback(self, scope : ReadScope) -> None:
         self._read_start = time.time()
         asyncio.create_task(self._read_task())
         try:
-            data = await self._adapter.aread()
+            data = self._adapter.aread(scope=scope)
         except AdapterTimeoutError as e:
             self._read_task_running = False
             #dpg.set_value(self._read_output, f"Read timeout ({e.timeout})")
@@ -372,24 +330,15 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             await asyncio.sleep(1/60)
 
     def _update_write_status(self, text : str, status : str = "neutral") -> None:
-        if status == "ok":
-            dpg.configure_item(self._write_status, color=(30, 199, 38))
-        elif status == "error":
-            dpg.configure_item(self._write_status, color=(255,0,0))
-        else:
-            dpg.configure_item(self._write_status, color=(255,255,255))
-        dpg.set_value(self._write_status, text)
+        if self._testing_window is not None:
+            self._testing_window.write_status(text, status)
 
-    def _write_callback(self, _ : int | str, __ : Any, index : int) -> None:
+    def _write_callback(self, raw_data : str) -> None:
         try:
-            data : bytes = ast.literal_eval(f"b'{dpg.get_value(self._write_input[index])}'")
+            data : bytes = ast.literal_eval(f"b'{raw_data}'")
         except SyntaxError as e:
             self._update_write_status(str(e), "error")
             return
-        
-        print(f"Write {data}")
-
-        print(self._adapter)
 
         if self._adapter is None:
             self._update_write_status("Adapter has not been opened", "error")
@@ -506,6 +455,12 @@ class IPBlock(BytesAdapterBlock[IP]):
         )
 
     def open(self) -> None:
+        self._adapter.open()
+
+    def close(self) -> None:
+        self._adapter.close()
+
+    def sync_block_to_component(self):
         address = dpg.get_value(self._address_input)
         try:
             port = int(dpg.get_value(self._port_input))
@@ -520,8 +475,10 @@ class IPBlock(BytesAdapterBlock[IP]):
         self._adapter.descriptor.port = port
         self._adapter.descriptor.transport = transport
         self._adapter.set_timeout(timeout if timeout != self.DEFAULT_TIMEOUT else None)
-        self._adapter.open()
 
-    def close(self) -> None:
-        self._adapter.close()
+    def sync_component_to_block(self):
+        dpg.set_value(self._address_input, self._adapter.descriptor.address)
+        dpg.set_value(self._port_input, str(self._adapter.descriptor.port))
+        dpg.set_value(self._transport_input, self._adapter.descriptor.transport.value)
+        dpg.set_value(self._timeout_input, self._adapter.timeout)
 

@@ -5,14 +5,17 @@
 Syndesi UI tools
 """
 
+import ast
 from dataclasses import dataclass
 from enum import IntEnum
 import inspect
 import sys
 from abc import ABC, abstractmethod
-from typing import Any, List, Tuple, get_type_hints
+from typing import Any, Callable, List, Tuple, get_type_hints
 
-import dearpygui.dearpygui as dpg  # type: ignore
+import dearpygui.dearpygui as dpg
+
+from syndesi.component import ReadScope  # type: ignore
 
 
 # From dearpygui's demo.py
@@ -127,10 +130,12 @@ def get_method_arguments(
 class Block(ABC):
     """A collection of dearpygui items"""
     @abstractmethod
-    def build(self, parent : int | str) -> None:
+    def build(self, parent : int | str, block_update_callback : Callable[[], None]) -> None:
         """Construct the block in dearpygui"""
+        self._block_update_callback = block_update_callback
 
 class ComponentBlock(ABC):
+    title : str = ""
     @abstractmethod
     def reset(self): ...
 
@@ -147,3 +152,75 @@ class ComponentBlock(ABC):
     @abstractmethod
     def close(self):
         ...
+
+    @abstractmethod
+    def sync_component_to_block(self):
+        ...
+
+    @abstractmethod
+    def sync_block_to_component(self):
+        ...
+
+def bytes_help() -> None:
+    _help("bytes formatting can be used such as \\n and \\r")
+
+class StringTestingGroup:
+    def __init__(self, write_callback : Callable[[str], None], read_callback : Callable[[ReadScope], None], lines : int = 5) -> None:
+        self._lines = lines
+        self._write_callback = write_callback
+        self._read_callback = read_callback
+        self._write_status : int | str = -1
+        self._read_scope_combo: int | str = -1
+
+    def write_status(self, text : str, status : str = "neutral") -> None:
+        if self._write_status != -1:
+            if status == "ok":
+                dpg.configure_item(self._write_status, color=(30, 199, 38))
+            elif status == "error":
+                dpg.configure_item(self._write_status, color=(255,0,0))
+            else:
+                dpg.configure_item(self._write_status, color=(255,255,255))
+            dpg.set_value(self._write_status, text)
+
+    def _write_advanced_callback(self, sender : int | str, enabled : bool) -> None:
+        for i in range(1, self._lines):
+            if enabled:
+                dpg.show_item(self._write_group[i])
+            else:
+                dpg.hide_item(self._write_group[i])
+
+    def _write_input_callback(self, _ : int | str, __ : Any, index : int) -> None:
+        self._write_callback(dpg.get_value(self._write_input[index]))
+
+    def _read_button_callback(self):
+        scope = ReadScope(dpg.get_value(self._read_scope_combo))
+        self._read_callback(scope)
+
+    def build(self, parent : int | str) -> int | str:
+        with dpg.group(horizontal=False, parent=parent) as testing_group:
+            dpg.add_text("Write", color=(70, 142, 194))
+            dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)
+            self._write_input = {}
+            self._write_group = {}
+            with dpg.group(horizontal=True):
+                with dpg.group(horizontal=False):
+                    for i in range(self._lines):
+                        with dpg.group(horizontal=True, show=i==0):
+                            self._write_group[i] = dpg.last_item()
+                            dpg.add_button(
+                                label="Write",
+                                callback=self._write_input_callback,
+                                user_data=i,
+                                width=100
+                            )
+                            self._write_input[i] = dpg.add_input_text()
+                            if i == 0:
+                                bytes_help()
+            self._write_status = dpg.add_text("")
+
+            dpg.add_spacer(height=5)
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Read", callback=self._read_button_callback)
+                self._read_scope_combo = dpg.add_combo(label="Scope", items=list(ReadScope), width=100, default_value=ReadScope.BUFFERED)
+
+        return testing_group

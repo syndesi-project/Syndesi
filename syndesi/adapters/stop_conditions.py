@@ -129,6 +129,7 @@ class Termination(StopCondition):
 
         return stop, kept, deferred, None
 
+    @property
     def type(self) -> StopConditionType:
         return StopConditionType.TERMINATION
 
@@ -159,6 +160,7 @@ class Length(StopCondition):
         # Length
         self._counter = 0
 
+    @property
     def type(self) -> StopConditionType:
         return StopConditionType.LENGTH
 
@@ -300,6 +302,7 @@ class FragmentSC(StopCondition):
 
         return True, raw_fragment, BytesFragment(b"", raw_fragment.timestamp), None
 
+    @property
     def type(self) -> StopConditionType:
         return StopConditionType.FRAGMENT
 
