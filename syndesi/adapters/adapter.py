@@ -46,7 +46,7 @@ from .adapterworker import (
     ReadCommand,
     SetTimeoutCommand,
     StopThreadCommand,
-    WriteCommand,
+    WriteCommand
 )
 from .utils import TimeoutParameterType, TimeoutType
 

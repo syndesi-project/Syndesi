@@ -83,6 +83,14 @@ class AdapterBufferEvent(AdapterEvent):
     added_frame_ids : list[int]
     removed_frame_ids : list[int]
 
+@dataclass
+class AdapterTimeoutUpdatedEvent(AdapterEvent):
+    """Timeout of the adapter has been updated"""
+
+@dataclass
+class AdapterStopConditionsUpdatedEvent(AdapterEvent):
+    """Stop-conditions of the adapter have been updated"""
+
 # ┌───────────────────────────────┐
 # │ Worker commands (composition) │
 # └───────────────────────────────┘
@@ -467,6 +475,7 @@ class AdapterWorker(Generic[DataT]):
                     command.set_result(None)
                 case SetTimeoutCommand():
                     self._timeout = command.timeout
+                    self._interface._worker_emit_event(AdapterTimeoutUpdatedEvent())
                     command.set_result(None)
                 case IsOpenCommand():
                     command.set_result(self._opened)
@@ -480,6 +489,8 @@ class AdapterWorker(Generic[DataT]):
                     self._worker_begin_read(command)
                 case SetStopConditionsCommand():
                     self._stop_conditions = command.stop_conditions
+                    print('stop conditions event')
+                    self._interface._worker_emit_event(AdapterStopConditionsUpdatedEvent())
                     command.set_result(None)
                 case GetStopConditionsCommand():
                     command.set_result(self._stop_conditions)

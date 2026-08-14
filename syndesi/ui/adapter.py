@@ -24,6 +24,8 @@ from syndesi.tools.errors import (
 from ..adapters.adapterworker import (
     AdapterBufferEvent,
     AdapterClosedEvent,
+    AdapterStopConditionsUpdatedEvent,
+    AdapterTimeoutUpdatedEvent,
     AdapterEvent,
     AdapterFragmentEvent,
     AdapterOpenedEvent,
@@ -220,7 +222,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
     def reset(self):
         self._clear_events()
-        self._adapter_to_cache_stop_conditions()
+        self.sync_component_to_block()
         if self._testing_window is not None:
             self._testing_window.write_status("")
 
@@ -228,6 +230,9 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._ui_event_callback(event)
         if isinstance(event, AdapterBufferEvent):
             loop.call_soon_threadsafe(self._buffer_event, event)
+        elif isinstance(event, (AdapterStopConditionsUpdatedEvent, AdapterTimeoutUpdatedEvent)):
+            print('received adapter changed event')
+            self.sync_component_to_block()
 
     def _buffer_event(self, event : AdapterBufferEvent):
         if len(event.added_frame_ids) > 0:
@@ -272,7 +277,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
                 dpg.add_mouse_click_handler(dpg.mvMouseButton_Right, callback=self._right_click)
                 dpg.add_mouse_click_handler(dpg.mvMouseButton_Left, callback=self._left_click)
 
-            self._adapter_to_cache_stop_conditions()
+            self.sync_component_to_block()
 
             dpg.add_spacer(height=10)
             dpg.add_text("Buffer")
@@ -357,7 +362,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._build_tabs()
 
     def _remove_callback(self) -> None:
-        self._cache_stop_conditions_to_adapter()
+        self.sync_block_to_component()
 
     def _add_default_stop_condition(
             self,
@@ -403,11 +408,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
         return block
 
-    def _cache_stop_conditions_to_adapter(self) -> None:
-        ...
-
-    def _adapter_to_cache_stop_conditions(self) -> None:
-        #self._clear_stop_conditions()
+    def sync_component_to_block(self):
         self._stop_conditions_cache.clear()
 
         if self._adapter is not None:
@@ -477,8 +478,11 @@ class IPBlock(BytesAdapterBlock[IP]):
         self._adapter.set_timeout(timeout if timeout != self.DEFAULT_TIMEOUT else None)
 
     def sync_component_to_block(self):
+        super().sync_component_to_block()
         dpg.set_value(self._address_input, self._adapter.descriptor.address)
         dpg.set_value(self._port_input, str(self._adapter.descriptor.port))
         dpg.set_value(self._transport_input, self._adapter.descriptor.transport.value)
         dpg.set_value(self._timeout_input, self._adapter.timeout)
+
+        
 

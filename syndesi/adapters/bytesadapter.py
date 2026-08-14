@@ -117,27 +117,27 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                     break
 
             self._fragments.append(kept)
+            # Emit a fragment, if there's a stop or not
+            tracehub.emit_fragment(
+                descriptor=str(self._interface.descriptor),
+                fragment=kept,
+                write_delta=write_delta,
+            )
+            self._interface._worker_emit_event(AdapterFragmentEvent(
+                next_timeout_timestamp=self._next_stop_condition_timeout_timestamp,
+                fragment=kept,
+                first=first_flag,
+                timestamp=kept.timestamp
+            ))
 
             # If there's no stop, break here
             if frame_stop_condition is None:
-                # Only emit a fragment event if there's no frame
                 if self._interface.descriptor is not None:
                     if self._last_write_timestamp is None:
                         write_delta = float("nan")
                     else:
                         write_delta = kept.timestamp - self._last_write_timestamp
 
-                    tracehub.emit_fragment(
-                        descriptor=str(self._interface.descriptor),
-                        fragment=kept,
-                        write_delta=write_delta,
-                    )
-                    self._interface._worker_emit_event(AdapterFragmentEvent(
-                        next_timeout_timestamp=self._next_stop_condition_timeout_timestamp,
-                        fragment=kept,
-                        first=first_flag,
-                        timestamp=kept.timestamp
-                    ))
                 break
 
             # frame complete

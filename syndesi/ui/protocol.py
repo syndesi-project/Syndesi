@@ -25,23 +25,24 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
     def __init__(self, protocol : Delimited) -> None:
         super().__init__()
         self._protocol = protocol
+        self._different_receive_termination = False
 
     def build_configuration_tab(self, parent: int | str) -> None:
         with dpg.group(horizontal=False, parent=parent):
             dpg.add_text("Termination", color=(70, 142, 194))
             self._termination_input = dpg.add_input_text(width=150, callback=self.sync_block_to_component)
             dpg.add_text("Receive termination", color=(70, 142, 194))
-            self._checkbox = dpg.add_checkbox(label="Different receive termination", default_value=False, callback=self._different_receive_termination_callback)
-            self._receive_termination_input = dpg.add_input_text(width=150, callback=self.sync_block_to_component)
+            self._checkbox = dpg.add_checkbox(label="Different receive termination", default_value=self._different_receive_termination, callback=self._different_receive_termination_callback)
+            self._receive_termination_input = dpg.add_input_text(width=150, callback=self.sync_block_to_component, show=self._different_receive_termination)
 
         self.sync_component_to_block()
 
     def _different_receive_termination_callback(self):
-        different = dpg.get_value(self._checkbox)
-        if different:
-            dpg.enable_item(self._receive_termination_input)
+        self._different_receive_termination = dpg.get_value(self._checkbox)
+        if self._different_receive_termination:
+            dpg.show_item(self._receive_termination_input)
         else:
-            dpg.disable_item(self._receive_termination_input)
+            dpg.hide_item(self._receive_termination_input)
             dpg.set_value(self._receive_termination_input, dpg.get_value(self._termination_input))
 
         self.sync_block_to_component()
@@ -70,7 +71,6 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
 
     def sync_block_to_component(self):
         termination_raw = dpg.get_value(self._termination_input)
-        print(f"b'{termination_raw}'")
         termination = ast.literal_eval(f"b'{termination_raw}'")
         receive_termination_raw = dpg.get_value(self._receive_termination_input)
         receive_termination = ast.literal_eval(f"b'{receive_termination_raw}'")

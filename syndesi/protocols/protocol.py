@@ -67,6 +67,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     ) -> None:
         super().__init__(LoggerAlias.PROTOCOL)
         self.adapter = adapter # adapter is public as it is used in ui
+        self._event_callbacks : list[Callable[[ProtocolEvent], None]] = []
 
         self._frame_id = 0
 
@@ -80,7 +81,6 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         else:
             self.adapter.set_timeout(timeout)
 
-        self._event_callbacks : list[Callable[[ProtocolEvent], None]] = []
 
     def _next_frame_id(self) -> int:
         output = self._frame_id

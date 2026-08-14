@@ -59,38 +59,42 @@ def default_delimited(adapter : BytesAdapter) -> Delimited:
     return Delimited(adapter, termination='\n')
 
 class TestingEntryType(IntEnum):
-    UNKNOWN = 0
-    WRITE = 1
-    FRAME = 2
-    READ = 3
-    EVENT = 4
-    OPEN = 5
-    CLOSE = 6
-    FRAGMENT = 7
-    FIRST_FRAGMENT = 8
+    UNKNOWN_EVENT = 0
+    WRITE_EVENT = 1
+    FRAME_EVENT = 2
+    READ_EVENT = 3
+    OPEN_EVENT = 4
+    CLOSE_EVENT = 5
+    FRAGMENT_EVENT = 6
+    FIRST_FRAGMENT_EVENT = 7
+
+    def is_adapter_event(self):
+        return self in [
+            TestingEntryType.FRAME_EVENT,
+            TestingEntryType.FRAGMENT_EVENT,
+            TestingEntryType.FIRST_FRAGMENT_EVENT,
+            ]
 
 ENTRY_PREFIX = {
-    TestingEntryType.WRITE : "→ write",
-    TestingEntryType.FRAME : "↓ frame",
-    TestingEntryType.READ : "←  read",
-    TestingEntryType.EVENT : "◆ event",
-    TestingEntryType.OPEN : "● opened",
-    TestingEntryType.CLOSE : "● closed",
-    TestingEntryType.FRAGMENT : "↓ frag", 
-    TestingEntryType.FIRST_FRAGMENT : "↓ frag*", 
-    TestingEntryType.UNKNOWN : "Unknown",
+    TestingEntryType.WRITE_EVENT : "→ write",
+    TestingEntryType.FRAME_EVENT : "↓ frame",
+    TestingEntryType.READ_EVENT : "←  read",
+    TestingEntryType.OPEN_EVENT : "● opened",
+    TestingEntryType.CLOSE_EVENT : "● closed",
+    TestingEntryType.FRAGMENT_EVENT : "↓ frag", 
+    TestingEntryType.FIRST_FRAGMENT_EVENT : "↓ frag*", 
+    TestingEntryType.UNKNOWN_EVENT : "Unknown",
 }
 
 ENTRY_COLOR = {
-    TestingEntryType.WRITE : (212, 235, 197),
-    TestingEntryType.FRAME : (127, 127, 127),
-    TestingEntryType.READ : (197, 213, 235),
-    TestingEntryType.EVENT : (127, 127, 127),
-    TestingEntryType.OPEN : (30, 199, 38),
-    TestingEntryType.CLOSE : (207, 19, 19),
-    TestingEntryType.FRAGMENT : (127, 127, 127),
-    TestingEntryType.FIRST_FRAGMENT : (127, 127, 127),
-    TestingEntryType.UNKNOWN : (255, 0, 0)
+    TestingEntryType.WRITE_EVENT : (212, 235, 197),
+    TestingEntryType.FRAME_EVENT : (127, 127, 127),
+    TestingEntryType.READ_EVENT : (197, 213, 235),
+    TestingEntryType.OPEN_EVENT : (30, 199, 38),
+    TestingEntryType.CLOSE_EVENT : (207, 19, 19),
+    TestingEntryType.FRAGMENT_EVENT : (127, 127, 127),
+    TestingEntryType.FIRST_FRAGMENT_EVENT : (127, 127, 127),
+    TestingEntryType.UNKNOWN_EVENT : (255, 0, 0)
 }
 
 @dataclass
@@ -102,6 +106,8 @@ class UIBase:
     """Main UI window"""
     def __init__(
             self,
+            #show_protocol_events_button : bool,
+            #show_driver_events_button : bool,
             width : int = 1000,
             height : int = 600
         ) -> None:
@@ -115,7 +121,12 @@ class UIBase:
         self._testing_bottom_group : int | str = -1
         self._entries : List[TestingEntry] = []
         self._testing_subwindow : int | str = -1
-
+        self._show_adapter_events = False
+        # self._show_protocol_events = False
+        # self._show_driver_events = False
+        # self._show_protocol_events_button = show_protocol_events_button
+        # self._show_driver_events_button = show_driver_events_button
+    
         
         self._build()
         asyncio.ensure_future(self.loop())
@@ -209,7 +220,12 @@ class UIBase:
 
                     with dpg.group(horizontal=False, parent=self._testing_window) as self._testing_top_group:
                         dpg.add_text("Testing")
-                        dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default_value=False)
+
+                        dpg.add_checkbox(label="Show adapter events", callback=self._show_adapter_events_callback, default_value=self._show_adapter_events)
+                        # if self._show_protocol_events_button:
+                        #     dpg.add_checkbox(label="Show protocol events", callback=self._show_protocol_events_callback, default_value=self._show_protocol_events)
+                        # if self._show_driver_events_button:
+                        #     dpg.add_checkbox(label="Show driver events", callback=self._show_driver_events_callback, default_value=self._show_adapter_events)
                 
                     with dpg.child_window(parent=self._testing_window) as self._testing_subwindow:
                         with dpg.theme() as compact_theme:
@@ -247,6 +263,8 @@ class UIBase:
             entry_type=entry_type,
             group_tag=row_tag
         ))
+        if not self._show_adapter_events and entry_type.is_adapter_event():
+            dpg.hide_item(row_tag)
 
     def _testing_window_resize(self):
         if dpg.is_viewport_ok():
@@ -263,8 +281,15 @@ class UIBase:
         b_h = max(total_h - a_h - c_h - 2*padding - 10, 50)
         dpg.configure_item(self._testing_subwindow, height=b_h)
 
-    def _show_events_callback(self):
-        ...
+    def _show_adapter_events_callback(self, sender : int | str, value : bool):
+        self._show_adapter_events = value
+        for entry in self._entries:
+            if entry.entry_type.is_adapter_event():
+                if self._show_adapter_events:
+                    dpg.show_item(entry.group_tag)
+                else:
+                    dpg.hide_item(entry.group_tag)
+
 
     def _add_adapter(self, block : BytesAdapterBlock) -> None:
         adapter_tab = dpg.add_tab(label=block.title, parent=self._tab_bar)
@@ -302,9 +327,6 @@ class UIBase:
         """Open the top-level component (driver, protocol or adapter)"""
         if self.toplevel_component is None:
             raise RuntimeError("Top-level component hasn't been set")
-
-        # for block, _ in self._tabs:
-        #     block.reset()
 
         for block, _ in self._tabs:
             block.sync_block_to_component()
@@ -349,37 +371,38 @@ class UIBase:
             while True:
                 event = await self._event_queue.get()
                 delta = event.timestamp - self._start_timestamp
-
+                # Only adapter events are received and displayed
+                # Use adapter close and open events to show open and close
                 if isinstance(event, AdapterClosedEvent):
-                    self._add_testing_entry(TestingEntryType.CLOSE, delta)
+                    self._add_testing_entry(TestingEntryType.CLOSE_EVENT, delta)
                     self._status(False)
                 elif isinstance(event, AdapterOpenedEvent):
-                    self._add_testing_entry(TestingEntryType.OPEN, delta)
+                    self._add_testing_entry(TestingEntryType.OPEN_EVENT, delta)
                     self._status(True)
                 elif isinstance(event, AdapterFrameEvent):
                     if event.frame.stop_condition is None:
                         sc_data = "(error)"
                     else:
                         sc_data = str(event.frame.stop_condition)
-                    
-                    self._add_testing_entry(TestingEntryType.FRAME, delta, f"{event.frame.data!r} ({sc_data})")
+                    self._add_testing_entry(TestingEntryType.FRAME_EVENT, delta, f"{event.frame.data!r} ({sc_data})")
                 elif isinstance(event, AdapterFragmentEvent):
-TODO : No more fragments ?
                     self._add_testing_entry(
-                        TestingEntryType.FIRST_FRAGMENT if event.first else TestingEntryType.FRAGMENT,
+                        TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
                         delta, str(event.fragment.data)
                     )
                 elif isinstance(event, AdapterReadEvent):
-                    self._add_testing_entry(TestingEntryType.READ, delta, f"{event.frame.data}" + " (buffer)" if event.from_buffer else "")
+                    self._add_testing_entry(TestingEntryType.READ_EVENT, delta, f"{event.frame.data}" + " (buffer)" if event.from_buffer else "")
                 elif isinstance(event, AdapterWriteEvent):
-                    self._add_testing_entry(TestingEntryType.WRITE, delta, f"{event.frame.data!r}")
+                    self._add_testing_entry(TestingEntryType.WRITE_EVENT, delta, f"{event.frame.data!r}")
                 elif isinstance(event, AdapterBufferEvent):
                     ...
                 else:
-                    self._add_testing_entry(TestingEntryType.UNKNOWN, delta)
+                    self._add_testing_entry(TestingEntryType.UNKNOWN_EVENT, delta)
 
         except Exception:
             print(f'Exception in loop : {traceback.format_exc()}')
+
+
 
 class Command(StrEnum):
     """Syndesi ui CLI mode"""
@@ -439,6 +462,13 @@ def main(args : list[str] | None = None) -> None:
 
     command = Command(arguments.command)
 
+    # is_adapter = command in [Command.IP, Command.SERIAL, Command.VISA]
+    # is_protocol = command in [Command.DELIMITED, Command.MODBUS]
+    # is_driver = command in [Command.DRIVER_MODULE, Command.DRIVER_PATH]
+    # if not is_adapter and not is_protocol and not is_driver:
+    #     raise RuntimeError(f"Unclassified command : {command}")
+
+
     ui = UIBase()
     # if command == Command.DRIVER_MODULE:
     #     module, class_name = argument.split(CLASS_NAME_SEPARATOR)
@@ -450,6 +480,7 @@ def main(args : list[str] | None = None) -> None:
     #     m = importlib.util.spec_from_file_location(path)
     #     c = getattr(m, class_name)
     #     ui = UIDriver(c)
+
     if command == Command.IP:
         ui.load_adapter(default_ip())
     if command == Command.DELIMITED:

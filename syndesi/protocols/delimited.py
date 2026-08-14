@@ -120,6 +120,7 @@ class Delimited(BytesProtocol[str]):
             Optional, specific termination for receive only
         """
 
+        print(f'Delimited set termination {termination} {receive_termination}')
         if isinstance(termination, bytes):
             termination = termination.decode(self._encoding)
         elif not isinstance(termination, str):
