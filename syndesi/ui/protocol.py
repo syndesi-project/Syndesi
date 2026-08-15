@@ -72,8 +72,11 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
     def sync_block_to_component(self):
         termination_raw = dpg.get_value(self._termination_input)
         termination = ast.literal_eval(f"b'{termination_raw}'")
-        receive_termination_raw = dpg.get_value(self._receive_termination_input)
-        receive_termination = ast.literal_eval(f"b'{receive_termination_raw}'")
+        if self._different_receive_termination:
+            receive_termination_raw = dpg.get_value(self._receive_termination_input)
+            receive_termination = ast.literal_eval(f"b'{receive_termination_raw}'")
+        else:
+            receive_termination = termination
 
         self._protocol.set_termination(termination, receive_termination)
 

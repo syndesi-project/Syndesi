@@ -226,27 +226,28 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         if self._testing_window is not None:
             self._testing_window.write_status("")
 
-    def _event_callback(self, event : AdapterEvent):
+    def _event_callback_safe(self, event : AdapterEvent):
         self._ui_event_callback(event)
         if isinstance(event, AdapterBufferEvent):
-            loop.call_soon_threadsafe(self._buffer_event, event)
+            if len(event.added_frame_ids) > 0:
+                for frame in self._adapter.frame_buffer:
+                    if frame.id in event.added_frame_ids:
+                        self._buffer_items[frame.id] = dpg.add_text(
+                            str(frame.data),
+                            parent=self._buffer_window
+                        )
+
+            for removed_frame_id in event.removed_frame_ids:
+                tag = self._buffer_items.pop(removed_frame_id, None)
+                if tag is not None:
+                    dpg.delete_item(tag)
+
         elif isinstance(event, (AdapterStopConditionsUpdatedEvent, AdapterTimeoutUpdatedEvent)):
-            print('received adapter changed event')
             self.sync_component_to_block()
 
-    def _buffer_event(self, event : AdapterBufferEvent):
-        if len(event.added_frame_ids) > 0:
-            for frame in self._adapter.frame_buffer:
-                if frame.id in event.added_frame_ids:
-                    self._buffer_items[frame.id] = dpg.add_text(
-                        str(frame.data),
-                        parent=self._buffer_window
-                    )
 
-        for removed_frame_id in event.removed_frame_ids:
-            tag = self._buffer_items.pop(removed_frame_id, None)
-            if tag is not None:
-                dpg.delete_item(tag)
+    def _event_callback(self, event : AdapterEvent):
+        loop.call_soon_threadsafe(self._event_callback_safe, event)
 
     @abstractmethod
     def _build_descriptor(self, parent : int | str) -> None:
@@ -411,8 +412,10 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
     def sync_component_to_block(self):
         self._stop_conditions_cache.clear()
 
+        print('Reset stop-conditions')
         if self._adapter is not None:
             for stop_condition in self._adapter.stop_conditions:
+                print(f'Add {stop_condition}')
                 self._add_stop_condition(stop_condition)
 
         self._build_tabs()
@@ -443,8 +446,6 @@ class IPBlock(BytesAdapterBlock[IP]):
             default_value="",
         )
         with dpg.group(horizontal=True, parent=parent):
-        #with dpg.group(horizontal=True):
-            #with dpg.group(horizontal=True, parent=parent):
             self._port_input = dpg.add_input_text(width=100, label="Port", default_value="0")
             self._port_details = dpg.add_text("")
         self._transport_input = dpg.add_combo(

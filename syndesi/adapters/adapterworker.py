@@ -475,8 +475,8 @@ class AdapterWorker(Generic[DataT]):
                     command.set_result(None)
                 case SetTimeoutCommand():
                     self._timeout = command.timeout
-                    self._interface._worker_emit_event(AdapterTimeoutUpdatedEvent())
                     command.set_result(None)
+                    self._interface._worker_emit_event(AdapterTimeoutUpdatedEvent())
                 case IsOpenCommand():
                     command.set_result(self._opened)
                 case AddEventCallbackCommand():
@@ -489,9 +489,8 @@ class AdapterWorker(Generic[DataT]):
                     self._worker_begin_read(command)
                 case SetStopConditionsCommand():
                     self._stop_conditions = command.stop_conditions
-                    print('stop conditions event')
-                    self._interface._worker_emit_event(AdapterStopConditionsUpdatedEvent())
                     command.set_result(None)
+                    self._interface._worker_emit_event(AdapterStopConditionsUpdatedEvent())
                 case GetStopConditionsCommand():
                     command.set_result(self._stop_conditions)
                 case _:

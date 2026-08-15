@@ -18,7 +18,18 @@ from typing import Any, List, Tuple, Type, TypeVar, overload
 import dearpygui.dearpygui as dpg #type: ignore
 
 from syndesi.adapters.adapter import Adapter
-from syndesi.adapters.adapterworker import AdapterBufferEvent, AdapterClosedEvent, AdapterEvent, AdapterFragmentEvent, AdapterOpenedEvent, AdapterFrameEvent, AdapterReadEvent, AdapterWriteEvent
+from syndesi.adapters.adapterworker import (
+    AdapterBufferEvent,
+    AdapterClosedEvent,
+    AdapterEvent,
+    AdapterFragmentEvent,
+    AdapterOpenedEvent,
+    AdapterFrameEvent,
+    AdapterReadEvent,
+    AdapterWriteEvent,
+    AdapterTimeoutUpdatedEvent,
+    AdapterStopConditionsUpdatedEvent
+)
 from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.ip import IP
 from syndesi.adapters.serialport import SerialPort
@@ -67,6 +78,8 @@ class TestingEntryType(IntEnum):
     CLOSE_EVENT = 5
     FRAGMENT_EVENT = 6
     FIRST_FRAGMENT_EVENT = 7
+    TOPLEVEL_READ = 8
+    TOPLEVEL_WRITE = 9
 
     def is_adapter_event(self):
         return self in [
@@ -79,6 +92,8 @@ ENTRY_PREFIX = {
     TestingEntryType.WRITE_EVENT : "→ write",
     TestingEntryType.FRAME_EVENT : "↓ frame",
     TestingEntryType.READ_EVENT : "←  read",
+    TestingEntryType.TOPLEVEL_READ : "←  read",
+    TestingEntryType.TOPLEVEL_WRITE : "→ write",
     TestingEntryType.OPEN_EVENT : "● opened",
     TestingEntryType.CLOSE_EVENT : "● closed",
     TestingEntryType.FRAGMENT_EVENT : "↓ frag", 
@@ -87,14 +102,17 @@ ENTRY_PREFIX = {
 }
 
 ENTRY_COLOR = {
-    TestingEntryType.WRITE_EVENT : (212, 235, 197),
+    TestingEntryType.WRITE_EVENT : (127, 127, 127),
+    TestingEntryType.TOPLEVEL_WRITE : (212, 235, 197),
     TestingEntryType.FRAME_EVENT : (127, 127, 127),
-    TestingEntryType.READ_EVENT : (197, 213, 235),
+    TestingEntryType.READ_EVENT : (127, 127, 127),
+    TestingEntryType.TOPLEVEL_READ : (197, 213, 235),
     TestingEntryType.OPEN_EVENT : (30, 199, 38),
     TestingEntryType.CLOSE_EVENT : (207, 19, 19),
     TestingEntryType.FRAGMENT_EVENT : (127, 127, 127),
     TestingEntryType.FIRST_FRAGMENT_EVENT : (127, 127, 127),
-    TestingEntryType.UNKNOWN_EVENT : (255, 0, 0)
+    TestingEntryType.UNKNOWN_EVENT : (255, 0, 0),
+
 }
 
 @dataclass
@@ -164,6 +182,9 @@ class UIBase:
         if isinstance(protocol, Delimited):
             return DelimitedBlock(protocol)
         raise RuntimeError(f"Invalid protocol : {protocol}")
+TODO : Make the top-level component show the toplevel read/write and standard read otherwise.
+Also show which generated the event (adapter, driver).
+The toplevel block has to be aware that it is the toplevel block
 
     def _build(self) -> None:
         dpg.create_context()
@@ -394,15 +415,17 @@ class UIBase:
                     self._add_testing_entry(TestingEntryType.READ_EVENT, delta, f"{event.frame.data}" + " (buffer)" if event.from_buffer else "")
                 elif isinstance(event, AdapterWriteEvent):
                     self._add_testing_entry(TestingEntryType.WRITE_EVENT, delta, f"{event.frame.data!r}")
-                elif isinstance(event, AdapterBufferEvent):
+                elif isinstance(event, 
+                                (AdapterBufferEvent,
+                                 AdapterTimeoutUpdatedEvent,
+                                 AdapterStopConditionsUpdatedEvent)
+                                ):
                     ...
                 else:
                     self._add_testing_entry(TestingEntryType.UNKNOWN_EVENT, delta)
 
         except Exception:
             print(f'Exception in loop : {traceback.format_exc()}')
-
-
 
 class Command(StrEnum):
     """Syndesi ui CLI mode"""
