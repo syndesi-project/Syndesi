@@ -34,10 +34,10 @@ from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.ip import IP
 from syndesi.adapters.serialport import SerialPort
 from syndesi.adapters.stop_conditions import StopConditionType
-from syndesi.component import Component, Event
+from syndesi.component import Component, SyndesiEvent
 from syndesi.drivers.driver import Driver
 from syndesi.protocols.delimited import Delimited
-from syndesi.protocols.protocol import Protocol, ProtocolEvent
+from syndesi.protocols.protocol import Protocol, ProtocolEvent, ProtocolReadEvent, ProtocolWriteEvent
 from syndesi.tools.errors import AdapterOpenError
 from syndesi.ui.protocol import DelimitedBlock, ProtocolBlock
 
@@ -162,29 +162,27 @@ class UIBase:
         dpg.destroy_context()
 
     @overload
-    def adapter_block(self, adapter: IP) -> IPBlock: ...
+    def adapter_block(self, adapter: IP, is_top_level : bool) -> IPBlock: ...
 
     @overload
-    def adapter_block(self, adapter: BytesAdapter) -> BytesAdapterBlock[Any]: ...
+    def adapter_block(self, adapter: BytesAdapter, is_top_level : bool) -> BytesAdapterBlock[Any]: ...
 
-    def adapter_block(self, adapter : BytesAdapter) -> BytesAdapterBlock[Any]:
+#    @overload
+    def adapter_block(self, adapter : BytesAdapter, is_top_level : bool) -> BytesAdapterBlock[Any]:
         if isinstance(adapter, IP):
-            return IPBlock(adapter, self._event_callback)
+            return IPBlock(adapter, self._event_callback, is_top_level)
         
         raise RuntimeError(f"Invalid adapter : {adapter}")
 
     @overload
-    def protocol_block(self, protocol : Delimited) -> DelimitedBlock: ...
+    def protocol_block(self, protocol : Delimited, is_top_level : bool) -> DelimitedBlock: ...
     @overload
-    def protocol_block(self, protocol : Protocol[Any, Any]) -> ProtocolBlock[Any]: ...
+    def protocol_block(self, protocol : Protocol[Any, Any], is_top_level : bool) -> ProtocolBlock[Any]: ...
 
-    def protocol_block(self, protocol : Protocol[Any, Any]) -> ProtocolBlock[Any]:
+    def protocol_block(self, protocol : Protocol[Any, Any], is_top_level : bool) -> ProtocolBlock[Any]:
         if isinstance(protocol, Delimited):
-            return DelimitedBlock(protocol)
+            return DelimitedBlock(protocol, self._event_callback, is_top_level)
         raise RuntimeError(f"Invalid protocol : {protocol}")
-TODO : Make the top-level component show the toplevel read/write and standard read otherwise.
-Also show which generated the event (adapter, driver).
-The toplevel block has to be aware that it is the toplevel block
 
     def _build(self) -> None:
         dpg.create_context()
@@ -318,7 +316,7 @@ The toplevel block has to be aware that it is the toplevel block
         block.build_configuration_tab(adapter_tab)
 
     def load_adapter(self, adapter : BytesAdapter) -> None:
-        block = self.adapter_block(adapter)
+        block = self.adapter_block(adapter, True)
         self._add_adapter(block)
         self._testing_bottom_group = block.build_testing_group(self._testing_window)
         self.toplevel_component = block
@@ -332,8 +330,8 @@ The toplevel block has to be aware that it is the toplevel block
     def load_protocol(self, protocol : Protocol[Any, Any]) -> None:
         if not isinstance(protocol.adapter, BytesAdapter):
             raise RuntimeError("Non-bytes adapter are not yet supported")
-        block = self.protocol_block(protocol)
-        self._add_adapter(self.adapter_block(protocol.adapter))
+        block = self.protocol_block(protocol, True)
+        self._add_adapter(self.adapter_block(protocol.adapter, False))
         self._add_protocol(block)
         self.toplevel_component = block
         self._testing_bottom_group = block.build_testing_group(self._testing_window)
@@ -381,8 +379,8 @@ The toplevel block has to be aware that it is the toplevel block
 
             dpg.configure_item(self._status_text, color=(255,0,0))
     
-    def _event_callback(self, event : AdapterEvent | ProtocolEvent) -> None:
-        loop.call_soon_threadsafe(self._event_queue.put_nowait, event)
+    def _event_callback(self, event : AdapterEvent | ProtocolEvent, is_top_level : bool) -> None:
+        loop.call_soon_threadsafe(self._event_queue.put_nowait, (event, is_top_level))
 
     async def loop(self) -> None:
         """
@@ -390,7 +388,7 @@ The toplevel block has to be aware that it is the toplevel block
         """
         try:
             while True:
-                event = await self._event_queue.get()
+                event, is_top_level = await self._event_queue.get()
                 delta = event.timestamp - self._start_timestamp
                 # Only adapter events are received and displayed
                 # Use adapter close and open events to show open and close
@@ -411,10 +409,19 @@ The toplevel block has to be aware that it is the toplevel block
                         TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
                         delta, str(event.fragment.data)
                     )
-                elif isinstance(event, AdapterReadEvent):
-                    self._add_testing_entry(TestingEntryType.READ_EVENT, delta, f"{event.frame.data}" + " (buffer)" if event.from_buffer else "")
-                elif isinstance(event, AdapterWriteEvent):
-                    self._add_testing_entry(TestingEntryType.WRITE_EVENT, delta, f"{event.frame.data!r}")
+                elif isinstance(event, (AdapterReadEvent, ProtocolReadEvent)):
+                    message = f"{event.frame.data}" + " (buffer)" if event.from_buffer else ""
+                    if is_top_level:
+                        self._add_testing_entry(TestingEntryType.TOPLEVEL_READ, delta, message)
+                    else:
+                        self._add_testing_entry(TestingEntryType.READ_EVENT, delta, message)
+
+                elif isinstance(event, (AdapterWriteEvent, ProtocolWriteEvent)):
+                    message = f"{event.frame.data!r}"
+                    if is_top_level:
+                        self._add_testing_entry(TestingEntryType.TOPLEVEL_WRITE, delta, message)
+                    else:
+                        self._add_testing_entry(TestingEntryType.WRITE_EVENT, delta, message)
                 elif isinstance(event, 
                                 (AdapterBufferEvent,
                                  AdapterTimeoutUpdatedEvent,
@@ -501,7 +508,7 @@ def main(args : list[str] | None = None) -> None:
     # elif command == Command.DRIVER_PATH:
     #     path, class_name = argument.split(CLASS_NAME_SEPARATOR)
     #     m = importlib.util.spec_from_file_location(path)
-    #     c = getattr(m, class_name)
+    #     c = getattr(m, class_name)    
     #     ui = UIDriver(c)
 
     if command == Command.IP:

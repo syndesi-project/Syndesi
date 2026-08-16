@@ -22,7 +22,7 @@ from typing import Any, Generic, TypeVar
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.tools.log_settings import LoggerAlias
 
-from ..component import Descriptor, Event, ReadFrame, ReadScope, ThreadCommand, WriteFrame
+from ..component import Descriptor, SyndesiEvent, ReadFrame, ReadScope, ThreadCommand, WriteFrame
 from ..tools.errors import (
     AdapterDisconnected,
     AdapterOpenError,
@@ -40,7 +40,7 @@ DataT = TypeVar("DataT")
 # │ Adapter events │
 # └────────────────┘
 
-class AdapterEvent(Event):
+class AdapterEvent(SyndesiEvent):
     """Adapter event"""
 
 class AdapterClosedEvent(AdapterEvent):

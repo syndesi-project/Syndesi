@@ -22,7 +22,7 @@ from .tools.log_settings import LoggerAlias
 
 
 @dataclass(kw_only=True)
-class Event:
+class SyndesiEvent:
     """Generic event, used to move information asynchronously from the adapter worker thread"""
     timestamp : float = float("nan")
 

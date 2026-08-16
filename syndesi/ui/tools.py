@@ -6,6 +6,7 @@ Syndesi UI tools
 """
 
 import ast
+import asyncio
 from dataclasses import dataclass
 from enum import IntEnum
 import inspect
@@ -15,8 +16,10 @@ from typing import Any, Callable, List, Tuple, get_type_hints
 
 import dearpygui.dearpygui as dpg
 
-from syndesi.component import ReadScope  # type: ignore
+from syndesi.adapters.adapterworker import AdapterEvent
+from syndesi.component import ReadScope, SyndesiEvent  # type: ignore
 
+loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
 # From dearpygui's demo.py
 def _hsv_to_rgb(h : float, s : float, v : float) -> tuple[int, int, int]:
@@ -135,6 +138,16 @@ class Block(ABC):
         self._block_update_callback = block_update_callback
 
 class ComponentBlock(ABC):
+    _is_top_level : bool
+    _ui_event_callback : Callable[[SyndesiEvent, bool], None]
+    def __init__(self,
+                 is_top_level : bool,
+                 ui_event_callback : Callable[[SyndesiEvent, bool], None]
+                ) -> None:
+        self._is_top_level = is_top_level
+        self._ui_event_callback = ui_event_callback
+        super().__init__()
+
     title : str = ""
     @abstractmethod
     def reset(self): ...
@@ -160,6 +173,13 @@ class ComponentBlock(ABC):
     @abstractmethod
     def sync_block_to_component(self):
         ...
+
+    def _event_callback(self, event : AdapterEvent):
+        loop.call_soon_threadsafe(self._event_callback_safe, event)
+
+    @abstractmethod
+    def _event_callback_safe(self, event : AdapterEvent):
+        self._ui_event_callback(event, self._is_top_level)
 
 def bytes_help() -> None:
     _help("bytes formatting can be used such as \\n and \\r")

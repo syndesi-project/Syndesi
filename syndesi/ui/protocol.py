@@ -3,10 +3,11 @@
 # License : GPL
 
 import ast
-from typing import Any, Generic, TypeVar
+from typing import Any, Callable, Generic, TypeVar
 
 from syndesi.adapters.adapter import Adapter
-from syndesi.component import ReadScope
+from syndesi.adapters.adapterworker import AdapterEvent
+from syndesi.component import ReadScope, SyndesiEvent
 from syndesi.protocols.delimited import Delimited
 from .tools import StringTestingGroup, ComponentBlock
 from ..protocols.protocol import Protocol
@@ -22,9 +23,14 @@ class ProtocolBlock(Generic[ProtocolT], ComponentBlock):
 class DelimitedBlock(ProtocolBlock[Delimited]):
     title : str = "Delimited"
     
-    def __init__(self, protocol : Delimited) -> None:
-        super().__init__()
+    def __init__(self,
+                 protocol : Delimited,
+                 ui_event_callback : Callable[[SyndesiEvent], None],
+                 is_top_level : bool
+                ) -> None:
+        super().__init__(is_top_level, ui_event_callback)
         self._protocol = protocol
+        self._protocol.register_event_callback(self._event_callback)
         self._different_receive_termination = False
 
     def build_configuration_tab(self, parent: int | str) -> None:
@@ -85,3 +91,6 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
 
     def open(self):
         self._protocol.open()
+
+    def _event_callback_safe(self, event: AdapterEvent):
+        super()._event_callback_safe(event)

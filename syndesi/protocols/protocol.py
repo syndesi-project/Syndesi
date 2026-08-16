@@ -19,7 +19,7 @@ from syndesi.adapters.adapterworker import (
 )
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.adapters.utils import TimeoutParameterType
-from syndesi.component import Component, Event, ReadFrame, ReadScope
+from syndesi.component import Component, SyndesiEvent, ReadFrame, ReadScope
 
 from ..adapters.adapter import Adapter
 from ..adapters.bytesadapter import BytesAdapter
@@ -31,15 +31,21 @@ AdapterT = TypeVar("AdapterT", bound=Adapter[Any])
 
 @dataclass
 class ProtocolReadFrame(Generic[ProtocolFrameT], ReadFrame[ProtocolFrameT]):
-    """Adapter signal containing received data"""
+    """Protocol read frame"""
 
     # payload: ProtocolFrameT
 
     # @abstractmethod
     def __str__(self) -> str:
-        return f"ProtocolFrame({self.data!r})"
+        return f"ProtocolReadFrame({self.data!r})"
 
-class ProtocolEvent(Event):
+@dataclass
+class ProtocolWriteFrame(Generic[ProtocolFrameT], ReadFrame[ProtocolFrameT]):
+    """Protocol write frame"""
+    def __str__(self) -> str:
+        return f"ProtocolWriteFrame({self.data!r})"
+
+class ProtocolEvent(SyndesiEvent):
     """Protocol event"""
 
 class ProtocolDisconnectedEvent(ProtocolEvent):
@@ -48,8 +54,18 @@ class ProtocolDisconnectedEvent(ProtocolEvent):
 @dataclass
 class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
     """Protocol frame event"""
-
     frame: ProtocolReadFrame[ProtocolFrameT]
+
+@dataclass
+class ProtocolReadEvent(Generic[ProtocolFrameT], ProtocolEvent):
+    """Protocol read event"""
+    from_buffer : bool
+    frame: ProtocolReadFrame[ProtocolFrameT]
+
+@dataclass
+class ProtocolWriteEvent(Generic[ProtocolFrameT], ProtocolEvent):
+    """Protocol write event"""
+    frame: ProtocolWriteFrame[ProtocolFrameT]
 
 class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     """
