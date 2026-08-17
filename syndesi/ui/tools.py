@@ -142,10 +142,14 @@ class ComponentBlock(ABC):
     _ui_event_callback : Callable[[SyndesiEvent, bool], None]
     def __init__(self,
                  is_top_level : bool,
-                 ui_event_callback : Callable[[SyndesiEvent, bool], None]
+                 write_callback : Callable[[str], None],
+                 read_callback : Callable[[str], None]
+                 #ui_event_callback : Callable[[SyndesiEvent, bool], None]
                 ) -> None:
         self._is_top_level = is_top_level
-        self._ui_event_callback = ui_event_callback
+        self._ui_write_callback = write_callback
+        self._ui_read_callback = read_callback
+        #self._ui_event_callback = ui_event_callback
         super().__init__()
 
     title : str = ""
@@ -174,12 +178,12 @@ class ComponentBlock(ABC):
     def sync_block_to_component(self):
         ...
 
-    def _event_callback(self, event : AdapterEvent):
-        loop.call_soon_threadsafe(self._event_callback_safe, event)
+    # def _event_callback(self, event : AdapterEvent):
+    #     loop.call_soon_threadsafe(self._event_callback_safe, event)
 
-    @abstractmethod
-    def _event_callback_safe(self, event : AdapterEvent):
-        self._ui_event_callback(event, self._is_top_level)
+    # @abstractmethod
+    # def _event_callback_safe(self, event : AdapterEvent):
+    #     self._ui_event_callback(event, self._is_top_level)
 
 def bytes_help() -> None:
     _help("bytes formatting can be used such as \\n and \\r")

@@ -25,12 +25,13 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
     
     def __init__(self,
                  protocol : Delimited,
-                 ui_event_callback : Callable[[SyndesiEvent], None],
+                 #ui_event_callback : Callable[[SyndesiEvent], None],
+                 write_callback : Callable[[str], None],
+                 read_callback : Callable[[str], None],
                  is_top_level : bool
                 ) -> None:
-        super().__init__(is_top_level, ui_event_callback)
+        super().__init__(is_top_level, write_callback, read_callback)
         self._protocol = protocol
-        self._protocol.register_event_callback(self._event_callback)
         self._different_receive_termination = False
 
     def build_configuration_tab(self, parent: int | str) -> None:
@@ -57,10 +58,16 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
         return StringTestingGroup(self._write_callback, self._read_callback, 5).build(testing_window)
 
     def _write_callback(self, raw_data : str):
+        if self._is_top_level:
+            self._ui_write_callback(raw_data)
         self._protocol.write(raw_data)
 
     def _read_callback(self, scope : ReadScope):
-        self._protocol.read(scope=scope)
+        print("read")
+        data = self._protocol.read(scope=scope)
+        print(f"Data = {data}")
+        self._ui_read_callback(data)
+        print('callback ok')
 
     def reset(self):
         self.sync_component_to_block()

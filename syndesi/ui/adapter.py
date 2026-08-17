@@ -48,7 +48,7 @@ from .tools import Block, StringTestingGroup, ComponentBlock, _help, _hsv_to_rgb
 
 StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
 
-
+loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
 class StopConditionBlock(Generic[StopConditionT], Block):
     """Single stop-condition block (tab)"""
@@ -193,12 +193,15 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
     def __init__(self,
                  title : str,
                  adapter : AdapterT,
-                 event_callback : Callable[[SyndesiEvent], None],
+                 write_callback : Callable[[str], None],
+                 read_callback : Callable[[str], None],
+                 event_callback : Callable[[AdapterEvent], None],
                  is_top_level : bool
                 ) -> None:
-        super().__init__(is_top_level, event_callback)
+        super().__init__(is_top_level, write_callback, read_callback)
         self._adapter = adapter
         self._adapter.register_event_callback(self._event_callback)
+        self._ui_adapter_event_callback = event_callback
 
         self._testing_window : StringTestingGroup | None = None
 
@@ -232,8 +235,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             self._testing_window.write_status("")
 
     def _event_callback_safe(self, event : AdapterEvent):
-        super()._event_callback_safe(event)
-
+        self._ui_adapter_event_callback(event)
         if isinstance(event, AdapterBufferEvent):
             if len(event.added_frame_ids) > 0:
                 for frame in self._adapter.frame_buffer:
@@ -252,7 +254,8 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             self.sync_component_to_block()
 
 
-    
+    def _event_callback(self, event : AdapterEvent):
+        loop.call_soon_threadsafe(self._event_callback_safe, event)    
 
     @abstractmethod
     def _build_descriptor(self, parent : int | str) -> None:
@@ -416,11 +419,8 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
     def sync_component_to_block(self):
         self._stop_conditions_cache.clear()
-
-        print('Reset stop-conditions')
         if self._adapter is not None:
             for stop_condition in self._adapter.stop_conditions:
-                print(f'Add {stop_condition}')
                 self._add_stop_condition(stop_condition)
 
         self._build_tabs()
@@ -438,10 +438,12 @@ class IPBlock(BytesAdapterBlock[IP]):
     title = "IP Adapter"
     def __init__(self,
                  adapter : IP,
+                 write_callback : Callable[[str], None],
+                 read_callback : Callable[[str], None],
                  event_callback : Callable[[AdapterEvent], None],
                  is_top_level : bool
                 ) -> None:
-        super().__init__("IP Adapter", adapter, event_callback, is_top_level)
+        super().__init__("IP Adapter", adapter, write_callback, read_callback, event_callback, is_top_level)
         self._address_input : int | str = -1
         self._port_input : int | str = -1
         self._port_details : int | str = -1
@@ -493,6 +495,5 @@ class IPBlock(BytesAdapterBlock[IP]):
         dpg.set_value(self._port_input, str(self._adapter.descriptor.port))
         dpg.set_value(self._transport_input, self._adapter.descriptor.transport.value)
         dpg.set_value(self._timeout_input, self._adapter.timeout)
-
         
 

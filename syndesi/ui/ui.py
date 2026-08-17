@@ -37,7 +37,7 @@ from syndesi.adapters.stop_conditions import StopConditionType
 from syndesi.component import Component, SyndesiEvent
 from syndesi.drivers.driver import Driver
 from syndesi.protocols.delimited import Delimited
-from syndesi.protocols.protocol import Protocol, ProtocolEvent, ProtocolReadEvent, ProtocolWriteEvent
+from syndesi.protocols.protocol import Protocol, ProtocolEvent
 from syndesi.tools.errors import AdapterOpenError
 from syndesi.ui.protocol import DelimitedBlock, ProtocolBlock
 
@@ -98,7 +98,7 @@ ENTRY_PREFIX = {
     TestingEntryType.CLOSE_EVENT : "● closed",
     TestingEntryType.FRAGMENT_EVENT : "↓ frag", 
     TestingEntryType.FIRST_FRAGMENT_EVENT : "↓ frag*", 
-    TestingEntryType.UNKNOWN_EVENT : "Unknown",
+    TestingEntryType.UNKNOWN_EVENT : "Invalid event",
 }
 
 ENTRY_COLOR = {
@@ -134,7 +134,8 @@ class UIBase:
         self._tab_bar : int | str = -1
         self.toplevel_component : ComponentBlock | None = None
         self._tabs : list[Tuple[ComponentBlock, int | str]] = []
-        self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
+        self._entry_queue : asyncio.Queue[TestingEntry] = asyncio.Queue()
+        #self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
         self._start_timestamp = time.time()
         self._testing_bottom_group : int | str = -1
         self._entries : List[TestingEntry] = []
@@ -147,7 +148,7 @@ class UIBase:
     
         
         self._build()
-        asyncio.ensure_future(self.loop())
+        #asyncio.ensure_future(self.loop())
 
     def start(self) -> None:
         """Start the UI"""
@@ -170,7 +171,13 @@ class UIBase:
 #    @overload
     def adapter_block(self, adapter : BytesAdapter, is_top_level : bool) -> BytesAdapterBlock[Any]:
         if isinstance(adapter, IP):
-            return IPBlock(adapter, self._event_callback, is_top_level)
+            return IPBlock(
+                adapter,
+                self._write_callback,
+                self._read_callback,
+                self._event_callback,
+                is_top_level
+            )
         
         raise RuntimeError(f"Invalid adapter : {adapter}")
 
@@ -181,7 +188,7 @@ class UIBase:
 
     def protocol_block(self, protocol : Protocol[Any, Any], is_top_level : bool) -> ProtocolBlock[Any]:
         if isinstance(protocol, Delimited):
-            return DelimitedBlock(protocol, self._event_callback, is_top_level)
+            return DelimitedBlock(protocol, self._write_callback, self._read_callback, is_top_level)
         raise RuntimeError(f"Invalid protocol : {protocol}")
 
     def _build(self) -> None:
@@ -379,60 +386,129 @@ class UIBase:
 
             dpg.configure_item(self._status_text, color=(255,0,0))
     
-    def _event_callback(self, event : AdapterEvent | ProtocolEvent, is_top_level : bool) -> None:
-        loop.call_soon_threadsafe(self._event_queue.put_nowait, (event, is_top_level))
+    def _event_callback(self, event : AdapterEvent | ProtocolEvent) -> None:
+        delta = event.timestamp - self._start_timestamp
+        # Only adapter events are received and displayed
+        # Use adapter close and open events to show open and close
+        if isinstance(event, AdapterClosedEvent):
+            #self._add_testing_entry(TestingEntryType.CLOSE_EVENT, delta)
+            loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.CLOSE_EVENT, delta)
+            self._status(False)
+        elif isinstance(event, AdapterOpenedEvent):
+            #self._add_testing_entry(TestingEntryType.OPEN_EVENT, delta)
+            loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.OPEN_EVENT, delta)
+            self._status(True)
+        elif isinstance(event, AdapterFrameEvent):
+            if event.frame.stop_condition is None:
+                sc_data = "(error)"
+            else:
+                sc_data = str(event.frame.stop_condition)
+            #self._add_testing_entry(TestingEntryType.FRAME_EVENT, delta, f"{event.frame.data!r} ({sc_data})")
+            loop.call_soon_threadsafe(
+                self._add_testing_entry,
+                TestingEntryType.FRAME_EVENT,
+                delta,
+                f"{event.frame.data!r} ({sc_data})"
+                )
+        elif isinstance(event, AdapterFragmentEvent):
+            # self._add_testing_entry(
+            #     TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
+            #     delta, str(event.fragment.data)
+            # )
+            loop.call_soon_threadsafe(
+                self._add_testing_entry,
+                TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
+                delta,
+                str(event.fragment.data))
+        elif isinstance(event, AdapterReadEvent):
+            loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.READ_EVENT, delta, f"{event.frame.data}" + " (buffer)" if event.from_buffer else "")
+        elif isinstance(event, AdapterWriteEvent):
+            loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.WRITE_EVENT, delta, f"{event.frame.data!r}")
+
+        # elif isinstance(event, (AdapterReadEvent, ProtocolReadEvent)):
+        #     message = 
+        #     #if is_top_level:
+        #     #    loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_READ, delta, message)
+        #     #else:
+
+        #     message = 
+        #     #if is_top_level:
+        #     #    loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_WRITE, delta, message)
+        #     #else:
+        elif isinstance(event, 
+                        (AdapterBufferEvent,
+                            AdapterTimeoutUpdatedEvent,
+                            AdapterStopConditionsUpdatedEvent)
+                        ):
+            ...
+        else:
+            loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.UNKNOWN_EVENT, delta)
+
+
+        #loop.call_soon_threadsafe(self._event_queue.put_nowait, (event, is_top_level))
+
+    def _write_callback(self, data : str):
+        t = time.time()
+        delta = t - self._start_timestamp
+        loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_WRITE, delta, data)
+
+    def _read_callback(self, data : str):
+        t = time.time()
+        delta = t - self._start_timestamp
+        loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_READ, delta, data)
 
     async def loop(self) -> None:
         """
         Event display loop
         """
-        try:
-            while True:
-                event, is_top_level = await self._event_queue.get()
-                delta = event.timestamp - self._start_timestamp
-                # Only adapter events are received and displayed
-                # Use adapter close and open events to show open and close
-                if isinstance(event, AdapterClosedEvent):
-                    self._add_testing_entry(TestingEntryType.CLOSE_EVENT, delta)
-                    self._status(False)
-                elif isinstance(event, AdapterOpenedEvent):
-                    self._add_testing_entry(TestingEntryType.OPEN_EVENT, delta)
-                    self._status(True)
-                elif isinstance(event, AdapterFrameEvent):
-                    if event.frame.stop_condition is None:
-                        sc_data = "(error)"
-                    else:
-                        sc_data = str(event.frame.stop_condition)
-                    self._add_testing_entry(TestingEntryType.FRAME_EVENT, delta, f"{event.frame.data!r} ({sc_data})")
-                elif isinstance(event, AdapterFragmentEvent):
-                    self._add_testing_entry(
-                        TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
-                        delta, str(event.fragment.data)
-                    )
-                elif isinstance(event, (AdapterReadEvent, ProtocolReadEvent)):
-                    message = f"{event.frame.data}" + " (buffer)" if event.from_buffer else ""
-                    if is_top_level:
-                        self._add_testing_entry(TestingEntryType.TOPLEVEL_READ, delta, message)
-                    else:
-                        self._add_testing_entry(TestingEntryType.READ_EVENT, delta, message)
+#        try:
+#            while True:
+                # event, is_top_level = await self._event_queue.get()
+                # print(f'Event {event} top_level={is_top_level}')
+                # delta = event.timestamp - self._start_timestamp
+                # # Only adapter events are received and displayed
+                # # Use adapter close and open events to show open and close
+                # if isinstance(event, AdapterClosedEvent):
+                #     self._add_testing_entry(TestingEntryType.CLOSE_EVENT, delta)
+                #     self._status(False)
+                # elif isinstance(event, AdapterOpenedEvent):
+                #     self._add_testing_entry(TestingEntryType.OPEN_EVENT, delta)
+                #     self._status(True)
+                # elif isinstance(event, AdapterFrameEvent):
+                #     if event.frame.stop_condition is None:
+                #         sc_data = "(error)"
+                #     else:
+                #         sc_data = str(event.frame.stop_condition)
+                #     self._add_testing_entry(TestingEntryType.FRAME_EVENT, delta, f"{event.frame.data!r} ({sc_data})")
+                # elif isinstance(event, AdapterFragmentEvent):
+                #     self._add_testing_entry(
+                #         TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
+                #         delta, str(event.fragment.data)
+                #     )
+                # elif isinstance(event, (AdapterReadEvent, ProtocolReadEvent)):
+                #     message = f"{event.frame.data}" + " (buffer)" if event.from_buffer else ""
+                #     if is_top_level:
+                #         self._add_testing_entry(TestingEntryType.TOPLEVEL_READ, delta, message)
+                #     else:
+                #         self._add_testing_entry(TestingEntryType.READ_EVENT, delta, message)
 
-                elif isinstance(event, (AdapterWriteEvent, ProtocolWriteEvent)):
-                    message = f"{event.frame.data!r}"
-                    if is_top_level:
-                        self._add_testing_entry(TestingEntryType.TOPLEVEL_WRITE, delta, message)
-                    else:
-                        self._add_testing_entry(TestingEntryType.WRITE_EVENT, delta, message)
-                elif isinstance(event, 
-                                (AdapterBufferEvent,
-                                 AdapterTimeoutUpdatedEvent,
-                                 AdapterStopConditionsUpdatedEvent)
-                                ):
-                    ...
-                else:
-                    self._add_testing_entry(TestingEntryType.UNKNOWN_EVENT, delta)
+                # elif isinstance(event, (AdapterWriteEvent, ProtocolWriteEvent)):
+                #     message = f"{event.frame.data!r}"
+                #     if is_top_level:
+                #         self._add_testing_entry(TestingEntryType.TOPLEVEL_WRITE, delta, message)
+                #     else:
+                #         self._add_testing_entry(TestingEntryType.WRITE_EVENT, delta, message)
+                # elif isinstance(event, 
+                #                 (AdapterBufferEvent,
+                #                  AdapterTimeoutUpdatedEvent,
+                #                  AdapterStopConditionsUpdatedEvent)
+                #                 ):
+                #     ...
+                # else:
+                #     self._add_testing_entry(TestingEntryType.UNKNOWN_EVENT, delta)
 
-        except Exception:
-            print(f'Exception in loop : {traceback.format_exc()}')
+        # except Exception:
+        #     print(f'Exception in loop : {traceback.format_exc()}')
 
 class Command(StrEnum):
     """Syndesi ui CLI mode"""

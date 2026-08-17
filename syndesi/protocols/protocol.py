@@ -56,16 +56,16 @@ class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
     """Protocol frame event"""
     frame: ProtocolReadFrame[ProtocolFrameT]
 
-@dataclass
-class ProtocolReadEvent(Generic[ProtocolFrameT], ProtocolEvent):
-    """Protocol read event"""
-    from_buffer : bool
-    frame: ProtocolReadFrame[ProtocolFrameT]
+# @dataclass
+# class ProtocolReadEvent(Generic[ProtocolFrameT], ProtocolEvent):
+#     """Protocol read event"""
+#     from_buffer : bool
+#     frame: ProtocolReadFrame[ProtocolFrameT]
 
-@dataclass
-class ProtocolWriteEvent(Generic[ProtocolFrameT], ProtocolEvent):
-    """Protocol write event"""
-    frame: ProtocolWriteFrame[ProtocolFrameT]
+# @dataclass
+# class ProtocolWriteEvent(Generic[ProtocolFrameT], ProtocolEvent):
+#     """Protocol write event"""
+#     frame: ProtocolWriteFrame[ProtocolFrameT]
 
 class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     """
