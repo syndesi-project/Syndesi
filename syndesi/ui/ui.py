@@ -117,6 +117,7 @@ ENTRY_COLOR = {
 
 @dataclass
 class TestingEntry:
+    time_delta : float
     entry_type : TestingEntryType
     group_tag : int | str
 
@@ -269,8 +270,6 @@ class UIBase:
                     dpg.add_item_resize_handler(callback=self._testing_window_resize)
                     dpg.bind_item_handler_registry(self._testing_window, self._testing_window_resize_handler)
 
-                
-
         self._testing_window_resize()
 
         self._status(False)
@@ -280,18 +279,33 @@ class UIBase:
         dpg.setup_dearpygui()
 
     def _add_testing_entry(self, entry_type : TestingEntryType, time_delta : float, text : str = ""):
-        with dpg.table_row(parent=self._testing_table) as row_tag:
-            dpg.add_text(f"{time_delta:+8.3f}", color=ENTRY_COLOR[entry_type])
+        show = self._show_adapter_events or not entry_type.is_adapter_event()
+
+        with dpg.table_row(parent=self._testing_table, show=show) as row_tag:
+            dpg.add_text(f"{time_delta:+8.6f}", color=ENTRY_COLOR[entry_type])
             dpg.add_text(ENTRY_PREFIX[entry_type], color=ENTRY_COLOR[entry_type])
             dpg.add_text(text, color=ENTRY_COLOR[entry_type])
 
-        self._entries.append(TestingEntry(
+        new_entry = TestingEntry(
+            time_delta=time_delta,
             entry_type=entry_type,
             group_tag=row_tag
-        ))
-        if not self._show_adapter_events and entry_type.is_adapter_event():
-            dpg.hide_item(row_tag)
+        )
 
+
+        #if len(self._entries) == 0:
+        #else:
+        for i, entry in enumerate(self._entries[::-1]):
+            if entry.time_delta <= time_delta:
+                print(f'{entry.time_delta:.6f} <= {time_delta:.6f}')
+                self._entries.insert(len(self._entries)-i, new_entry)
+                break
+        else:
+            self._entries.insert(0, new_entry)
+
+        print([entry.time_delta for entry in self._entries])
+
+TODO : Fix entries order
     def _testing_window_resize(self):
         if dpg.is_viewport_ok():
             dpg.render_dearpygui_frame()
