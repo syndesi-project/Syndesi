@@ -70,48 +70,53 @@ def default_delimited(adapter : BytesAdapter) -> Delimited:
     return Delimited(adapter, termination='\n')
 
 class TestingEntryType(IntEnum):
+    # Meta
     UNKNOWN_EVENT = 0
-    WRITE_EVENT = 1
-    FRAME_EVENT = 2
-    READ_EVENT = 3
-    OPEN_EVENT = 4
-    CLOSE_EVENT = 5
-    FRAGMENT_EVENT = 6
-    FIRST_FRAGMENT_EVENT = 7
-    TOPLEVEL_READ = 8
-    TOPLEVEL_WRITE = 9
+    # Primary events (always visible)
+    TOPLEVEL_READ = 1
+    TOPLEVEL_WRITE = 2
+    OPEN_EVENT = 3
+    CLOSE_EVENT = 4
+    # Secondary events (grayed out)
+    WRITE_EVENT = 5
+    FRAME_EVENT = 6
+    READ_EVENT = 7
+    FRAGMENT_EVENT = 8
+    FIRST_FRAGMENT_EVENT = 9
 
-    def is_adapter_event(self):
+    def is_event(self):
         return self in [
             TestingEntryType.FRAME_EVENT,
             TestingEntryType.FRAGMENT_EVENT,
             TestingEntryType.FIRST_FRAGMENT_EVENT,
+            TestingEntryType.WRITE_EVENT,
+            TestingEntryType.READ_EVENT,
             ]
 
 ENTRY_PREFIX = {
-    TestingEntryType.WRITE_EVENT : "→ write",
-    TestingEntryType.FRAME_EVENT : "↓ frame",
-    TestingEntryType.READ_EVENT : "←  read",
+    TestingEntryType.UNKNOWN_EVENT : "Invalid event",
     TestingEntryType.TOPLEVEL_READ : "←  read",
     TestingEntryType.TOPLEVEL_WRITE : "→ write",
     TestingEntryType.OPEN_EVENT : "● opened",
     TestingEntryType.CLOSE_EVENT : "● closed",
+    TestingEntryType.WRITE_EVENT : "→ write",
+    TestingEntryType.FRAME_EVENT : "↓ frame",
+    TestingEntryType.READ_EVENT : "←  read",
     TestingEntryType.FRAGMENT_EVENT : "↓ frag", 
     TestingEntryType.FIRST_FRAGMENT_EVENT : "↓ frag*", 
-    TestingEntryType.UNKNOWN_EVENT : "Invalid event",
 }
 
 ENTRY_COLOR = {
-    TestingEntryType.WRITE_EVENT : (127, 127, 127),
-    TestingEntryType.TOPLEVEL_WRITE : (212, 235, 197),
-    TestingEntryType.FRAME_EVENT : (127, 127, 127),
-    TestingEntryType.READ_EVENT : (127, 127, 127),
+    TestingEntryType.UNKNOWN_EVENT : (255, 0, 0),
     TestingEntryType.TOPLEVEL_READ : (197, 213, 235),
+    TestingEntryType.TOPLEVEL_WRITE : (212, 235, 197),
     TestingEntryType.OPEN_EVENT : (30, 199, 38),
     TestingEntryType.CLOSE_EVENT : (207, 19, 19),
+    TestingEntryType.WRITE_EVENT : (127, 127, 127),
+    TestingEntryType.FRAME_EVENT : (127, 127, 127),
+    TestingEntryType.READ_EVENT : (127, 127, 127),
     TestingEntryType.FRAGMENT_EVENT : (127, 127, 127),
     TestingEntryType.FIRST_FRAGMENT_EVENT : (127, 127, 127),
-    TestingEntryType.UNKNOWN_EVENT : (255, 0, 0),
 
 }
 
@@ -125,8 +130,6 @@ class UIBase:
     """Main UI window"""
     def __init__(
             self,
-            #show_protocol_events_button : bool,
-            #show_driver_events_button : bool,
             width : int = 1000,
             height : int = 600
         ) -> None:
@@ -136,20 +139,14 @@ class UIBase:
         self.toplevel_component : ComponentBlock | None = None
         self._tabs : list[Tuple[ComponentBlock, int | str]] = []
         self._entry_queue : asyncio.Queue[TestingEntry] = asyncio.Queue()
-        #self._event_queue : asyncio.Queue[AdapterEvent] = asyncio.Queue()
         self._start_timestamp = time.time()
         self._testing_bottom_group : int | str = -1
         self._entries : List[TestingEntry] = []
         self._testing_subwindow : int | str = -1
-        self._show_adapter_events = False
-        # self._show_protocol_events = False
-        # self._show_driver_events = False
-        # self._show_protocol_events_button = show_protocol_events_button
-        # self._show_driver_events_button = show_driver_events_button
+        self._show_events = False
     
         
         self._build()
-        #asyncio.ensure_future(self.loop())
 
     def start(self) -> None:
         """Start the UI"""
@@ -248,11 +245,7 @@ class UIBase:
                     with dpg.group(horizontal=False, parent=self._testing_window) as self._testing_top_group:
                         dpg.add_text("Testing")
 
-                        dpg.add_checkbox(label="Show adapter events", callback=self._show_adapter_events_callback, default_value=self._show_adapter_events)
-                        # if self._show_protocol_events_button:
-                        #     dpg.add_checkbox(label="Show protocol events", callback=self._show_protocol_events_callback, default_value=self._show_protocol_events)
-                        # if self._show_driver_events_button:
-                        #     dpg.add_checkbox(label="Show driver events", callback=self._show_driver_events_callback, default_value=self._show_adapter_events)
+                        dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default_value=self._show_events)
                 
                     with dpg.child_window(parent=self._testing_window) as self._testing_subwindow:
                         with dpg.theme() as compact_theme:
@@ -279,10 +272,10 @@ class UIBase:
         dpg.setup_dearpygui()
 
     def _add_testing_entry(self, entry_type : TestingEntryType, time_delta : float, text : str = ""):
-        show = self._show_adapter_events or not entry_type.is_adapter_event()
+        show = self._show_events or not entry_type.is_event()
 
         with dpg.table_row(parent=self._testing_table, show=show) as row_tag:
-            dpg.add_text(f"{time_delta:+8.6f}", color=ENTRY_COLOR[entry_type])
+            dpg.add_text(f"{time_delta:+8.3f}", color=ENTRY_COLOR[entry_type])
             dpg.add_text(ENTRY_PREFIX[entry_type], color=ENTRY_COLOR[entry_type])
             dpg.add_text(text, color=ENTRY_COLOR[entry_type])
 
@@ -292,20 +285,17 @@ class UIBase:
             group_tag=row_tag
         )
 
-
-        #if len(self._entries) == 0:
-        #else:
+        previous_entry = None
         for i, entry in enumerate(self._entries[::-1]):
             if entry.time_delta <= time_delta:
-                print(f'{entry.time_delta:.6f} <= {time_delta:.6f}')
                 self._entries.insert(len(self._entries)-i, new_entry)
+                if previous_entry is not None:
+                    dpg.move_item(new_entry.group_tag, parent=self._testing_table, before=previous_entry.group_tag)
                 break
+            previous_entry = entry
         else:
             self._entries.insert(0, new_entry)
 
-        print([entry.time_delta for entry in self._entries])
-
-TODO : Fix entries order
     def _testing_window_resize(self):
         if dpg.is_viewport_ok():
             dpg.render_dearpygui_frame()
@@ -321,11 +311,11 @@ TODO : Fix entries order
         b_h = max(total_h - a_h - c_h - 2*padding - 10, 50)
         dpg.configure_item(self._testing_subwindow, height=b_h)
 
-    def _show_adapter_events_callback(self, sender : int | str, value : bool):
-        self._show_adapter_events = value
+    def _show_events_callback(self, sender : int | str, value : bool):
+        self._show_events = value
         for entry in self._entries:
-            if entry.entry_type.is_adapter_event():
-                if self._show_adapter_events:
+            if entry.entry_type.is_event():
+                if self._show_events:
                     dpg.show_item(entry.group_tag)
                 else:
                     dpg.hide_item(entry.group_tag)
@@ -470,59 +460,6 @@ TODO : Fix entries order
         t = time.time()
         delta = t - self._start_timestamp
         loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_READ, delta, data)
-
-    async def loop(self) -> None:
-        """
-        Event display loop
-        """
-#        try:
-#            while True:
-                # event, is_top_level = await self._event_queue.get()
-                # print(f'Event {event} top_level={is_top_level}')
-                # delta = event.timestamp - self._start_timestamp
-                # # Only adapter events are received and displayed
-                # # Use adapter close and open events to show open and close
-                # if isinstance(event, AdapterClosedEvent):
-                #     self._add_testing_entry(TestingEntryType.CLOSE_EVENT, delta)
-                #     self._status(False)
-                # elif isinstance(event, AdapterOpenedEvent):
-                #     self._add_testing_entry(TestingEntryType.OPEN_EVENT, delta)
-                #     self._status(True)
-                # elif isinstance(event, AdapterFrameEvent):
-                #     if event.frame.stop_condition is None:
-                #         sc_data = "(error)"
-                #     else:
-                #         sc_data = str(event.frame.stop_condition)
-                #     self._add_testing_entry(TestingEntryType.FRAME_EVENT, delta, f"{event.frame.data!r} ({sc_data})")
-                # elif isinstance(event, AdapterFragmentEvent):
-                #     self._add_testing_entry(
-                #         TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
-                #         delta, str(event.fragment.data)
-                #     )
-                # elif isinstance(event, (AdapterReadEvent, ProtocolReadEvent)):
-                #     message = f"{event.frame.data}" + " (buffer)" if event.from_buffer else ""
-                #     if is_top_level:
-                #         self._add_testing_entry(TestingEntryType.TOPLEVEL_READ, delta, message)
-                #     else:
-                #         self._add_testing_entry(TestingEntryType.READ_EVENT, delta, message)
-
-                # elif isinstance(event, (AdapterWriteEvent, ProtocolWriteEvent)):
-                #     message = f"{event.frame.data!r}"
-                #     if is_top_level:
-                #         self._add_testing_entry(TestingEntryType.TOPLEVEL_WRITE, delta, message)
-                #     else:
-                #         self._add_testing_entry(TestingEntryType.WRITE_EVENT, delta, message)
-                # elif isinstance(event, 
-                #                 (AdapterBufferEvent,
-                #                  AdapterTimeoutUpdatedEvent,
-                #                  AdapterStopConditionsUpdatedEvent)
-                #                 ):
-                #     ...
-                # else:
-                #     self._add_testing_entry(TestingEntryType.UNKNOWN_EVENT, delta)
-
-        # except Exception:
-        #     print(f'Exception in loop : {traceback.format_exc()}')
 
 class Command(StrEnum):
     """Syndesi ui CLI mode"""
