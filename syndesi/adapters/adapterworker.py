@@ -634,6 +634,8 @@ class AdapterWorker(Generic[DataT]):
                     # ReadCommand is received
                     buffered = frame.stop_timestamp <= self._last_write_timestamp
 
+        # Experiment : Move it here so that a protocol listening to an event can actually use it
+        self._interface._worker_emit_event(AdapterFrameEvent(frame, buffered))
         if buffered:
             # Not consumed by a pending read => buffer it
             self.frame_buffer.append(frame)
@@ -647,8 +649,6 @@ class AdapterWorker(Generic[DataT]):
             self._worker_on_pending_read_cleared(pr)
             buffered = False
             self._interface._worker_emit_event(AdapterReadEvent(frame, False))
-        # Experiment : Move it here so that a protocol listening to an event can actually use it
-        self._interface._worker_emit_event(AdapterFrameEvent(frame, buffered))
 
     def _worker_fail_pending_read_timeout(self) -> None:
         """

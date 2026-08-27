@@ -13,7 +13,6 @@ from syndesi.ui.ui import main as start_ui
 
 from ..cli.shell import AdapterShell, AdapterType
 
-#from ..tools.logmanager import log
 from ..version import __version__
 
 
@@ -55,16 +54,19 @@ def main() -> None:
 
     logging.basicConfig(level=debug_level)
 
-    if command == SyndesiCommands.SERIAL:
-        AdapterShell(AdapterType.SERIAL, remaining_args).run()
-    elif command == SyndesiCommands.IP:
-        AdapterShell(AdapterType.IP, remaining_args).run()
-    elif command == SyndesiCommands.VISA:
-        AdapterShell(AdapterType.VISA, remaining_args).run()
-    elif command == SyndesiCommands.UI:
-        start_ui(remaining_args)
-    else:
-        raise NotImplementedError(f"Command '{command.value}' is not supported yet")
+    try:
+        if command == SyndesiCommands.SERIAL:
+            AdapterShell(AdapterType.SERIAL, remaining_args).run()
+        elif command == SyndesiCommands.IP:
+            AdapterShell(AdapterType.IP, remaining_args).run()
+        elif command == SyndesiCommands.VISA:
+            AdapterShell(AdapterType.VISA, remaining_args).run()
+        elif command == SyndesiCommands.UI:
+            start_ui(remaining_args)
+        else:
+            raise NotImplementedError(f"Command '{command.value}' is not supported yet")
+    except KeyboardInterrupt:
+        ...
 
 
 if __name__ == "__main__":

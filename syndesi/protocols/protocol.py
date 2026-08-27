@@ -68,6 +68,12 @@ class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
     """Protocol frame event"""
     frame: ProtocolReadFrame[ProtocolFrameT]
 
+@dataclass
+class ProtocolBufferEvent(ProtocolEvent):
+    """Event in the protocol frame buffer (frames added or removed)"""
+    added_frame_ids : list[int]
+    removed_frame_ids : list[int]
+
 # @dataclass
 # class ProtocolReadEvent(Generic[ProtocolFrameT], ProtocolEvent):
 #     """Protocol read event"""
@@ -135,7 +141,8 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         else:
             self.adapter.set_timeout(timeout)
 
-        self._arm_drain()
+        if self.adapter.is_open():
+            self._arm_drain()
 
     def _next_frame_id(self) -> int:
         output = self._frame_id
@@ -176,6 +183,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
             return
 
         resolved: Future[ProtocolReadFrame[ProtocolFrameT]] | None = None
+        buffered = False
         with self._lock:
             pending = self._pending
             if pending is not None and self._frame_matches_scope(
@@ -185,20 +193,30 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
                 resolved = pending.future
             else:
                 self._frame_buffer.append(protocol_frame)
+                buffered = True
 
         if resolved is not None:
             resolved.set_result(protocol_frame)
         self._emit_event(ProtocolFrameEvent(frame=protocol_frame))
+        if buffered:
+            self._emit_event(
+                ProtocolBufferEvent(added_frame_ids=[protocol_frame.id], removed_frame_ids=[])
+            )
         self._arm_drain()
 
     def _on_lifecycle_event(self, event: AdapterEvent) -> None:
         if isinstance(event, AdapterClosedEvent):
             with self._lock:
+                cleared_ids = [frame.id for frame in self._frame_buffer]
                 self._frame_buffer.clear()
                 pending = self._pending
                 self._pending = None
             if pending is not None:
                 pending.future.set_exception(AdapterDisconnected())
+            if cleared_ids:
+                self._emit_event(
+                    ProtocolBufferEvent(added_frame_ids=[], removed_frame_ids=cleared_ids)
+                )
             self._emit_event(ProtocolDisconnectedEvent())
         elif isinstance(event, AdapterOpenedEvent):
             self._arm_drain()
@@ -238,13 +256,20 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     ]:
         with self._lock:
             frame = self._pop_matching_locked(scope, call_start)
-            if frame is not None:
-                return frame, None
-            if self._pending is not None:
-                raise WorkerThreadError("Concurrent read is not supported")
-            future: Future[ProtocolReadFrame[ProtocolFrameT]] = Future()
-            self._pending = _PendingProtocolRead(future=future, scope=scope, start_time=call_start)
-            return None, future
+            if frame is None:
+                if self._pending is not None:
+                    raise WorkerThreadError("Concurrent read is not supported")
+                future: Future[ProtocolReadFrame[ProtocolFrameT]] = Future()
+                self._pending = _PendingProtocolRead(
+                    future=future, scope=scope, start_time=call_start
+                )
+
+        if frame is not None:
+            self._emit_event(
+                ProtocolBufferEvent(added_frame_ids=[], removed_frame_ids=[frame.id])
+            )
+            return frame, None
+        return None, future
 
     def _cancel_pending_if_timed_out(self, future: "Future[ProtocolReadFrame[ProtocolFrameT]]") -> None:
         with self._lock:
@@ -378,7 +403,12 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         """
         self.adapter.flush_read()
         with self._lock:
+            cleared_ids = [frame.id for frame in self._frame_buffer]
             self._frame_buffer.clear()
+        if cleared_ids:
+            self._emit_event(
+                ProtocolBufferEvent(added_frame_ids=[], removed_frame_ids=cleared_ids)
+            )
 
     async def aflush_read(self) -> None:
         """
@@ -386,7 +416,12 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         """
         await self.adapter.aflush_read()
         with self._lock:
+            cleared_ids = [frame.id for frame in self._frame_buffer]
             self._frame_buffer.clear()
+        if cleared_ids:
+            self._emit_event(
+                ProtocolBufferEvent(added_frame_ids=[], removed_frame_ids=cleared_ids)
+            )
 
     # ==== write ====
 

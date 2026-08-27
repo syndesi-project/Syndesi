@@ -34,7 +34,13 @@ from syndesi.adapters.serialport import SerialPort
 from syndesi.component import Component
 from syndesi.drivers.driver import Driver
 from syndesi.protocols.delimited import Delimited
-from syndesi.protocols.protocol import Protocol, ProtocolEvent
+from syndesi.protocols.protocol import (
+    Protocol,
+    ProtocolBufferEvent,
+    ProtocolDisconnectedEvent,
+    ProtocolEvent,
+    ProtocolFrameEvent,
+)
 from syndesi.tools.errors import AdapterOpenError
 from syndesi.ui.protocol import DelimitedBlock, ProtocolBlock
 
@@ -185,7 +191,14 @@ class UIBase:
 
     def protocol_block(self, protocol : Protocol[Any, Any], is_top_level : bool) -> ProtocolBlock[Any]:
         if isinstance(protocol, Delimited):
-            return DelimitedBlock(protocol, self._write_callback, self._read_callback, self._read_fail_callback, is_top_level)
+            return DelimitedBlock(
+                protocol,
+                self._write_callback,
+                self._read_callback,
+                self._read_fail_callback,
+                self._event_callback,
+                is_top_level
+            )
         raise RuntimeError(f"Invalid protocol : {protocol}")
 
     def _build(self) -> None:
@@ -433,7 +446,10 @@ class UIBase:
         elif isinstance(event,
                         (AdapterBufferEvent,
                             AdapterTimeoutUpdatedEvent,
-                            AdapterStopConditionsUpdatedEvent)
+                            AdapterStopConditionsUpdatedEvent,
+                            ProtocolBufferEvent,
+                            ProtocolFrameEvent,
+                            ProtocolDisconnectedEvent)
                         ):
             ...
         else:

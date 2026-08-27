@@ -3,6 +3,7 @@
 # License : GPL
 
 import ast
+import asyncio
 from collections.abc import Callable
 from typing import Any, Awaitable, Generic, TypeVar
 
@@ -13,12 +14,14 @@ from syndesi.component import ReadScope
 from syndesi.protocols.delimited import Delimited
 from syndesi.tools.errors import AdapterTimeoutError
 
-from ..protocols.protocol import Protocol
+from ..protocols.protocol import Protocol, ProtocolBufferEvent, ProtocolEvent
 from .tools import ComponentBlock, StringTestingGroup
 
 ProtocolT = TypeVar("ProtocolT", bound=Protocol[Any, Any])
 
 N_WRITE_LINES = 5
+
+loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
 class ProtocolBlock(Generic[ProtocolT], ComponentBlock):
     _protocol : ProtocolT
@@ -31,11 +34,35 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
                  write_callback : Callable[[str], None],
                  read_callback : Callable[[str], Awaitable[None]],
                  read_fail_callback : Callable[[str], Awaitable[None]],
+                 event_callback : Callable[[ProtocolEvent], None],
                  is_top_level : bool
                 ) -> None:
         super().__init__(is_top_level, write_callback, read_callback, read_fail_callback)
         self._protocol = protocol
+        self._protocol.register_event_callback(self._event_callback)
+        self._ui_protocol_event_callback = event_callback
         self._different_receive_termination = False
+        self._buffer_items : dict[int, int | str] = {}
+        self._buffer_window : int | str = -1
+
+    def _event_callback_safe(self, event : ProtocolEvent) -> None:
+        self._ui_protocol_event_callback(event)
+        if isinstance(event, ProtocolBufferEvent):
+            if len(event.added_frame_ids) > 0:
+                for frame in self._protocol.frame_buffer:
+                    if frame.id in event.added_frame_ids:
+                        self._buffer_items[frame.id] = dpg.add_text(
+                            str(frame.data),
+                            parent=self._buffer_window
+                        )
+
+            for removed_frame_id in event.removed_frame_ids:
+                tag = self._buffer_items.pop(removed_frame_id, None)
+                if tag is not None:
+                    dpg.delete_item(tag)
+
+    def _event_callback(self, event : ProtocolEvent) -> None:
+        loop.call_soon_threadsafe(self._event_callback_safe, event)
 
     def build_configuration_tab(self, parent: int | str) -> None:
         with dpg.group(horizontal=False, parent=parent):
@@ -44,6 +71,11 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
             dpg.add_text("Receive termination", color=(70, 142, 194))
             self._checkbox = dpg.add_checkbox(label="Different receive termination", default_value=self._different_receive_termination, callback=self._different_receive_termination_callback)
             self._receive_termination_input = dpg.add_input_text(width=150, callback=self.sync_block_to_component, show=self._different_receive_termination)
+
+            dpg.add_spacer(height=10)
+            dpg.add_text("Buffer")
+            with dpg.child_window() as self._buffer_window:
+                ...
 
         self.sync_component_to_block()
 
