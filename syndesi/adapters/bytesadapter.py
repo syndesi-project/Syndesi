@@ -17,13 +17,13 @@ from .adapterworker import (
     AdapterWorker,
     AdapterWorkerInterface,
     GetStopConditionsCommand,
+    PendingRead,
     SetStopConditionsCommand,
 )
 from .stop_conditions import (
     BytesFragment,
     Continuation,
     StopCondition,
-    StopConditionType,
     Total,
 )
 from .tracehub import tracehub
@@ -91,6 +91,16 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                 self._first_fragment = False
                 self._read_start_timestamp = fragment.timestamp
                 self._first_fragment_timestamp = fragment.timestamp
+
+                pending_read = self._pending_read
+                if (
+                    pending_read is not None
+                    and pending_read.stop_override is not None
+                    and not pending_read.stop_override_applied
+                ):
+                    pending_read.prev_stop_conditions = self._stop_conditions
+                    self._stop_conditions = pending_read.stop_override
+                    pending_read.stop_override_applied = True
 
                 for stop_condition in self._stop_conditions:
                     stop_condition.initiate_read(initiate_timestamp)
@@ -201,6 +211,10 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
             self._worker_deliver_frame(frame)
 
         self._worker_reset_read()
+
+    def _worker_on_pending_read_cleared(self, pending_read: PendingRead[bytes]) -> None:
+        if pending_read.stop_override_applied and pending_read.prev_stop_conditions is not None:
+            self._stop_conditions = pending_read.prev_stop_conditions
 
     def _worker_reset_read(self) -> None:
         self._last_fragment_timestamp = None

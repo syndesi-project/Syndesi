@@ -7,34 +7,31 @@ Syndesi UI
 
 import argparse
 import asyncio
-from dataclasses import dataclass
 import importlib
 import importlib.resources
-from enum import IntEnum, StrEnum
 import time
-import traceback
-from typing import Any, List, Tuple, Type, TypeVar, overload
+from dataclasses import dataclass
+from enum import IntEnum, StrEnum
+from typing import Any, TypeVar, overload
 
-import dearpygui.dearpygui as dpg #type: ignore
+import dearpygui.dearpygui as dpg  #type: ignore
 
-from syndesi.adapters.adapter import Adapter
 from syndesi.adapters.adapterworker import (
     AdapterBufferEvent,
     AdapterClosedEvent,
     AdapterEvent,
     AdapterFragmentEvent,
-    AdapterOpenedEvent,
     AdapterFrameEvent,
+    AdapterOpenedEvent,
     AdapterReadEvent,
-    AdapterWriteEvent,
+    AdapterStopConditionsUpdatedEvent,
     AdapterTimeoutUpdatedEvent,
-    AdapterStopConditionsUpdatedEvent
+    AdapterWriteEvent,
 )
 from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.ip import IP
 from syndesi.adapters.serialport import SerialPort
-from syndesi.adapters.stop_conditions import StopConditionType
-from syndesi.component import Component, SyndesiEvent
+from syndesi.component import Component
 from syndesi.drivers.driver import Driver
 from syndesi.protocols.delimited import Delimited
 from syndesi.protocols.protocol import Protocol, ProtocolEvent
@@ -43,7 +40,7 @@ from syndesi.ui.protocol import DelimitedBlock, ProtocolBlock
 
 from .adapter import BytesAdapterBlock, IPBlock
 from .dearpygui_async import DearPyGuiAsync
-from .tools import ComponentBlock, ComponentBlock, _hsv_to_rgb
+from .tools import ComponentBlock, _hsv_to_rgb
 
 CLASS_NAME_SEPARATOR = ':'
 
@@ -74,17 +71,18 @@ class TestingEntryType(IntEnum):
     UNKNOWN_EVENT = 0
     # Primary events (always visible)
     TOPLEVEL_READ = 1
-    TOPLEVEL_WRITE = 2
-    OPEN_EVENT = 3
-    CLOSE_EVENT = 4
+    TOPLEVEL_READ_FAIL = 2
+    TOPLEVEL_WRITE = 3
+    OPEN_EVENT = 4
+    CLOSE_EVENT = 5
     # Secondary events (grayed out)
-    WRITE_EVENT = 5
-    FRAME_EVENT = 6
-    READ_EVENT = 7
-    FRAGMENT_EVENT = 8
-    FIRST_FRAGMENT_EVENT = 9
+    WRITE_EVENT = 6
+    FRAME_EVENT = 7
+    READ_EVENT = 8
+    FRAGMENT_EVENT = 9
+    FIRST_FRAGMENT_EVENT = 10
 
-    def is_event(self):
+    def is_event(self) -> bool:
         return self in [
             TestingEntryType.FRAME_EVENT,
             TestingEntryType.FRAGMENT_EVENT,
@@ -96,19 +94,21 @@ class TestingEntryType(IntEnum):
 ENTRY_PREFIX = {
     TestingEntryType.UNKNOWN_EVENT : "Invalid event",
     TestingEntryType.TOPLEVEL_READ : "←  read",
+    TestingEntryType.TOPLEVEL_READ_FAIL : "←  read",
     TestingEntryType.TOPLEVEL_WRITE : "→ write",
     TestingEntryType.OPEN_EVENT : "● opened",
     TestingEntryType.CLOSE_EVENT : "● closed",
     TestingEntryType.WRITE_EVENT : "→ write",
     TestingEntryType.FRAME_EVENT : "↓ frame",
     TestingEntryType.READ_EVENT : "←  read",
-    TestingEntryType.FRAGMENT_EVENT : "↓ frag", 
-    TestingEntryType.FIRST_FRAGMENT_EVENT : "↓ frag*", 
+    TestingEntryType.FRAGMENT_EVENT : "↓ frag",
+    TestingEntryType.FIRST_FRAGMENT_EVENT : "↓ frag*",
 }
 
 ENTRY_COLOR = {
     TestingEntryType.UNKNOWN_EVENT : (255, 0, 0),
     TestingEntryType.TOPLEVEL_READ : (197, 213, 235),
+    TestingEntryType.TOPLEVEL_READ_FAIL : (255, 170, 180),
     TestingEntryType.TOPLEVEL_WRITE : (212, 235, 197),
     TestingEntryType.OPEN_EVENT : (30, 199, 38),
     TestingEntryType.CLOSE_EVENT : (207, 19, 19),
@@ -137,15 +137,14 @@ class UIBase:
         self._height = height
         self._tab_bar : int | str = -1
         self.toplevel_component : ComponentBlock | None = None
-        self._tabs : list[Tuple[ComponentBlock, int | str]] = []
+        self._tabs : list[tuple[ComponentBlock, int | str]] = []
         self._entry_queue : asyncio.Queue[TestingEntry] = asyncio.Queue()
         self._start_timestamp = time.time()
         self._testing_bottom_group : int | str = -1
-        self._entries : List[TestingEntry] = []
+        self._entries : list[TestingEntry] = []
         self._testing_subwindow : int | str = -1
         self._show_events = False
-    
-        
+
         self._build()
 
     def start(self) -> None:
@@ -166,17 +165,17 @@ class UIBase:
     @overload
     def adapter_block(self, adapter: BytesAdapter, is_top_level : bool) -> BytesAdapterBlock[Any]: ...
 
-#    @overload
     def adapter_block(self, adapter : BytesAdapter, is_top_level : bool) -> BytesAdapterBlock[Any]:
         if isinstance(adapter, IP):
             return IPBlock(
                 adapter,
                 self._write_callback,
                 self._read_callback,
+                self._read_fail_callback,
                 self._event_callback,
                 is_top_level
             )
-        
+
         raise RuntimeError(f"Invalid adapter : {adapter}")
 
     @overload
@@ -186,7 +185,7 @@ class UIBase:
 
     def protocol_block(self, protocol : Protocol[Any, Any], is_top_level : bool) -> ProtocolBlock[Any]:
         if isinstance(protocol, Delimited):
-            return DelimitedBlock(protocol, self._write_callback, self._read_callback, is_top_level)
+            return DelimitedBlock(protocol, self._write_callback, self._read_callback, self._read_fail_callback, is_top_level)
         raise RuntimeError(f"Invalid protocol : {protocol}")
 
     def _build(self) -> None:
@@ -243,10 +242,13 @@ class UIBase:
                 with dpg.child_window(width=-1, height=-1) as self._testing_window:
 
                     with dpg.group(horizontal=False, parent=self._testing_window) as self._testing_top_group:
-                        dpg.add_text("Testing")
+                        #dpg.add_text("Testing")
 
-                        dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default_value=self._show_events)
-                
+                        with dpg.group(horizontal=True):
+                            dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default_value=self._show_events)
+                            dpg.add_spacer(width=200)
+                            dpg.add_button(label="Clear", callback=self._clear_events_callback)
+
                     with dpg.child_window(parent=self._testing_window) as self._testing_subwindow:
                         with dpg.theme() as compact_theme:
                             with dpg.theme_component(dpg.mvAll):
@@ -271,7 +273,12 @@ class UIBase:
 
         dpg.setup_dearpygui()
 
-    def _add_testing_entry(self, entry_type : TestingEntryType, time_delta : float, text : str = ""):
+    def _clear_events_callback(self) -> None:
+        for entry in self._entries:
+            dpg.delete_item(entry.group_tag)
+        self._entries.clear()
+
+    def _add_testing_entry(self, entry_type : TestingEntryType, time_delta : float, text : str = "") -> None:
         show = self._show_events or not entry_type.is_event()
 
         with dpg.table_row(parent=self._testing_table, show=show) as row_tag:
@@ -296,7 +303,7 @@ class UIBase:
         else:
             self._entries.insert(0, new_entry)
 
-    def _testing_window_resize(self):
+    def _testing_window_resize(self) -> None:
         if dpg.is_viewport_ok():
             dpg.render_dearpygui_frame()
         total_h = dpg.get_item_rect_size(self._testing_window)[1]
@@ -311,7 +318,7 @@ class UIBase:
         b_h = max(total_h - a_h - c_h - 2*padding - 10, 50)
         dpg.configure_item(self._testing_subwindow, height=b_h)
 
-    def _show_events_callback(self, sender : int | str, value : bool):
+    def _show_events_callback(self, sender : int | str, value : bool) -> None:
         self._show_events = value
         for entry in self._entries:
             if entry.entry_type.is_event():
@@ -321,7 +328,7 @@ class UIBase:
                     dpg.hide_item(entry.group_tag)
 
 
-    def _add_adapter(self, block : BytesAdapterBlock) -> None:
+    def _add_adapter(self, block : BytesAdapterBlock[Any]) -> None:
         adapter_tab = dpg.add_tab(label=block.title, parent=self._tab_bar)
         self._tabs.append((block, adapter_tab))
         block.build_configuration_tab(adapter_tab)
@@ -333,7 +340,7 @@ class UIBase:
         self.toplevel_component = block
         dpg.bind_item_handler_registry(self._testing_bottom_group, self._testing_window_resize_handler)
 
-    def _add_protocol(self, block : ProtocolBlock) -> None:
+    def _add_protocol(self, block : ProtocolBlock[Any]) -> None:
         protocol_tab = dpg.add_tab(label=block.title, parent=self._tab_bar)
         self._tabs.append((block, protocol_tab))
         block.build_configuration_tab(protocol_tab)
@@ -368,7 +375,7 @@ class UIBase:
 
         # No need to update status to True here, it will be done by the event
 
-    def close(self):
+    def close(self) -> None:
         if self.toplevel_component is None:
             raise RuntimeError("Top-level component hasn't been set")
         self.toplevel_component.close()
@@ -389,7 +396,7 @@ class UIBase:
                 dpg.set_value(self._status_text, "Closed")
 
             dpg.configure_item(self._status_text, color=(255,0,0))
-    
+
     def _event_callback(self, event : AdapterEvent | ProtocolEvent) -> None:
         delta = event.timestamp - self._start_timestamp
         # Only adapter events are received and displayed
@@ -407,7 +414,6 @@ class UIBase:
                 sc_data = "(error)"
             else:
                 sc_data = str(event.frame.stop_condition)
-            #self._add_testing_entry(TestingEntryType.FRAME_EVENT, delta, f"{event.frame.data!r} ({sc_data})")
             loop.call_soon_threadsafe(
                 self._add_testing_entry,
                 TestingEntryType.FRAME_EVENT,
@@ -415,10 +421,6 @@ class UIBase:
                 f"{event.frame.data!r} ({sc_data})"
                 )
         elif isinstance(event, AdapterFragmentEvent):
-            # self._add_testing_entry(
-            #     TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
-            #     delta, str(event.fragment.data)
-            # )
             loop.call_soon_threadsafe(
                 self._add_testing_entry,
                 TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
@@ -428,18 +430,7 @@ class UIBase:
             loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.READ_EVENT, delta, f"{event.frame.data}" + " (buffer)" if event.from_buffer else "")
         elif isinstance(event, AdapterWriteEvent):
             loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.WRITE_EVENT, delta, f"{event.frame.data!r}")
-
-        # elif isinstance(event, (AdapterReadEvent, ProtocolReadEvent)):
-        #     message = 
-        #     #if is_top_level:
-        #     #    loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_READ, delta, message)
-        #     #else:
-
-        #     message = 
-        #     #if is_top_level:
-        #     #    loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_WRITE, delta, message)
-        #     #else:
-        elif isinstance(event, 
+        elif isinstance(event,
                         (AdapterBufferEvent,
                             AdapterTimeoutUpdatedEvent,
                             AdapterStopConditionsUpdatedEvent)
@@ -448,18 +439,20 @@ class UIBase:
         else:
             loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.UNKNOWN_EVENT, delta)
 
-
-        #loop.call_soon_threadsafe(self._event_queue.put_nowait, (event, is_top_level))
-
-    def _write_callback(self, data : str):
+    def _write_callback(self, data : str) -> None:
         t = time.time()
         delta = t - self._start_timestamp
         loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_WRITE, delta, data)
 
-    def _read_callback(self, data : str):
+    async def _read_callback(self, data : str) -> None:
         t = time.time()
         delta = t - self._start_timestamp
         loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_READ, delta, data)
+
+    async def _read_fail_callback(self, message : str) -> None:
+        t = time.time()
+        delta = t - self._start_timestamp
+        loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_READ_FAIL, delta, message)
 
 class Command(StrEnum):
     """Syndesi ui CLI mode"""
@@ -535,7 +528,7 @@ def main(args : list[str] | None = None) -> None:
     # elif command == Command.DRIVER_PATH:
     #     path, class_name = argument.split(CLASS_NAME_SEPARATOR)
     #     m = importlib.util.spec_from_file_location(path)
-    #     c = getattr(m, class_name)    
+    #     c = getattr(m, class_name)
     #     ui = UIDriver(c)
 
     if command == Command.IP:
@@ -546,7 +539,7 @@ def main(args : list[str] | None = None) -> None:
             ui.load_protocol(default_delimited(default_ip()))
         elif adapter == Command.SERIAL:
             ui.load_protocol(default_delimited(default_serialport()))
-    
+
 
     ui.start()
 

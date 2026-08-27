@@ -16,7 +16,6 @@ from enum import StrEnum
 from types import EllipsisType
 
 import serial
-from serial.tools import list_ports
 from serial.serialutil import PortNotOpenError
 from serial.tools.list_ports import comports
 

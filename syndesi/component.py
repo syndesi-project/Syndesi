@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Generic, TypeVar
 
-from .adapters.stop_conditions import StopCondition, StopConditionType
+from .adapters.stop_conditions import StopCondition
 from .adapters.utils import TimeoutParameterType
 from .tools.errors import AdapterOpenError, AdapterReadError, WorkerThreadError
 from .tools.log_settings import LoggerAlias

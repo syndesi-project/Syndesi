@@ -2,8 +2,6 @@
 # Author : Sébastien Deriaz
 # License : GPL
 
-from collections.abc import Callable
-from dataclasses import dataclass
 from typing import ParamSpec, TypeVar
 
 P = ParamSpec("P")

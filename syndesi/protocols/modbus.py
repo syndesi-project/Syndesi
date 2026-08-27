@@ -1491,6 +1491,7 @@ class Modbus(BytesProtocol[ModbusSDU]):
             stop_condition=adapter_frame.stop_condition,
             previous_read_buffer_used=adapter_frame.previous_read_buffer_used,
             response_delay=adapter_frame.response_delay,
+            first_fragment_timestamp=adapter_frame.first_fragment_timestamp,
         )
 
     # ┌────────────┐

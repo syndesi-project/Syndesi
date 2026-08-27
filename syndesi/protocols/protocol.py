@@ -4,22 +4,34 @@
 """
 Protocol base class. A protocol applies format of outgoing data and removes format
 of incoming data
+
+Asumption : A single adapter frame will always be converted to a single protocol frame.
+This could change later
 """
 
+import asyncio
+import threading
+import time
 from abc import abstractmethod
+from collections import deque
 from collections.abc import Callable
+from concurrent.futures import Future
 from dataclasses import dataclass
-from types import EllipsisType
 from typing import Any, Generic, TypeVar
 
 from syndesi.adapters.adapterworker import (
     AdapterClosedEvent,
     AdapterEvent,
-    AdapterFrameEvent,
+    AdapterOpenedEvent,
 )
-from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.adapters.utils import TimeoutParameterType
-from syndesi.component import Component, SyndesiEvent, ReadFrame, ReadScope
+from syndesi.component import Component, ReadFrame, ReadScope, SyndesiEvent
+from syndesi.tools.errors import (
+    AdapterDisconnected,
+    AdapterReadError,
+    AdapterTimeoutError,
+    WorkerThreadError,
+)
 
 from ..adapters.adapter import Adapter
 from ..adapters.bytesadapter import BytesAdapter
@@ -67,6 +79,16 @@ class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
 #     """Protocol write event"""
 #     frame: ProtocolWriteFrame[ProtocolFrameT]
 
+
+@dataclass
+class _PendingProtocolRead(Generic[ProtocolFrameT]):
+    """A single outstanding protocol.read_detailed() call waiting for a frame."""
+
+    future: "Future[ProtocolReadFrame[ProtocolFrameT]]"
+    scope: ReadScope
+    start_time: float
+
+
 class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     """
     Base class for protocol layers.
@@ -74,7 +96,16 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     The first generic parameter describes the adapter type expected by the
     protocol (for example ``BytesAdapter`` or a more specific adapter class).
     The second parameter describes the protocol payload type.
+
+    A Protocol continuously drains its Adapter in the background (one
+    permanently re-armed scope=BUFFERED read) so that every incoming frame is
+    decoded exactly once, the moment it arrives - whether or not anyone is
+    currently waiting on read_detailed(). This runs on the Adapter's existing
+    worker thread (via Future.add_done_callback), no extra thread is created.
+    Because of this, the Adapter's own pending-read slot is permanently taken:
+    once wrapped in a Protocol, reading the Adapter directly is not supported.
     """
+    _FRAME_BUFFER_MAX = 256
 
     def __init__(
         self,
@@ -86,8 +117,15 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         self._event_callbacks : list[Callable[[ProtocolEvent], None]] = []
 
         self._frame_id = 0
+        self._last_write_timestamp: float | None = None
 
-        self.adapter.register_event_callback(self._on_event)
+        self._lock = threading.Lock()
+        self._frame_buffer: deque[ProtocolReadFrame[ProtocolFrameT]] = deque(
+            maxlen=self._FRAME_BUFFER_MAX
+        )
+        self._pending: _PendingProtocolRead[ProtocolFrameT] | None = None
+
+        self.adapter.register_event_callback(self._on_lifecycle_event)
 
         if timeout is not ...:
             self.adapter.set_default_timeout(timeout)
@@ -97,6 +135,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         else:
             self.adapter.set_timeout(timeout)
 
+        self._arm_drain()
 
     def _next_frame_id(self) -> int:
         output = self._frame_id
@@ -108,18 +147,109 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     def default_timeout() -> float | None:
         """Default timeout"""
 
-    def _on_event(self, event: AdapterEvent) -> None:
-        for callback in self._event_callbacks:
-            output_event: ProtocolEvent | None = None
-            if isinstance(event, AdapterClosedEvent):
-                output_event = ProtocolDisconnectedEvent()
-            if isinstance(event, AdapterFrameEvent):
-                output_event = ProtocolFrameEvent(
-                    frame=self._adapter_to_protocol(event.frame)
-                )
+    # ┌──────────────────────────────────────┐
+    # │ Background drain (decode-once, no    │
+    # │ extra thread - see class docstring)  │
+    # └──────────────────────────────────────┘
 
-            if output_event is not None:
-                callback(output_event)
+    def _arm_drain(self) -> None:
+        # Bypasses Adapter's public locked API on purpose: this is a background,
+        # non-blocking re-arm (add_done_callback never waits), not a user operation.
+        future = self.adapter._read_detailed_future(  # pylint: disable=protected-access
+            timeout=None, scope=ReadScope.BUFFERED, stop_conditions=...
+        )
+        future.add_done_callback(self._on_adapter_frame)
+
+    def _on_adapter_frame(self, future: "Future[ReadFrame[Any]]") -> None:
+        try:
+            adapter_frame = future.result()
+        except (AdapterDisconnected, AdapterReadError):
+            # Adapter closed itself; _on_lifecycle_event handles cleanup and
+            # AdapterOpenedEvent (on reconnect) re-arms the drain.
+            return
+
+        try:
+            protocol_frame = self._adapter_to_protocol(adapter_frame)
+        except Exception:  # pylint: disable=broad-exception-caught
+            self._logger.exception("Failed to decode frame, dropping it")
+            self._arm_drain()
+            return
+
+        resolved: Future[ProtocolReadFrame[ProtocolFrameT]] | None = None
+        with self._lock:
+            pending = self._pending
+            if pending is not None and self._frame_matches_scope(
+                protocol_frame, pending.scope, pending.start_time
+            ):
+                self._pending = None
+                resolved = pending.future
+            else:
+                self._frame_buffer.append(protocol_frame)
+
+        if resolved is not None:
+            resolved.set_result(protocol_frame)
+        self._emit_event(ProtocolFrameEvent(frame=protocol_frame))
+        self._arm_drain()
+
+    def _on_lifecycle_event(self, event: AdapterEvent) -> None:
+        if isinstance(event, AdapterClosedEvent):
+            with self._lock:
+                self._frame_buffer.clear()
+                pending = self._pending
+                self._pending = None
+            if pending is not None:
+                pending.future.set_exception(AdapterDisconnected())
+            self._emit_event(ProtocolDisconnectedEvent())
+        elif isinstance(event, AdapterOpenedEvent):
+            self._arm_drain()
+
+    # ┌──────────────────────────────────┐
+    # │ Local buffer / pending-read glue │
+    # └──────────────────────────────────┘
+
+    def _frame_matches_scope(
+        self, frame: ProtocolReadFrame[ProtocolFrameT], scope: ReadScope, call_start: float
+    ) -> bool:
+        if scope == ReadScope.BUFFERED:
+            return True
+        if scope == ReadScope.NEXT:
+            return frame.stop_timestamp > call_start
+        if scope == ReadScope.LAST_WRITE:
+            return (
+                self._last_write_timestamp is not None
+                and frame.first_fragment_timestamp >= self._last_write_timestamp
+            )
+        return False
+
+    def _pop_matching_locked(
+        self, scope: ReadScope, call_start: float
+    ) -> ProtocolReadFrame[ProtocolFrameT] | None:
+        for index, frame in enumerate(self._frame_buffer):
+            if self._frame_matches_scope(frame, scope, call_start):
+                del self._frame_buffer[index]
+                return frame
+        return None
+
+    def _begin_read(
+        self, scope: ReadScope, call_start: float
+    ) -> tuple[
+        ProtocolReadFrame[ProtocolFrameT] | None,
+        "Future[ProtocolReadFrame[ProtocolFrameT]] | None",
+    ]:
+        with self._lock:
+            frame = self._pop_matching_locked(scope, call_start)
+            if frame is not None:
+                return frame, None
+            if self._pending is not None:
+                raise WorkerThreadError("Concurrent read is not supported")
+            future: Future[ProtocolReadFrame[ProtocolFrameT]] = Future()
+            self._pending = _PendingProtocolRead(future=future, scope=scope, start_time=call_start)
+            return None, future
+
+    def _cancel_pending_if_timed_out(self, future: "Future[ProtocolReadFrame[ProtocolFrameT]]") -> None:
+        with self._lock:
+            if self._pending is not None and self._pending.future is future:
+                self._pending = None
 
     @abstractmethod
     def _adapter_to_protocol(
@@ -131,6 +261,16 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         self, protocol_payload: ProtocolFrameT
     ) -> Any: ...
 
+    def _emit_event(self, event : ProtocolEvent):
+        for callback in self._event_callbacks:
+            try:
+                callback(event)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Never let user callback break worker
+                self._logger.exception(
+                    "Protocol event callback failed with error : %s", str(e)
+                )
+
     def register_event_callback(self, event_callback: Callable[[ProtocolEvent], None]) -> None:
         self._event_callbacks.append(event_callback)
 
@@ -140,6 +280,11 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
     # ┌────────────┐
     # │ Public API │
     # └────────────┘
+
+    @property
+    def frame_buffer(self) -> list[ProtocolReadFrame[ProtocolFrameT]]:
+        with self._lock:
+            return list(self._frame_buffer)
 
     # ==== open ====
 
@@ -171,27 +316,41 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
 
     # ==== read_detailed ====
 
-    async def aread_detailed(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> ProtocolReadFrame[ProtocolFrameT]:
-        adapter_frame = await self.adapter.aread_detailed(
-            timeout=timeout, stop_conditions=stop_conditions, scope=scope
-        )
-        return self._adapter_to_protocol(adapter_frame)
-
     def read_detailed(
         self,
         timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        scope: str = ReadScope.BUFFERED,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
-        adapter_frame = self.adapter.read_detailed(
-            timeout=timeout, scope=scope, stop_conditions=stop_conditions
-        )
-        return self._adapter_to_protocol(adapter_frame)
+        frame, future = self._begin_read(ReadScope(scope), time.time())
+        if frame is not None:
+            return frame
+        assert future is not None
+        resolved_timeout = self.adapter.timeout if timeout is ... else timeout
+        try:
+            return future.result(resolved_timeout)
+        except TimeoutError as e:
+            self._cancel_pending_if_timed_out(future)
+            raise AdapterTimeoutError(
+                float("nan") if resolved_timeout is None else resolved_timeout
+            ) from e
+
+    async def aread_detailed(
+        self,
+        timeout: TimeoutParameterType = ...,
+        scope: str = ReadScope.BUFFERED,
+    ) -> ProtocolReadFrame[ProtocolFrameT]:
+        frame, future = self._begin_read(ReadScope(scope), time.time())
+        if frame is not None:
+            return frame
+        assert future is not None
+        resolved_timeout = self.adapter.timeout if timeout is ... else timeout
+        try:
+            return await asyncio.wait_for(asyncio.wrap_future(future), resolved_timeout)
+        except (TimeoutError, asyncio.TimeoutError) as e:
+            self._cancel_pending_if_timed_out(future)
+            raise AdapterTimeoutError(
+                float("nan") if resolved_timeout is None else resolved_timeout
+            ) from e
 
     # ==== read ====
 
@@ -199,22 +358,16 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         self,
         timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolFrameT:
-        frame = await self.aread_detailed(
-            timeout=timeout, stop_conditions=stop_conditions, scope=scope
-        )
+        frame = await self.aread_detailed(timeout=timeout, scope=scope)
         return frame.data
 
     def read(
         self,
         timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED.value,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolFrameT:
-        frame = self.read_detailed(
-            timeout=timeout, stop_conditions=stop_conditions, scope=scope
-        )
+        frame = self.read_detailed(timeout=timeout, scope=scope)
         return frame.data
 
     # ==== flush_read ====
@@ -224,26 +377,30 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         Clear read buffer (blocking)
         """
         self.adapter.flush_read()
+        with self._lock:
+            self._frame_buffer.clear()
 
     async def aflush_read(self) -> None:
         """
         Clear read buffer (async)
         """
         await self.adapter.aflush_read()
+        with self._lock:
+            self._frame_buffer.clear()
 
     # ==== write ====
 
     async def awrite(self, data: ProtocolFrameT) -> None:
         await self.adapter.awrite(self._protocol_to_adapter(data))
+        self._last_write_timestamp = time.time()
 
     def write(self, data: ProtocolFrameT) -> None:
         self.adapter.write(self._protocol_to_adapter(data))
+        self._last_write_timestamp = time.time()
 
 
 class BytesProtocol(Protocol[BytesAdapter, ProtocolFrameT], Generic[ProtocolFrameT]):
     """Convenience base class for protocols that operate on byte-oriented adapters."""
-
-    pass
 
     # ==== query_detailed ====
 
@@ -252,26 +409,20 @@ class BytesProtocol(Protocol[BytesAdapter, ProtocolFrameT], Generic[ProtocolFram
         payload: ProtocolFrameT,
         timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
         await self.aflush_read()
         await self.awrite(payload)
-        return await self.aread_detailed(
-            timeout=timeout, stop_conditions=stop_conditions, scope=scope
-        )
+        return await self.aread_detailed(timeout=timeout, scope=scope)
 
     def query_detailed(
         self,
         payload: ProtocolFrameT,
         timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.LAST_WRITE.value,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
         self.flush_read()
         self.write(payload)
-        return self.read_detailed(
-            timeout=timeout, stop_conditions=stop_conditions, scope=scope
-        )
+        return self.read_detailed(timeout=timeout, scope=scope)
 
     # ==== Other ====
 

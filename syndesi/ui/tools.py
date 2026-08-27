@@ -5,19 +5,16 @@
 Syndesi UI tools
 """
 
-import ast
 import asyncio
-from dataclasses import dataclass
-from enum import IntEnum
 import inspect
 import sys
 from abc import ABC, abstractmethod
-from typing import Any, Callable, List, Tuple, get_type_hints
+from collections.abc import Callable
+from typing import Any, Awaitable, get_type_hints
 
-import dearpygui.dearpygui as dpg
+import dearpygui.dearpygui as dpg # type: ignore
 
-from syndesi.adapters.adapterworker import AdapterEvent
-from syndesi.component import ReadScope, SyndesiEvent  # type: ignore
+from syndesi.component import ReadScope, SyndesiEvent
 
 loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
@@ -25,7 +22,7 @@ loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 def _hsv_to_rgb(h : float, s : float, v : float) -> tuple[int, int, int]:
     def to_int(inp : tuple[float, float, float]) -> tuple[int, int, int]:
         return (int(inp[0]), int(inp[1]), int(inp[2]))
-    
+
     if s == 0.0:
         return to_int((v, v, v))
     i = int(h*6.) # XXX assume int() truncates!
@@ -133,9 +130,9 @@ def get_method_arguments(
 class Block(ABC):
     """A collection of dearpygui items"""
     @abstractmethod
-    def build(self, parent : int | str, block_update_callback : Callable[[], None]) -> None:
+    def build(self, parent : int | str) -> None:
         """Construct the block in dearpygui"""
-        self._block_update_callback = block_update_callback
+        ...
 
 class ComponentBlock(ABC):
     _is_top_level : bool
@@ -143,53 +140,46 @@ class ComponentBlock(ABC):
     def __init__(self,
                  is_top_level : bool,
                  write_callback : Callable[[str], None],
-                 read_callback : Callable[[str], None]
-                 #ui_event_callback : Callable[[SyndesiEvent, bool], None]
+                 read_callback : Callable[[str], Awaitable[None]],
+                 read_fail_callback : Callable[[str], Awaitable[None]]
                 ) -> None:
         self._is_top_level = is_top_level
         self._ui_write_callback = write_callback
         self._ui_read_callback = read_callback
-        #self._ui_event_callback = ui_event_callback
+        self._ui_read_fail_callback = read_fail_callback
         super().__init__()
 
     title : str = ""
     @abstractmethod
-    def reset(self): ...
+    def reset(self) -> None: ...
 
     @abstractmethod
-    def build_configuration_tab(self, configuration_tab : int | str): ...
+    def build_configuration_tab(self, configuration_tab : int | str) -> None: ...
 
     @abstractmethod
-    def build_testing_group(self, testing_window : int | str): ...
+    def build_testing_group(self, testing_window : int | str) -> int | str: ...
 
     @abstractmethod
-    def open(self):
+    def open(self) -> None:
         ...
 
     @abstractmethod
-    def close(self):
+    def close(self) -> None:
         ...
 
     @abstractmethod
-    def sync_component_to_block(self):
+    def sync_component_to_block(self) -> None:
         ...
 
     @abstractmethod
-    def sync_block_to_component(self):
+    def sync_block_to_component(self) -> None:
         ...
-
-    # def _event_callback(self, event : AdapterEvent):
-    #     loop.call_soon_threadsafe(self._event_callback_safe, event)
-
-    # @abstractmethod
-    # def _event_callback_safe(self, event : AdapterEvent):
-    #     self._ui_event_callback(event, self._is_top_level)
 
 def bytes_help() -> None:
     _help("bytes formatting can be used such as \\n and \\r")
 
 class StringTestingGroup:
-    def __init__(self, write_callback : Callable[[str], None], read_callback : Callable[[ReadScope], None], lines : int = 5) -> None:
+    def __init__(self, write_callback : Callable[[str], None], read_callback : Callable[[ReadScope], Awaitable[None]], lines : int = 5) -> None:
         self._lines = lines
         self._write_callback = write_callback
         self._read_callback = read_callback
@@ -216,11 +206,12 @@ class StringTestingGroup:
     def _write_input_callback(self, _ : int | str, __ : Any, index : int) -> None:
         self._write_callback(dpg.get_value(self._write_input[index]))
 
-    def _read_button_callback(self):
+    async def _read_button_callback(self) -> None:
         scope = ReadScope(dpg.get_value(self._read_scope_combo))
-        self._read_callback(scope)
+        await self._read_callback(scope)
 
     def build(self, parent : int | str) -> int | str:
+        testing_group : int | str
         with dpg.group(horizontal=False, parent=parent) as testing_group:
             dpg.add_text("Write", color=(70, 142, 194))
             dpg.add_checkbox(label="Advanced", callback=self._write_advanced_callback)

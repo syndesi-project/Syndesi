@@ -230,6 +230,7 @@ class _TraceHub:
         )
 
     def emit_write_frame(self, descriptor : str, frame: WriteFrame[Any]) -> None:
+        """Send a write frame to clients"""
         if isinstance(frame.data, bytes):
             message = self._format_bytes(frame.data)
         else:
@@ -245,6 +246,7 @@ class _TraceHub:
         )
 
     def _emit_event(self, ev: TraceEvent) -> None:
+        """Send a trace event to clients"""
         d = asdict(ev)
         # meta = d.setdefault("meta", {})
         # if isinstance(meta, dict):

@@ -22,7 +22,7 @@ from typing import Any, Generic, TypeVar
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.tools.log_settings import LoggerAlias
 
-from ..component import Descriptor, SyndesiEvent, ReadFrame, ReadScope, ThreadCommand, WriteFrame
+from ..component import Descriptor, ReadFrame, ReadScope, SyndesiEvent, ThreadCommand, WriteFrame
 from ..tools.errors import (
     AdapterDisconnected,
     AdapterOpenError,
@@ -190,9 +190,9 @@ class PendingRead(Generic[DataT]):
     start_time: float
     scope: ReadScope
     response_deadline: float | None
-    # Stop-condition only
+    # Stop-condition override, applied at the next frame boundary and restored
+    # once this pending read is cleared (see AdapterWorker._worker_on_pending_read_cleared)
     stop_override: list[StopCondition] | None = None
-    first_fragment_seen: bool = False
     stop_override_applied: bool = False
     prev_stop_conditions: list[StopCondition] | None = None
 
@@ -375,8 +375,10 @@ class AdapterWorker(Generic[DataT]):
                         frag = self._interface._worker_read(t)
                     except (AdapterDisconnected, AdapterReadError) as e:
                         if self._pending_read is not None:
-                            self._pending_read.cmd.set_exception(e)
+                            pr = self._pending_read
+                            pr.cmd.set_exception(e)
                             self._pending_read = None
+                            self._worker_on_pending_read_cleared(pr)
                         self._interface._worker_close()
                         self._opened = False
                     else:
@@ -464,8 +466,10 @@ class AdapterWorker(Generic[DataT]):
                     self._buffer_clear()
                     # Cancel any pending read
                     if self._pending_read is not None:
-                        self._pending_read.cmd.set_exception(AdapterDisconnected())
+                        pr = self._pending_read
+                        pr.cmd.set_exception(AdapterDisconnected())
                         self._pending_read = None
+                        self._worker_on_pending_read_cleared(pr)
                     command.set_result(None)
                 case StopThreadCommand():
                     self.stop()
@@ -518,13 +522,20 @@ class AdapterWorker(Generic[DataT]):
         # Check if an element from the buffer should be poped
         if cmd.scope == ReadScope.BUFFERED:
             pop = True
+        elif cmd.scope == ReadScope.NEXT:
+            pop = False
         elif cmd.scope == ReadScope.LAST_WRITE:
             if self._last_write_timestamp is None:
                 cmd.set_exception(
                     AdapterReadError("Cannot read with scope=LAST_WRITE without a previous write")
                 )
                 return
-            pop = self.frame_buffer[0].first_fragment_timestamp >= self._last_write_timestamp
+            pop = (
+                len(self.frame_buffer) > 0
+                and self.frame_buffer[0].first_fragment_timestamp >= self._last_write_timestamp
+            )
+        else:
+            pop = False
 
         # If the buffer is not empty, pop the first element (oldest one)
         if len(self.frame_buffer) > 0 and pop:
@@ -548,9 +559,6 @@ class AdapterWorker(Generic[DataT]):
             except (ValueError, TypeError) as e:
                 raise RuntimeWarning("Invalid timeout : {cmd.timeout}") from e
 
-        if read_timeout is None:
-            raise RuntimeError("Cannot read without setting a timeout")
-
         response_deadline = None if read_timeout is None else (t + read_timeout)
 
         # Resolve stop-condition override (applied at next qualifying frame boundary)
@@ -570,6 +578,11 @@ class AdapterWorker(Generic[DataT]):
             response_deadline=response_deadline,
             stop_override=stop_override,
         )
+
+    def _worker_on_pending_read_cleared(self, pending_read: PendingRead[DataT]) -> None:
+        """Called right after a pending read is cleared (delivered, timed out, or
+        cancelled by a disconnect). Subclasses use this to undo per-read state, such
+        as restoring stop-conditions after a temporary override."""
 
     def _worker_manage_fragment(self, fragment: Fragment[DataT]) -> None:
         # pylint: disable=too-many-branches, too-many-statements
@@ -621,7 +634,6 @@ class AdapterWorker(Generic[DataT]):
                     # ReadCommand is received
                     buffered = frame.stop_timestamp <= self._last_write_timestamp
 
-        self._interface._worker_emit_event(AdapterFrameEvent(frame, buffered))
         if buffered:
             # Not consumed by a pending read => buffer it
             self.frame_buffer.append(frame)
@@ -630,11 +642,13 @@ class AdapterWorker(Generic[DataT]):
                 removed_frame_ids=[]
             ))
         elif pr is not None:
-            # Restore stop conditions if we had applied an override
             pr.cmd.set_result(frame)
             self._pending_read = None
+            self._worker_on_pending_read_cleared(pr)
             buffered = False
             self._interface._worker_emit_event(AdapterReadEvent(frame, False))
+        # Experiment : Move it here so that a protocol listening to an event can actually use it
+        self._interface._worker_emit_event(AdapterFrameEvent(frame, buffered))
 
     def _worker_fail_pending_read_timeout(self) -> None:
         """
@@ -659,6 +673,7 @@ class AdapterWorker(Generic[DataT]):
         if read_timeout is None:
             pr.cmd.set_exception(AdapterReadError("Read timeout configuration invalid"))
             self._pending_read = None
+            self._worker_on_pending_read_cleared(pr)
             return
 
         pr.cmd.set_exception(
@@ -667,3 +682,4 @@ class AdapterWorker(Generic[DataT]):
             )
         )
         self._pending_read = None
+        self._worker_on_pending_read_cleared(pr)

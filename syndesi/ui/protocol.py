@@ -3,15 +3,18 @@
 # License : GPL
 
 import ast
-from typing import Any, Callable, Generic, TypeVar
+from collections.abc import Callable
+from typing import Any, Awaitable, Generic, TypeVar
 
-from syndesi.adapters.adapter import Adapter
+import dearpygui.dearpygui as dpg # type: ignore
+
 from syndesi.adapters.adapterworker import AdapterEvent
-from syndesi.component import ReadScope, SyndesiEvent
+from syndesi.component import ReadScope
 from syndesi.protocols.delimited import Delimited
-from .tools import StringTestingGroup, ComponentBlock
+from syndesi.tools.errors import AdapterTimeoutError
+
 from ..protocols.protocol import Protocol
-import dearpygui.dearpygui as dpg
+from .tools import ComponentBlock, StringTestingGroup
 
 ProtocolT = TypeVar("ProtocolT", bound=Protocol[Any, Any])
 
@@ -22,15 +25,15 @@ class ProtocolBlock(Generic[ProtocolT], ComponentBlock):
 
 class DelimitedBlock(ProtocolBlock[Delimited]):
     title : str = "Delimited"
-    
+
     def __init__(self,
                  protocol : Delimited,
-                 #ui_event_callback : Callable[[SyndesiEvent], None],
                  write_callback : Callable[[str], None],
-                 read_callback : Callable[[str], None],
+                 read_callback : Callable[[str], Awaitable[None]],
+                 read_fail_callback : Callable[[str], Awaitable[None]],
                  is_top_level : bool
                 ) -> None:
-        super().__init__(is_top_level, write_callback, read_callback)
+        super().__init__(is_top_level, write_callback, read_callback, read_fail_callback)
         self._protocol = protocol
         self._different_receive_termination = False
 
@@ -44,7 +47,7 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
 
         self.sync_component_to_block()
 
-    def _different_receive_termination_callback(self):
+    def _different_receive_termination_callback(self) -> None:
         self._different_receive_termination = dpg.get_value(self._checkbox)
         if self._different_receive_termination:
             dpg.show_item(self._receive_termination_input)
@@ -57,22 +60,23 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
     def build_testing_group(self, testing_window : int | str) -> int | str:
         return StringTestingGroup(self._write_callback, self._read_callback, 5).build(testing_window)
 
-    def _write_callback(self, raw_data : str):
+    def _write_callback(self, raw_data : str) -> None:
         if self._is_top_level:
             self._ui_write_callback(raw_data)
         self._protocol.write(raw_data)
 
-    def _read_callback(self, scope : ReadScope):
-        print("read")
-        data = self._protocol.read(scope=scope)
-        print(f"Data = {data}")
-        self._ui_read_callback(data)
-        print('callback ok')
+    async def _read_callback(self, scope : ReadScope) -> None:
+        try:
+            data = await self._protocol.aread(scope=scope)
+        except AdapterTimeoutError as e:
+            await self._ui_read_fail_callback(f"Timeout ({e.timeout:.3f}s)")
+        else:
+            await self._ui_read_callback(data)
 
-    def reset(self):
+    def reset(self) -> None:
         self.sync_component_to_block()
 
-    def sync_component_to_block(self):
+    def sync_component_to_block(self) -> None:
         termination = self._protocol.termination
         receive_termination = self._protocol.receive_termination
 
@@ -82,7 +86,7 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
         dpg.set_value(self._termination_input, repr(termination)[1:-1])
         dpg.set_value(self._receive_termination_input, repr(receive_termination)[1:-1])
 
-    def sync_block_to_component(self):
+    def sync_block_to_component(self) -> None:
         termination_raw = dpg.get_value(self._termination_input)
         termination = ast.literal_eval(f"b'{termination_raw}'")
         if self._different_receive_termination:
@@ -93,11 +97,8 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
 
         self._protocol.set_termination(termination, receive_termination)
 
-    def close(self):
+    def close(self) -> None:
         self._protocol.close()
 
-    def open(self):
+    def open(self) -> None:
         self._protocol.open()
-
-    def _event_callback_safe(self, event: AdapterEvent):
-        super()._event_callback_safe(event)

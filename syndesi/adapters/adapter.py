@@ -46,7 +46,7 @@ from .adapterworker import (
     ReadCommand,
     SetTimeoutCommand,
     StopThreadCommand,
-    WriteCommand
+    WriteCommand,
 )
 from .utils import TimeoutParameterType, TimeoutType
 
@@ -154,7 +154,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
     # ┌────────────┐
     # │ Public API │
     # └────────────┘
-    
+
     def set_timeout(self, timeout: TimeoutType) -> None:
         """
         Set adapter timeout
@@ -279,7 +279,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
     async def aread_detailed(
         self,
         timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.BUFFERED,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> ReadFrame[DataT]:
         async with self._async_io_lock:
@@ -294,7 +294,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
     def read(
         self,
         timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.BUFFERED,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> DataT:
         frame = self.read_detailed(
@@ -305,7 +305,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
     async def aread(
         self,
         timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
+        scope: str = ReadScope.BUFFERED,
         stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
     ) -> DataT:
         frame = await self.aread_detailed(

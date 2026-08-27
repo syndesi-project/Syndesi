@@ -9,8 +9,9 @@ Syndesi shell, used to communicate with adapters, protocols and drivers directly
 import argparse
 import logging
 import math
+from collections.abc import Sequence
 from enum import Enum
-from typing import Any, Sequence
+from typing import Any
 
 from syndesi.adapters.bytesadapter import BytesAdapter
 

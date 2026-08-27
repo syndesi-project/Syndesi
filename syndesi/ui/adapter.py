@@ -8,14 +8,13 @@ Adapter UI elements
 import ast
 import asyncio
 import time
-import traceback
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Generic, TypeVar
+from collections.abc import Callable
+from typing import Any, Awaitable, Generic, TypeVar
 
 import dearpygui.dearpygui as dpg  # type: ignore[import-untyped]
 
 from syndesi.tools.errors import (
-    AdapterOpenError,
     AdapterReadError,
     AdapterTimeoutError,
     AdapterWriteError,
@@ -23,14 +22,9 @@ from syndesi.tools.errors import (
 
 from ..adapters.adapterworker import (
     AdapterBufferEvent,
-    AdapterClosedEvent,
+    AdapterEvent,
     AdapterStopConditionsUpdatedEvent,
     AdapterTimeoutUpdatedEvent,
-    AdapterEvent,
-    AdapterFragmentEvent,
-    AdapterOpenedEvent,
-    AdapterFrameEvent,
-    AdapterWriteEvent,
 )
 from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP, IPDescriptor
@@ -43,8 +37,8 @@ from ..adapters.stop_conditions import (
     Termination,
     Total,
 )
-from ..component import ReadScope, SyndesiEvent
-from .tools import Block, StringTestingGroup, ComponentBlock, _help, _hsv_to_rgb, bytes_help
+from ..component import ReadScope
+from .tools import Block, ComponentBlock, StringTestingGroup, bytes_help
 
 StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
 
@@ -194,11 +188,12 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
                  title : str,
                  adapter : AdapterT,
                  write_callback : Callable[[str], None],
-                 read_callback : Callable[[str], None],
+                 read_callback : Callable[[str], Awaitable[None]],
+                 read_fail_callback : Callable[[str], Awaitable[None]],
                  event_callback : Callable[[AdapterEvent], None],
                  is_top_level : bool
                 ) -> None:
-        super().__init__(is_top_level, write_callback, read_callback)
+        super().__init__(is_top_level, write_callback, read_callback, read_fail_callback)
         self._adapter = adapter
         self._adapter.register_event_callback(self._event_callback)
         self._ui_adapter_event_callback = event_callback
@@ -212,12 +207,11 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._timeout_input : int | str = -1
         self._title = title
         self._read_output : int | str = -1
-        self._read_start : float = 0
         self._read_task_running = False
         self._header : int | str = -1
         self._event_window : int | str = -1
         self._events : list[int | str] = []
-        
+
         self._add_tab : int | str = -1
         self._right_clicked_tab : StopConditionBlock[Any] | None = None
         self._buffer_items : dict[int, int | str] = {}
@@ -226,15 +220,15 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._show_fragments_checkbox : int | str = -1
         self._buffer_window : int | str = -1
         self._write_input : dict[int, int | str] = {}
-        self._write_group : dict[int, int | str] = {} 
+        self._write_group : dict[int, int | str] = {}
 
-    def reset(self):
+    def reset(self) -> None:
         self._clear_events()
         self.sync_component_to_block()
         if self._testing_window is not None:
             self._testing_window.write_status("")
 
-    def _event_callback_safe(self, event : AdapterEvent):
+    def _event_callback_safe(self, event : AdapterEvent) -> None:
         self._ui_adapter_event_callback(event)
         if isinstance(event, AdapterBufferEvent):
             if len(event.added_frame_ids) > 0:
@@ -254,8 +248,8 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             self.sync_component_to_block()
 
 
-    def _event_callback(self, event : AdapterEvent):
-        loop.call_soon_threadsafe(self._event_callback_safe, event)    
+    def _event_callback(self, event : AdapterEvent) -> None:
+        loop.call_soon_threadsafe(self._event_callback_safe, event)
 
     @abstractmethod
     def _build_descriptor(self, parent : int | str) -> None:
@@ -268,7 +262,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
     def build_configuration_tab(self, parent : int | str) -> None:
         with dpg.group(parent=parent, horizontal=False):
- 
+
             self._build_descriptor(dpg.last_item())
             self._timeout_input = dpg.add_input_float(
                 label="Timeout",
@@ -292,10 +286,10 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             dpg.add_text("Buffer")
             with dpg.child_window() as self._buffer_window:
                 ...
-                
+
     def build_testing_group(self, testing_window : int | str) -> int | str:
         self._testing_window = StringTestingGroup(self._write_callback, self._read_callback, 5)
-        return self._testing_window.build(testing_window)                
+        return self._testing_window.build(testing_window)
 
     def _left_click(self) -> None:
         if self._add_tab != -1 and dpg.is_item_hovered(self._add_tab):
@@ -319,29 +313,32 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
         self._add_tab = dpg.add_tab(label="+", parent=self._tab_bar)
 
-    def _read_callback(self, scope : ReadScope) -> None:
-        self._read_start = time.time()
-        asyncio.create_task(self._read_task())
+    async def _read_callback(self, scope : ReadScope) -> None:
+        #self._read_start = time.time()
+        #await self._read_task()
+        #asyncio.create_task(self._read_task())
         try:
             data = self._adapter.aread(scope=scope)
         except AdapterTimeoutError as e:
-            self._read_task_running = False
+            await self._ui_read_fail_callback(f"Timeout ({e.timeout:.3f}s)")
             #dpg.set_value(self._read_output, f"Read timeout ({e.timeout})")
             #dpg.configure_item(self._read_output, color=(237, 117, 31))
         except AdapterReadError as e:
-            self._read_task_running = False
+            await self._ui_read_fail_callback(f"Read error ({str(e)})")
             #dpg.set_value(self._read_output, str(e))
             #dpg.configure_item(self._read_output, color=(255,0,0))
         else:
-            self._read_task_running = False
+            await self._ui_read_callback(str(data))
             #dpg.set_value(self._read_output, repr(data))
             #dpg.configure_item(self._read_output, color=(86, 178, 245))
 
-    async def _read_task(self) -> None:
-        self._read_task_running = True
-        while self._read_task_running:
-            #dpg.set_value(self._read_output, f"{time.time() - self._read_start:.3f}s")
-            await asyncio.sleep(1/60)
+        self._read_task_running = False
+
+    # async def _read_task(self) -> None:
+    #     self._read_task_running = True
+    #     while self._read_task_running:
+    #         #dpg.set_value(self._read_output, f"{time.time() - self._read_start:.3f}s")
+    #         await asyncio.sleep(1/60)
 
     def _update_write_status(self, text : str, status : str = "neutral") -> None:
         if self._testing_window is not None:
@@ -417,7 +414,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
         return block
 
-    def sync_component_to_block(self):
+    def sync_component_to_block(self) -> None:
         self._stop_conditions_cache.clear()
         if self._adapter is not None:
             for stop_condition in self._adapter.stop_conditions:
@@ -431,7 +428,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             self._adapter.close()
 
     @abstractmethod
-    def open(self): ...
+    def open(self) -> None: ...
 
 class IPBlock(BytesAdapterBlock[IP]):
     """IP adapter block"""
@@ -439,11 +436,12 @@ class IPBlock(BytesAdapterBlock[IP]):
     def __init__(self,
                  adapter : IP,
                  write_callback : Callable[[str], None],
-                 read_callback : Callable[[str], None],
+                 read_callback : Callable[[str], Awaitable[None]],
+                 read_fail_callback : Callable[[str], Awaitable[None]],
                  event_callback : Callable[[AdapterEvent], None],
                  is_top_level : bool
                 ) -> None:
-        super().__init__("IP Adapter", adapter, write_callback, read_callback, event_callback, is_top_level)
+        super().__init__("IP Adapter", adapter, write_callback, read_callback, read_fail_callback, event_callback, is_top_level)
         self._address_input : int | str = -1
         self._port_input : int | str = -1
         self._port_details : int | str = -1
@@ -473,7 +471,7 @@ class IPBlock(BytesAdapterBlock[IP]):
     def close(self) -> None:
         self._adapter.close()
 
-    def sync_block_to_component(self):
+    def sync_block_to_component(self) -> None:
         address = dpg.get_value(self._address_input)
         try:
             port = int(dpg.get_value(self._port_input))
@@ -489,11 +487,11 @@ class IPBlock(BytesAdapterBlock[IP]):
         self._adapter.descriptor.transport = transport
         self._adapter.set_timeout(timeout if timeout != self.DEFAULT_TIMEOUT else None)
 
-    def sync_component_to_block(self):
+    def sync_component_to_block(self) -> None:
         super().sync_component_to_block()
         dpg.set_value(self._address_input, self._adapter.descriptor.address)
         dpg.set_value(self._port_input, str(self._adapter.descriptor.port))
         dpg.set_value(self._transport_input, self._adapter.descriptor.transport.value)
         dpg.set_value(self._timeout_input, self._adapter.timeout)
-        
+
 
