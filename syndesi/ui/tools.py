@@ -194,16 +194,6 @@ class StringTestingGroup:
         self._write_status : int | str = -1
         self._read_scope_combo : int | str = -1
 
-    # def write_status(self, text : str, status : str = "neutral") -> None:
-    #     if self._write_status != -1:
-    #         if status == "ok":
-    #             dpg.configure_item(self._write_status, color=(30, 199, 38))
-    #         elif status == "error":
-    #             dpg.configure_item(self._write_status, color=(255,0,0))
-    #         else:
-    #             dpg.configure_item(self._write_status, color=(255,255,255))
-    #         dpg.set_value(self._write_status, text)
-
     def _write_button_callback(self) -> None:
         try:
             self._write_callback(dpg.get_value(self._write_input))
@@ -231,19 +221,10 @@ class StringTestingGroup:
         else:
             dpg.set_value(self._read_status, "")
 
-- Remove write event when error
-- Add error when read on closed adapter
-
     def build(self, parent : int | str) -> int | str:
         testing_group : int | str
         with dpg.group(parent=parent) as testing_group:
-#            with dpg.table(header_row=False):
-#                dpg.add_table_column(width=150, width_fixed=True)
-#                dpg.add_table_column()
-
-#                with dpg.table_row():
             dpg.add_text("Write", color=(70, 142, 194))
-#                with dpg.table_row():
             self._write_input = dpg.add_input_text(
                 width=400,
                 callback=self._write_button_callback,
@@ -254,11 +235,8 @@ class StringTestingGroup:
                 callback=self._write_button_callback,
                 width=100
             )
-            #    with dpg.table_row():
             self._write_status = dpg.add_text(color=UIColor.ERROR.value)
-            #    with dpg.table_row():
             dpg.add_text("Query", color=(70, 142, 194))
-            #    with dpg.table_row():
             self._query_input = dpg.add_input_text(
                 callback=self._query_button_callback,
                 on_enter=True
@@ -268,15 +246,10 @@ class StringTestingGroup:
                 callback=self._query_button_callback,
                 width=100
             )
-            #    with dpg.table_row():
             self._query_status = dpg.add_text(color=UIColor.ERROR.value)
-            #    with dpg.table_row():
             dpg.add_text("Read", color=(70, 142, 194))
-            #    with dpg.table_row():
             self._read_scope_combo = dpg.add_combo(label="Scope", items=list(ReadScope), width=100, default_value=ReadScope.BUFFERED)
             dpg.add_button(label="Read", callback=self._read_button_callback)
-            #    with dpg.table_row():
             self._read_status = dpg.add_text(color=UIColor.ERROR.value)
-                
 
         return testing_group

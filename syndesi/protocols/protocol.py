@@ -30,6 +30,7 @@ from syndesi.tools.errors import (
     AdapterDisconnected,
     AdapterReadError,
     AdapterTimeoutError,
+    ProtocolReadError,
     WorkerThreadError,
 )
 
@@ -346,6 +347,8 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
+        if not self.is_open():
+                raise ProtocolReadError("Protocol is not opened")
         frame, future = self._begin_read(ReadScope(scope), time.time())
         if frame is not None:
             return frame
@@ -364,6 +367,9 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
+        if not self.is_open():
+            raise ProtocolReadError("Protocol is not opened")
+        
         frame, future = self._begin_read(ReadScope(scope), time.time())
         if frame is not None:
             return frame

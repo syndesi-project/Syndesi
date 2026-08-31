@@ -93,16 +93,13 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
         return StringTestingGroup(self._write_callback, self._read_callback).build(testing_window)
 
     def _write_callback(self, raw_data : str) -> None:
+        self._protocol.write(raw_data)
         if self._is_top_level:
             self._ui_write_callback(raw_data)
-        self._protocol.write(raw_data)
 
     async def _read_callback(self, scope : ReadScope) -> None:
-        try:
-            data = await self._protocol.aread(scope=scope)
-        except AdapterTimeoutError as e:
-            await self._ui_read_fail_callback(f"Timeout ({e.timeout:.3f}s)")
-        else:
+        data = await self._protocol.aread(scope=scope)
+        if self._is_top_level:
             await self._ui_read_callback(data)
 
     def reset(self) -> None:

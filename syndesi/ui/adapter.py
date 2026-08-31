@@ -225,8 +225,6 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
     def reset(self) -> None:
         self._clear_events()
         self.sync_component_to_block()
-        if self._testing_window is not None:
-            self._testing_window.write_status("")
 
     def _event_callback_safe(self, event : AdapterEvent) -> None:
         self._ui_adapter_event_callback(event)
@@ -314,53 +312,12 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._add_tab = dpg.add_tab(label="+", parent=self._tab_bar)
 
     async def _read_callback(self, scope : ReadScope) -> None:
-        #self._read_start = time.time()
-        #await self._read_task()
-        #asyncio.create_task(self._read_task())
-        try:
-            data = self._adapter.aread(scope=scope)
-        except AdapterTimeoutError as e:
-            await self._ui_read_fail_callback(f"Timeout ({e.timeout:.3f}s)")
-            #dpg.set_value(self._read_output, f"Read timeout ({e.timeout})")
-            #dpg.configure_item(self._read_output, color=(237, 117, 31))
-        except AdapterReadError as e:
-            await self._ui_read_fail_callback(f"Read error ({str(e)})")
-            #dpg.set_value(self._read_output, str(e))
-            #dpg.configure_item(self._read_output, color=(255,0,0))
-        else:
-            await self._ui_read_callback(str(data))
-            #dpg.set_value(self._read_output, repr(data))
-            #dpg.configure_item(self._read_output, color=(86, 178, 245))
-
-        self._read_task_running = False
-
-    # async def _read_task(self) -> None:
-    #     self._read_task_running = True
-    #     while self._read_task_running:
-    #         #dpg.set_value(self._read_output, f"{time.time() - self._read_start:.3f}s")
-    #         await asyncio.sleep(1/60)
-
-    def _update_write_status(self, text : str, status : str = "neutral") -> None:
-        if self._testing_window is not None:
-            self._testing_window.write_status(text, status)
+        print(f'Read with scope {scope}')
+        await self._adapter.aread(scope=scope)
 
     def _write_callback(self, raw_data : str) -> None:
-        try:
-            data : bytes = ast.literal_eval(f"b'{raw_data}'")
-        except SyntaxError as e:
-            self._update_write_status(str(e), "error")
-            return
-
-        if self._adapter is None:
-            self._update_write_status("Adapter has not been opened", "error")
-            return
-
-        try:
-            self._adapter.write(data)
-        except AdapterWriteError as e:
-            self._update_write_status(str(e), "error")
-        else:
-            self._update_write_status(f"Written {repr(data)}", "ok")
+        data : bytes = ast.literal_eval(f"b'{raw_data}'")
+        self._adapter.write(data)
 
     def _remove_stop_condition_callback(self) -> None:
         if self._right_clicked_tab is not None:
