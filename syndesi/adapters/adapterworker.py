@@ -451,7 +451,9 @@ class AdapterWorker(Generic[DataT]):
                         except AdapterOpenError as e:
                             self._opened = False
                             self._worker_logger.error(str(e))
-                            command.set_exception(e)
+                            if not command.done():
+                                # Ignore if the command was cancelled already
+                                command.set_exception(e)
                         else:
                             self._opened = True
                             if self._interface.descriptor is not None:

@@ -252,7 +252,6 @@ class Component(ABC, Generic[DataT]):
         self,
         payload: DataT,
         timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.LAST_WRITE.value,
     ) -> ReadFrame[DataT]:
         """
         Asynchronously query the component and return a Frame object
@@ -262,8 +261,7 @@ class Component(ABC, Generic[DataT]):
     def query_detailed(
         self,
         payload: DataT,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.LAST_WRITE.value,
+        timeout: TimeoutParameterType = ...
     ) -> ReadFrame[DataT]:
         """
         Synchronously query the component and return a Frame object
@@ -274,28 +272,24 @@ class Component(ABC, Generic[DataT]):
     async def aquery(
         self,
         payload: DataT,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.LAST_WRITE.value,
+        timeout: TimeoutParameterType = ...
     ) -> DataT:
         """Asynchronously query the component"""
         output_frame = await self.aquery_detailed(
             payload=payload,
-            timeout=timeout,
-            scope=scope,
+            timeout=timeout
         )
         return output_frame.data
 
     def query(
         self,
         payload: DataT,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.LAST_WRITE.value,
+        timeout: TimeoutParameterType = ...
     ) -> DataT:
         """Query the component"""
         output_frame = self.query_detailed(
             payload=payload,
             timeout=timeout,
-            scope=scope,
         )
         return output_frame.data
 

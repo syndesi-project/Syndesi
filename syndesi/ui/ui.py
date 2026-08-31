@@ -72,6 +72,12 @@ def default_serialport() -> SerialPort:
 def default_delimited(adapter : BytesAdapter) -> Delimited:
     return Delimited(adapter, termination='\n')
 
+class EntrySource(StrEnum):
+    ADAPTER = "A"
+    PROTOCOL = "P"
+    DRIVER = "D"
+    UNKNOWN = "x"
+
 class TestingEntryType(IntEnum):
     # Meta
     UNKNOWN_EVENT = 0
@@ -175,9 +181,9 @@ class UIBase:
         if isinstance(adapter, IP):
             return IPBlock(
                 adapter,
-                self._write_callback,
-                self._read_callback,
-                self._read_fail_callback,
+                self._adapter_write_callback,
+                self._adapter_read_callback,
+                self._adapter_read_fail_callback,
                 self._event_callback,
                 is_top_level
             )
@@ -193,9 +199,9 @@ class UIBase:
         if isinstance(protocol, Delimited):
             return DelimitedBlock(
                 protocol,
-                self._write_callback,
-                self._read_callback,
-                self._read_fail_callback,
+                self._protocol_write_callback,
+                self._protocol_read_callback,
+                self._protocol_read_fail_callback,
                 self._event_callback,
                 is_top_level
             )
@@ -255,7 +261,6 @@ class UIBase:
                 with dpg.child_window(width=-1, height=-1) as self._testing_window:
 
                     with dpg.group(horizontal=False, parent=self._testing_window) as self._testing_top_group:
-                        #dpg.add_text("Testing")
 
                         with dpg.group(horizontal=True):
                             dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default_value=self._show_events)
@@ -269,6 +274,7 @@ class UIBase:
 
                         with dpg.table(policy=dpg.mvTable_SizingFixedFit) as self._testing_table:
                             dpg.add_table_column(label="Timestamp")
+                            dpg.add_table_column(label="Type")
                             dpg.add_table_column(label="Event")
                             dpg.add_table_column(label="Data")
 
@@ -291,11 +297,12 @@ class UIBase:
             dpg.delete_item(entry.group_tag)
         self._entries.clear()
 
-    def _add_testing_entry(self, entry_type : TestingEntryType, time_delta : float, text : str = "") -> None:
+    def _add_testing_entry(self, entry_source : EntrySource, entry_type : TestingEntryType, time_delta : float, text : str = "") -> None:
         show = self._show_events or not entry_type.is_event()
 
         with dpg.table_row(parent=self._testing_table, show=show) as row_tag:
             dpg.add_text(f"{time_delta:+8.3f}", color=ENTRY_COLOR[entry_type])
+            dpg.add_text(entry_source, color=ENTRY_COLOR[entry_type])
             dpg.add_text(ENTRY_PREFIX[entry_type], color=ENTRY_COLOR[entry_type])
             dpg.add_text(text, color=ENTRY_COLOR[entry_type])
 
@@ -416,11 +423,11 @@ class UIBase:
         # Use adapter close and open events to show open and close
         if isinstance(event, AdapterClosedEvent):
             #self._add_testing_entry(TestingEntryType.CLOSE_EVENT, delta)
-            loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.CLOSE_EVENT, delta)
+            loop.call_soon_threadsafe(self._add_testing_entry, EntrySource.ADAPTER, TestingEntryType.CLOSE_EVENT, delta)
             self._status(False)
         elif isinstance(event, AdapterOpenedEvent):
             #self._add_testing_entry(TestingEntryType.OPEN_EVENT, delta)
-            loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.OPEN_EVENT, delta)
+            loop.call_soon_threadsafe(self._add_testing_entry, EntrySource.ADAPTER, TestingEntryType.OPEN_EVENT, delta)
             self._status(True)
         elif isinstance(event, AdapterFrameEvent):
             if event.frame.stop_condition is None:
@@ -429,6 +436,7 @@ class UIBase:
                 sc_data = str(event.frame.stop_condition)
             loop.call_soon_threadsafe(
                 self._add_testing_entry,
+                EntrySource.ADAPTER,
                 TestingEntryType.FRAME_EVENT,
                 delta,
                 f"{event.frame.data!r} ({sc_data})"
@@ -436,13 +444,24 @@ class UIBase:
         elif isinstance(event, AdapterFragmentEvent):
             loop.call_soon_threadsafe(
                 self._add_testing_entry,
+                EntrySource.ADAPTER,
                 TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
                 delta,
                 str(event.fragment.data))
         elif isinstance(event, AdapterReadEvent):
-            loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.READ_EVENT, delta, f"{event.frame.data}" + " (buffer)" if event.from_buffer else "")
+            loop.call_soon_threadsafe(
+                self._add_testing_entry,
+                EntrySource.ADAPTER,
+                TestingEntryType.READ_EVENT,
+                delta, f"{event.frame.data}" + (" (buffer)" if event.from_buffer else "")
+            )
         elif isinstance(event, AdapterWriteEvent):
-            loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.WRITE_EVENT, delta, f"{event.frame.data!r}")
+            loop.call_soon_threadsafe(
+                self._add_testing_entry,
+                EntrySource.ADAPTER,
+                TestingEntryType.WRITE_EVENT,
+                delta, f"{event.frame.data!r}"
+            )
         elif isinstance(event,
                         (AdapterBufferEvent,
                             AdapterTimeoutUpdatedEvent,
@@ -453,22 +472,67 @@ class UIBase:
                         ):
             ...
         else:
-            loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.UNKNOWN_EVENT, delta)
+            loop.call_soon_threadsafe(self._add_testing_entry, EntrySource.UNKNOWN, TestingEntryType.UNKNOWN_EVENT, delta)
 
-    def _write_callback(self, data : str) -> None:
+    def _adapter_write_callback(self, data : str) -> None:
+        self._write_callback(EntrySource.ADAPTER, data)
+    
+    def _protocol_write_callback(self, data : str) -> None:
+        self._write_callback(EntrySource.PROTOCOL, data)
+
+    def _driver_write_callback(self, data : str) -> None:
+        self._write_callback(EntrySource.DRIVER, data)
+
+    def _write_callback(self, entry_source : EntrySource, data : str) -> None:
         t = time.time()
         delta = t - self._start_timestamp
-        loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_WRITE, delta, data)
+        loop.call_soon_threadsafe(
+            self._add_testing_entry,
+            entry_source,
+            TestingEntryType.TOPLEVEL_WRITE,
+            delta,
+            data
+        )
 
-    async def _read_callback(self, data : str) -> None:
+    async def _adapter_read_callback(self, data : str) -> None:
+        await self._read_callback(EntrySource.ADAPTER, data)
+    
+    async def _protocol_read_callback(self, data : str) -> None:
+        await self._read_callback(EntrySource.PROTOCOL, data)
+
+    async def _driver_read_callback(self, data : str) -> None:
+        await self._read_callback(EntrySource.DRIVER, data)
+
+    async def _read_callback(self, entry_source : EntrySource, data : str) -> None:
         t = time.time()
         delta = t - self._start_timestamp
-        loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_READ, delta, data)
+        loop.call_soon_threadsafe(
+            self._add_testing_entry,
+            entry_source,
+            TestingEntryType.TOPLEVEL_READ,
+            delta,
+            data
+        )
 
-    async def _read_fail_callback(self, message : str) -> None:
+    async def _adapter_read_fail_callback(self, message : str) -> None:
+        await self._read_fail_callback(EntrySource.ADAPTER, message)
+    
+    async def _protocol_read_fail_callback(self, message : str) -> None:
+        await self._read_fail_callback(EntrySource.PROTOCOL, message)
+
+    async def _driver_read_fail_callback(self, message : str) -> None:
+        await self._read_fail_callback(EntrySource.DRIVER, message)
+
+    async def _read_fail_callback(self, entry_source : EntrySource, message : str) -> None:
         t = time.time()
         delta = t - self._start_timestamp
-        loop.call_soon_threadsafe(self._add_testing_entry, TestingEntryType.TOPLEVEL_READ_FAIL, delta, message)
+        loop.call_soon_threadsafe(
+            self._add_testing_entry,
+            entry_source,
+            TestingEntryType.TOPLEVEL_READ_FAIL,
+            delta,
+            message
+        )
 
 class Command(StrEnum):
     """Syndesi ui CLI mode"""

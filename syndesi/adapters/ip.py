@@ -196,7 +196,7 @@ class IP(BytesAdapter):
                     f"Adapter {self._descriptor} couldn't write"
                     " all of the data to the socket"
                 )
-
+            
     def _worker_open(self) -> None:
         # Create the socket instance
         if self._descriptor.transport == IPDescriptor.Transport.TCP:
@@ -208,7 +208,10 @@ class IP(BytesAdapter):
         try:
             # TODO : Simulate a very long connect time (bad network) and manage timeout
             # error accordingly
-            s.settimeout(self.WorkerTimeout.OPEN.value)
+            if self.timeout is None:
+                s.settimeout(None)
+            else:
+                s.settimeout(self.timeout)
             s.connect((self._descriptor.address, self._descriptor.port))
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:
             msg = f"Failed to open adapter {self._descriptor} ({e})"

@@ -222,7 +222,18 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         """
         Open adapter communication with the target (blocking)
         """
-        output = self._open_future().result(self.WorkerTimeout.OPEN.value)
+        
+        # If timeout is None, wait indefinitely
+        # If timeout is not None, add a small amount (IMMEDIATE_COMMAND)
+        # To let the worker setup and respond. The "real" timeout is used in the _worker_open
+        # method
+        timeout : float | None
+        if self.timeout is None:
+            timeout = None
+        else:
+            timeout = self.timeout + self.WorkerTimeout.IMMEDIATE_COMMAND.value
+
+        output = self._open_future().result(timeout)
         return output
 
     async def aopen(self) -> None:

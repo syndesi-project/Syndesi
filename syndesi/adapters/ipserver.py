@@ -157,7 +157,7 @@ class IPServer(Adapter[Client]):
         else:
             raise AdapterOpenError("Invalid transport protocol")
         try:
-            self._socket.settimeout(self.WorkerTimeout.OPEN.value)
+            self._socket.settimeout(self.timeout)
             self._socket.bind((self._descriptor.address, self._descriptor.port))
             self._socket.listen(self._backlog)
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:

@@ -288,7 +288,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
                 ...
 
     def build_testing_group(self, testing_window : int | str) -> int | str:
-        self._testing_window = StringTestingGroup(self._write_callback, self._read_callback, 5)
+        self._testing_window = StringTestingGroup(self._write_callback, self._read_callback)
         return self._testing_window.build(testing_window)
 
     def _left_click(self) -> None:

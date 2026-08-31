@@ -90,7 +90,7 @@ class DelimitedBlock(ProtocolBlock[Delimited]):
         self.sync_block_to_component()
 
     def build_testing_group(self, testing_window : int | str) -> int | str:
-        return StringTestingGroup(self._write_callback, self._read_callback, 5).build(testing_window)
+        return StringTestingGroup(self._write_callback, self._read_callback).build(testing_window)
 
     def _write_callback(self, raw_data : str) -> None:
         if self._is_top_level:
