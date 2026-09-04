@@ -107,7 +107,6 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
 
             stop = False
             frame_stop_condition : StopCondition | None = None
-            #stop_condition_type: StopConditionType | None = None
 
             for stop_condition in self._stop_conditions:
                 (
@@ -133,6 +132,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                 fragment=kept,
                 write_delta=write_delta,
             )
+            #pylint: disable=protected-access
             self._interface._worker_emit_event(AdapterFragmentEvent(
                 next_timeout_timestamp=self._next_stop_condition_timeout_timestamp,
                 fragment=kept,
@@ -166,7 +166,6 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                 first_fragment_timestamp=self._fragments[0].timestamp,
                 stop_timestamp=stop_timestamp,
                 stop_condition=frame_stop_condition,
-                #stop_condition_type=stop_condition_type,
                 previous_read_buffer_used=False,
                 response_delay=response_delay,
             )

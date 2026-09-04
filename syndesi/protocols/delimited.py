@@ -109,7 +109,11 @@ class Delimited(BytesProtocol[str]):
         terminated_payload = protocol_payload + self._termination
         return terminated_payload.encode(self._encoding)
 
-    def set_termination(self, termination : str | bytes, receive_termination : str | bytes | None = None) -> None:
+    def set_termination(
+            self,
+            termination : str | bytes,
+            receive_termination : str | bytes | None = None
+        ) -> None:
         """Set Delimited termination.
         If receive_termination is not specified, termination parameter is used both
         for send and receive
@@ -135,7 +139,8 @@ class Delimited(BytesProtocol[str]):
                 receive_termination = receive_termination.decode(self._encoding)
             elif not isinstance(receive_termination, str):
                 raise ValueError(
-                    f"receive_termination argument must be of type str or bytes, not {type(termination)}"
+                    "receive_termination argument must be of type str or bytes"\
+                        f", not {type(termination)}"
                 )
             self._receive_termination = receive_termination
 
@@ -145,8 +150,11 @@ class Delimited(BytesProtocol[str]):
 
     @property
     def termination(self) -> str:
+        """Termination added when sending data. Also used as receiveing
+        termination if receive_termination is not set"""
         return self._termination
 
     @property
     def receive_termination(self) -> str:
+        """Expected termination when receiving data"""
         return self._receive_termination

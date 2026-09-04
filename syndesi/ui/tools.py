@@ -195,22 +195,20 @@ class StringTestingGroup:
         self._read_scope_combo : int | str = -1
 
     def _write_button_callback(self) -> None:
+        dpg.set_value(self._write_status, "")
         try:
             self._write_callback(dpg.get_value(self._write_input))
         except SyndesiError as e:
             dpg.set_value(self._write_status, e)
-        else:
-            dpg.set_value(self._write_status, "")
 
-    async def _query_button_callback(self):
+    async def _query_button_callback(self) -> None:
 
+        dpg.set_value(self._query_status, "")
         try:
             self._write_callback(dpg.get_value(self._query_input))
             await self._read_callback(ReadScope.LAST_WRITE)
         except SyndesiError as e:
             dpg.set_value(self._query_status, e)
-        else:
-            dpg.set_value(self._query_status, "")
 
     async def _read_button_callback(self) -> None:
         scope = ReadScope(dpg.get_value(self._read_scope_combo))

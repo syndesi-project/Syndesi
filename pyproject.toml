@@ -26,8 +26,9 @@ classifiers = [
 ]
 dependencies = ['prompt_toolkit', 'pyserial', 'rich', 'platformdirs']
 
-#[project.optional-dependencies]
-#extra = [""]
+[project.optional-dependencies]
+visa = ["pyvisa"]
+ui = ["dearpygui"]
 
 [project.scripts]
 syndesi = "syndesi.scripts.syndesi:main"

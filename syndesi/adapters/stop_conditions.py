@@ -328,11 +328,3 @@ def termination_in_data(termination: bytes, data: bytes) -> tuple[int | None, in
             length -= 1
 
     return p, length
-
-STOP_CONDITION_BY_TYPE = {
-    StopConditionType.TERMINATION : Termination,
-    StopConditionType.LENGTH : Length,
-    StopConditionType.CONTINUATION : Continuation,
-    StopConditionType.TOTAL : Total,
-    StopConditionType.FRAGMENT : Fragment,
-}

@@ -53,7 +53,7 @@ class IPDescriptor(Descriptor):
                     return member  # type: ignore # TODO : Check this
             raise ValueError(f"{transport} is not a valid {cls.__name__}")
 
-    DETECTION_PATTERN = r"(\d+.\d+.\d+.\d+|[\w\.]+):\d+:(UDP|TCP)(:server)?"
+    DETECTION_PATTERN = r"^(\d+\.\d+\.\d+\.\d+|[\w.]+):\d+:(UDP|TCP)(:server)?$"
     address: str
     transport: Transport
     port: int | None = None
@@ -196,7 +196,7 @@ class IP(BytesAdapter):
                     f"Adapter {self._descriptor} couldn't write"
                     " all of the data to the socket"
                 )
-            
+
     def _worker_open(self) -> None:
         # Create the socket instance
         if self._descriptor.transport == IPDescriptor.Transport.TCP:

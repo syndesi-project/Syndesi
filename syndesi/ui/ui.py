@@ -422,12 +422,20 @@ class UIBase:
         # Only adapter events are received and displayed
         # Use adapter close and open events to show open and close
         if isinstance(event, AdapterClosedEvent):
-            #self._add_testing_entry(TestingEntryType.CLOSE_EVENT, delta)
-            loop.call_soon_threadsafe(self._add_testing_entry, EntrySource.ADAPTER, TestingEntryType.CLOSE_EVENT, delta)
+            loop.call_soon_threadsafe(
+                self._add_testing_entry,
+                EntrySource.ADAPTER,
+                TestingEntryType.CLOSE_EVENT,
+                delta
+            )
             self._status(False)
         elif isinstance(event, AdapterOpenedEvent):
-            #self._add_testing_entry(TestingEntryType.OPEN_EVENT, delta)
-            loop.call_soon_threadsafe(self._add_testing_entry, EntrySource.ADAPTER, TestingEntryType.OPEN_EVENT, delta)
+            loop.call_soon_threadsafe(
+                self._add_testing_entry,
+                EntrySource.ADAPTER,
+                TestingEntryType.OPEN_EVENT,
+                delta
+            )
             self._status(True)
         elif isinstance(event, AdapterFrameEvent):
             if event.frame.stop_condition is None:
@@ -445,7 +453,8 @@ class UIBase:
             loop.call_soon_threadsafe(
                 self._add_testing_entry,
                 EntrySource.ADAPTER,
-                TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else TestingEntryType.FRAGMENT_EVENT,
+                TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else \
+                    TestingEntryType.FRAGMENT_EVENT,
                 delta,
                 str(event.fragment.data))
         elif isinstance(event, AdapterReadEvent):
@@ -472,11 +481,16 @@ class UIBase:
                         ):
             ...
         else:
-            loop.call_soon_threadsafe(self._add_testing_entry, EntrySource.UNKNOWN, TestingEntryType.UNKNOWN_EVENT, delta)
+            loop.call_soon_threadsafe(
+                self._add_testing_entry,
+                EntrySource.UNKNOWN,
+                TestingEntryType.UNKNOWN_EVENT,
+                delta
+            )
 
     def _adapter_write_callback(self, data : str) -> None:
         self._write_callback(EntrySource.ADAPTER, data)
-    
+
     def _protocol_write_callback(self, data : str) -> None:
         self._write_callback(EntrySource.PROTOCOL, data)
 
@@ -496,7 +510,7 @@ class UIBase:
 
     async def _adapter_read_callback(self, data : str) -> None:
         await self._read_callback(EntrySource.ADAPTER, data)
-    
+
     async def _protocol_read_callback(self, data : str) -> None:
         await self._read_callback(EntrySource.PROTOCOL, data)
 
@@ -516,7 +530,7 @@ class UIBase:
 
     async def _adapter_read_fail_callback(self, message : str) -> None:
         await self._read_fail_callback(EntrySource.ADAPTER, message)
-    
+
     async def _protocol_read_fail_callback(self, message : str) -> None:
         await self._read_fail_callback(EntrySource.PROTOCOL, message)
 
@@ -559,7 +573,14 @@ def main(args : list[str] | None = None) -> None:
     """Main Syndesi UI entry-point"""
     parser = argparse.ArgumentParser()
 
-    #parser.add_argument("--verbose", "-v", action="count", default=0, help="-v = INFO, -vv = DEBUG")
+    #parser.add_argument(
+    # "--verbose",
+    # "-v",
+    # action="count",
+    # default=0,
+    # help="-v = INFO,
+    # -vv = DEBUG"
+    # )
     #debug_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
     #parser.add_argument('command', choices=list(Command), type=str)
     subparsers = parser.add_subparsers(dest='command')

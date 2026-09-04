@@ -4,7 +4,7 @@ from time import sleep
 import time
 
 from syndesi import IP
-from syndesi.adapters.adapter import Frame
+from syndesi.component import ReadFrame
 from syndesi.adapters.stop_conditions import *
 import socket
 import os
@@ -530,7 +530,7 @@ def _test_delayer(ip_delayer_port):
         delay = random.random()*0.5
         frame = client.query_detailed(encode_sequences([(sequence, delay)]))
         data = frame.data
-        frame : Frame
+        frame : ReadFrame
         assert data == sequence
         assert abs(frame.response_delay - delay) < TIME_DELTA
     client.flush_read()

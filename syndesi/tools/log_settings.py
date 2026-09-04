@@ -17,7 +17,6 @@ class LoggerAlias(Enum):
     ADAPTER = "syndesi.adapter"
     PROTOCOL = "syndesi.protocol"
     CLI = "syndesi.cli"
-    REMOTE = "syndesi.remote"
     ADAPTER_WORKER = "syndesi.adapterworker"
 
 

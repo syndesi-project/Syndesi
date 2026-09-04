@@ -108,22 +108,27 @@ def parse_end_argument(arg: str | None) -> str | None:
     return arg.replace("\\n", "\n").replace("\\r", "\r")
 
 class ListSerialPortsAction(argparse.Action):
-    def __init__(self,
-                 option_strings : Sequence[str],
-                 dest : str,
-                 default : bool = False,
-                 required : bool = False,
-                 help : Any | None = None
-        ) -> None:
-        super().__init__(
-            option_strings=option_strings,
-            dest=dest,
-            nargs=0,
-            const=True,
-            default=default,
-            required=required,
-            help=help,
-        )
+    """List serial ports action"""
+    nargs = 0
+    const = True
+    default = False
+    required = False
+    # def __init__(self,
+    #              option_strings : Sequence[str],
+    #              dest : str,
+    #              default : bool = False,
+    #              required : bool = False,
+    #              help : Any | None = None
+    #     ) -> None:
+    #     super().__init__(
+    #         option_strings=option_strings,
+    #         dest=dest,
+    #         nargs=0,
+    #         const=True,
+    #         default=default,
+    #         required=required,
+    #         help=help,
+    #     )
 
     def __call__(self,
                  parser : argparse.ArgumentParser,
@@ -143,6 +148,7 @@ class AdapterShell:
 
     DEFAULT_TERMINATION = "\n"
 
+    #pylint: disable=too-many-statements too-many-branches
     def __init__(self, kind: AdapterType, input_arguments: list[str]) -> None:
         logging.basicConfig(level=logging.CRITICAL + 1)
         self._parser = argparse.ArgumentParser()
@@ -195,7 +201,12 @@ class AdapterShell:
             self._parser.add_argument(
                 "--rtscts", action="store_true", default=False, help="Enable RTS/CTS"
             )
-            self._parser.add_argument('--list', action=ListSerialPortsAction, default=False, help="List available serial ports")
+            self._parser.add_argument(
+                '--list',
+                action=ListSerialPortsAction,
+                default=False,
+                help="List available serial ports"
+            )
 
         elif kind == AdapterType.VISA:
             self._parser.add_argument("descriptor", type=str)

@@ -17,7 +17,7 @@ from typing import Any, Generic, TypeVar
 
 from .adapters.stop_conditions import StopCondition
 from .adapters.utils import TimeoutParameterType
-from .tools.errors import AdapterOpenError, AdapterReadError, WorkerThreadError
+from .tools.errors import AdapterOpenError, WorkerThreadError
 from .tools.log_settings import LoggerAlias
 
 
@@ -68,7 +68,6 @@ class ReadFrame(Generic[DataT], Frame[DataT]):
     stop_timestamp: float
     previous_read_buffer_used: bool
     response_delay: float
-    #stop_condition_type: StopConditionType = StopConditionType.FRAGMENT
     stop_condition : StopCondition | None = None
     first_fragment_timestamp: float = float("nan")
 
@@ -81,10 +80,6 @@ class WriteFrame(Generic[DataT], Frame[DataT]):
     def __str__(self) -> str:
         return f"WriteFrame({self.data})"
 
-
-
-class EmptyFrame(AdapterReadError):
-    """A special exception to indicate an empty frame as return"""
 
 
 ThreadReturn = TypeVar("ThreadReturn")
@@ -295,6 +290,7 @@ class Component(ABC, Generic[DataT]):
 
     # ==== Other ====
 
+    @property
     @abstractmethod
     def is_open(self) -> bool:
         """Return True if the component is open"""

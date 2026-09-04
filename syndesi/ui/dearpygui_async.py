@@ -1,6 +1,13 @@
-# This code comes from https://github.com/CasuallyCalm/dearpygui-async/blob/main/src/dearpygui_async/dearpygui_async.py
+# This code comes from
+# https://github.com/CasuallyCalm/dearpygui-async/blob/main/src/dearpygui_async/dearpygui_async.py
 # Copying it allows the user to install dearpygui only
 # Tweaks were made to make mypy and pylint happy
+
+"""
+This is the dearpygui-async main implementation from
+https://github.com/CasuallyCalm/dearpygui-async/blob/main/src/dearpygui_async/dearpygui_async.py
+"""
+
 
 import asyncio
 import time
@@ -60,7 +67,7 @@ class DearPyGuiAsync:
                     ) or asyncio.iscoroutinefunction(job[0].__call__):
                         try:
                             await job[0](*args)
-                        except Exception as e: # pylint: disable=
+                        except Exception as e: # pylint: disable=broad-exception-caught
                             print(f"Dearpygui exception : {e}")
                     else:
                         job[0](*args)
@@ -70,7 +77,8 @@ class DearPyGuiAsync:
         '''
         |coro|
         Processes the the callbacks asynchronously
-        This will configure the app to manually manage the callbacks so overwrite this if you want to do something else
+        This will configure the app to manually manage the callbacks
+        so overwrite this if you want to do something else
         '''
         dpg.configure_app(manual_callback_management=True)
         while dpg.is_dearpygui_running():

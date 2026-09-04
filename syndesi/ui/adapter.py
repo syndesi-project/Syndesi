@@ -312,12 +312,15 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._add_tab = dpg.add_tab(label="+", parent=self._tab_bar)
 
     async def _read_callback(self, scope : ReadScope) -> None:
-        print(f'Read with scope {scope}')
-        await self._adapter.aread(scope=scope)
+        data = await self._adapter.aread(scope=scope)
+        if self._is_top_level:
+            await self._ui_read_callback(str(data))
 
     def _write_callback(self, raw_data : str) -> None:
         data : bytes = ast.literal_eval(f"b'{raw_data}'")
         self._adapter.write(data)
+        if self._is_top_level:
+            self._ui_write_callback(str(data))
 
     def _remove_stop_condition_callback(self) -> None:
         if self._right_clicked_tab is not None:

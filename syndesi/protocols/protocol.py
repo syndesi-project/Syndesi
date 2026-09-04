@@ -46,17 +46,8 @@ AdapterT = TypeVar("AdapterT", bound=Adapter[Any])
 class ProtocolReadFrame(Generic[ProtocolFrameT], ReadFrame[ProtocolFrameT]):
     """Protocol read frame"""
 
-    # payload: ProtocolFrameT
-
-    # @abstractmethod
     def __str__(self) -> str:
         return f"ProtocolReadFrame({self.data!r})"
-
-@dataclass
-class ProtocolWriteFrame(Generic[ProtocolFrameT], ReadFrame[ProtocolFrameT]):
-    """Protocol write frame"""
-    def __str__(self) -> str:
-        return f"ProtocolWriteFrame({self.data!r})"
 
 class ProtocolEvent(SyndesiEvent):
     """Protocol event"""
@@ -74,17 +65,6 @@ class ProtocolBufferEvent(ProtocolEvent):
     """Event in the protocol frame buffer (frames added or removed)"""
     added_frame_ids : list[int]
     removed_frame_ids : list[int]
-
-# @dataclass
-# class ProtocolReadEvent(Generic[ProtocolFrameT], ProtocolEvent):
-#     """Protocol read event"""
-#     from_buffer : bool
-#     frame: ProtocolReadFrame[ProtocolFrameT]
-
-# @dataclass
-# class ProtocolWriteEvent(Generic[ProtocolFrameT], ProtocolEvent):
-#     """Protocol write event"""
-#     frame: ProtocolWriteFrame[ProtocolFrameT]
 
 
 @dataclass
@@ -142,7 +122,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         else:
             self.adapter.set_timeout(timeout)
 
-        if self.adapter.is_open():
+        if self.adapter.is_open:
             self._arm_drain()
 
     def _next_frame_id(self) -> int:
@@ -253,7 +233,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         self, scope: ReadScope, call_start: float
     ) -> tuple[
         ProtocolReadFrame[ProtocolFrameT] | None,
-        "Future[ProtocolReadFrame[ProtocolFrameT]] | None",
+        Future[ProtocolReadFrame[ProtocolFrameT]] | None,
     ]:
         with self._lock:
             frame = self._pop_matching_locked(scope, call_start)
@@ -272,7 +252,10 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
             return frame, None
         return None, future
 
-    def _cancel_pending_if_timed_out(self, future: "Future[ProtocolReadFrame[ProtocolFrameT]]") -> None:
+    def _cancel_pending_if_timed_out(
+            self,
+            future: Future[ProtocolReadFrame[ProtocolFrameT]]
+        ) -> None:
         with self._lock:
             if self._pending is not None and self._pending.future is future:
                 self._pending = None
@@ -287,7 +270,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         self, protocol_payload: ProtocolFrameT
     ) -> Any: ...
 
-    def _emit_event(self, event : ProtocolEvent):
+    def _emit_event(self, event : ProtocolEvent) -> None:
         for callback in self._event_callbacks:
             try:
                 callback(event)
@@ -309,6 +292,7 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
 
     @property
     def frame_buffer(self) -> list[ProtocolReadFrame[ProtocolFrameT]]:
+        """List of stored frames"""
         with self._lock:
             return list(self._frame_buffer)
 
@@ -347,8 +331,8 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
-        if not self.is_open():
-                raise ProtocolReadError("Protocol is not opened")
+        if not self.is_open:
+            raise ProtocolReadError("Protocol is not opened")
         frame, future = self._begin_read(ReadScope(scope), time.time())
         if frame is not None:
             return frame
@@ -367,9 +351,9 @@ class Protocol(Generic[AdapterT, ProtocolFrameT], Component[ProtocolFrameT]):
         timeout: TimeoutParameterType = ...,
         scope: str = ReadScope.BUFFERED,
     ) -> ProtocolReadFrame[ProtocolFrameT]:
-        if not self.is_open():
+        if not self.is_open:
             raise ProtocolReadError("Protocol is not opened")
-        
+
         frame, future = self._begin_read(ReadScope(scope), time.time())
         if frame is not None:
             return frame
@@ -466,9 +450,10 @@ class BytesProtocol(Protocol[BytesAdapter, ProtocolFrameT], Generic[ProtocolFram
         return self.read_detailed(timeout=timeout, scope=scope)
 
     # ==== Other ====
-
+    
+    @property
     def is_open(self) -> bool:
         """
-        Return True if the protocol is opened
+        Return True if the protocol and underlying adapter are open
         """
-        return self.adapter.is_open()
+        return self.adapter.is_open

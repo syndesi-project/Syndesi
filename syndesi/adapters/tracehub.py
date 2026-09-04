@@ -84,15 +84,6 @@ class WriteEvent(TraceEvent):
     length: int
     t: str = field(default="write_bytes", init=False)
 
-# @dataclass(frozen=True)
-# class ReadEventMessage(TraceEvent):
-#     """
-#     Generic read event
-#     """
-#     message: str
-#     write_delta: float
-#     t: str = field(default="read_bytes", init=False)
-
 EVENTS: list[type[TraceEvent]] = [
     FragmentEvent,
     OpenEvent,

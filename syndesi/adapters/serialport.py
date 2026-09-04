@@ -46,7 +46,7 @@ class SerialPortDescriptor(Descriptor):
     SerialPort descriptor that holds location (COMx or /dev/ttyx) and baudrate
     """
 
-    DETECTION_PATTERN = r"(COM\d+|/dev[/\w\d]+):\d+"
+    DETECTION_PATTERN = r"^(COM\d+|/dev[/\w\d]+):\d+$"
     port: str
     baudrate: int | None = None
     bytesize: int = 8
@@ -259,10 +259,3 @@ class SerialPort(BytesAdapter):
 
     def _selectable(self) -> HasFileno | None:
         return self._port
-
-    # def is_opened(self) -> bool:
-    #     if self._port is not None:
-    #         if self._port.isOpen():  # type: ignore
-    #             return True
-
-    #     return False

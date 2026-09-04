@@ -1,13 +1,11 @@
 from time import sleep, time
 
-# from syndesi.adapters.backend.timeout import TimeoutType
 from serial_delayer import SerialDelayer
 
 import pytest
 
 from syndesi import SerialPort
 from syndesi.adapters.stop_conditions import Length, Termination, Continuation
-from syndesi.adapters.timeout import Timeout
 from syndesi.tools.errors import AdapterOpenError, AdapterTimeoutError
 
 BAUDRATE = 115200

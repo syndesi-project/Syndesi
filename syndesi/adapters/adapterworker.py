@@ -139,18 +139,12 @@ class WriteCommand(Generic[DataT], ThreadCommand[None]):
         super().__init__()
         self.frame = frame
 
-
 class SetTimeoutCommand(ThreadCommand[None]):
     """Configure adapter timeout"""
 
     def __init__(self, timeout: TimeoutType) -> None:
         super().__init__()
         self.timeout = timeout
-
-
-class IsOpenCommand(ThreadCommand[bool]):
-    """Return True if the adapter is opened"""
-
 
 class ReadCommand(Generic[DataT], ThreadCommand[ReadFrame[DataT]]):
     """
@@ -200,16 +194,11 @@ class PendingRead(Generic[DataT]):
 class AdapterWorkerInterface(Generic[DataT]):
     """Adapter base class for worker interface.
     The worker will call these methods that the final adapter will implement"""
-    #_opened : bool = False
 
     def __init__(self) -> None:
         self._worker_logger = logging.getLogger(LoggerAlias.ADAPTER_WORKER.value)
         # Events
         self._event_callbacks: set[Callable[[AdapterEvent], None]] = set()
-
-    # @property
-    # def opened(self):
-    #     return self._opened
 
     @property
     @abstractmethod
@@ -231,7 +220,6 @@ class AdapterWorkerInterface(Generic[DataT]):
         if self.descriptor is not None:
             tracehub.emit_close(str(self.descriptor))
         self._worker_emit_event(AdapterClosedEvent())
-        #self._opened = False
 
     @abstractmethod
     def _selectable(self) -> HasFileno | None:
@@ -267,12 +255,12 @@ class AdapterWorker(Generic[DataT]):
 
         # Timing
         self._last_write_timestamp: float | None = None
-        self._timeout: TimeoutType = None
+        self.timeout: TimeoutType = None
         self._current_timeout: TimeoutType = None
 
         # Adapter status
         self._first_opened = False
-        self._opened = False
+        self._is_open = False
 
         # Command management
         self._pending_read: PendingRead[DataT] | None = None
@@ -303,9 +291,6 @@ class AdapterWorker(Generic[DataT]):
             # Worker may already be stopped
             pass
 
-    # @abstractmethod
-    # def _on_select_timeout(self, timestamp: float) -> None: ...
-
     def _select_timeout(self) -> float | None:
         """This function can be overriden"""
         now = time.time()
@@ -325,9 +310,6 @@ class AdapterWorker(Generic[DataT]):
             dl = self._pending_read.response_deadline
             if dl is not None and timestamp >= dl:
                 self._worker_fail_pending_read_timeout()
-
-    # @abstractmethod
-    # def _select_timeout(self) -> float | None: ...
 
     # pylint: disable=too-many-branches
     def _worker_thread_method(self) -> None:
@@ -355,7 +337,7 @@ class AdapterWorker(Generic[DataT]):
                 t = time.time()
             except ValueError:  # Negative file descriptor
                 self._interface._worker_close()  # pylint: disable=protected-access
-                self._opened = False
+                self._is_open = False
             else:
                 # Manage command
                 if self._command_queue_r in readable:
@@ -380,7 +362,7 @@ class AdapterWorker(Generic[DataT]):
                             self._pending_read = None
                             self._worker_on_pending_read_cleared(pr)
                         self._interface._worker_close()
-                        self._opened = False
+                        self._is_open = False
                     else:
                         self._worker_manage_fragment(frag)
                     continue
@@ -422,26 +404,27 @@ class AdapterWorker(Generic[DataT]):
         ))
         self.frame_buffer.clear()
 
+    # pylint: disable=too-many-branches too-many-statements
     def _worker_manage_command(self, command: ThreadCommand[Any]) -> None:
-        # pylint: disable=too-many-branches
         try:
             match command:
                 case WriteCommand():
                     self._last_write_timestamp = time.time()
                     if self._interface.descriptor is None: # pylint: disable=protected-access
                         command.set_exception(AdapterWriteError("Missing descriptor"))
-                    elif not self._opened:
+                    elif not self._is_open:
                         command.set_exception(AdapterWriteError("Adapter is not opened"))
                     else:
                         tracehub.emit_write_frame(
                             str(self._interface.descriptor), command.frame
                         )
+                        #pylint: disable=protected-access
                         self._interface._worker_emit_event(AdapterWriteEvent(command.frame))
                         # pylint: disable=protected-access
                         self._interface._worker_write(command.frame.data)
                         command.set_result(None)
                 case OpenCommand():
-                    if self._opened:
+                    if self._is_open:
                         self._worker_logger.warning("Adapter already opened")
                         command.set_result(None)
                     else:
@@ -449,13 +432,13 @@ class AdapterWorker(Generic[DataT]):
                         try:
                             self._interface._worker_open()  # pylint: disable=protected-access
                         except AdapterOpenError as e:
-                            self._opened = False
+                            self._is_open = False
                             self._worker_logger.error(str(e))
                             if not command.done():
                                 # Ignore if the command was cancelled already
                                 command.set_exception(e)
                         else:
-                            self._opened = True
+                            self._is_open = True
                             if self._interface.descriptor is not None:
                                 tracehub.emit_open(str(self._interface.descriptor))
                             # pylint: disable=protected-access
@@ -464,7 +447,7 @@ class AdapterWorker(Generic[DataT]):
                             command.set_result(None)
                 case CloseCommand():
                     self._interface._worker_close()  # pylint: disable=protected-access
-                    self._opened = False
+                    self._is_open = False
                     self._buffer_clear()
                     # Cancel any pending read
                     if self._pending_read is not None:
@@ -480,15 +463,16 @@ class AdapterWorker(Generic[DataT]):
                     self._buffer_clear()
                     command.set_result(None)
                 case SetTimeoutCommand():
-                    self._timeout = command.timeout
+                    self.timeout = command.timeout
                     command.set_result(None)
+                    #pylint: disable=protected-access
                     self._interface._worker_emit_event(AdapterTimeoutUpdatedEvent())
-                case IsOpenCommand():
-                    command.set_result(self._opened)
                 case AddEventCallbackCommand():
+                    #pylint: disable=protected-access
                     self._interface._event_callbacks.add(command.event_callback)
                     command.set_result(None)
                 case ClearEventCallbacksCommand():
+                    #pylint: disable=protected-access
                     self._interface._event_callbacks.clear()
                     command.set_result(None)
                 case ReadCommand():
@@ -496,6 +480,7 @@ class AdapterWorker(Generic[DataT]):
                 case SetStopConditionsCommand():
                     self._stop_conditions = command.stop_conditions
                     command.set_result(None)
+                    #pylint: disable=protected-access
                     self._interface._worker_emit_event(AdapterStopConditionsUpdatedEvent())
                 case GetStopConditionsCommand():
                     command.set_result(self._stop_conditions)
@@ -542,17 +527,19 @@ class AdapterWorker(Generic[DataT]):
         # If the buffer is not empty, pop the first element (oldest one)
         if len(self.frame_buffer) > 0 and pop:
             frame = self.frame_buffer.popleft()
+            #pylint: disable=protected-access
             self._interface._worker_emit_event(AdapterBufferEvent(
                 added_frame_ids=[],
                 removed_frame_ids=[frame.id]
             ))
             cmd.set_result(frame)
+            #pylint: disable=protected-access
             self._interface._worker_emit_event(AdapterReadEvent(frame, from_buffer=True))
             return
 
         # Resolve timeout
         if cmd.timeout is ...:
-            read_timeout = self._timeout
+            read_timeout = self.timeout
         elif cmd.timeout is None:
             read_timeout = None
         else:
@@ -620,15 +607,12 @@ class AdapterWorker(Generic[DataT]):
             tracehub.emit_read_frame(str(self._interface.descriptor), frame)
 
         pr = self._pending_read
-        #qualifies = False
         buffered = True
 
         if pr is not None:
             if pr.scope == ReadScope.BUFFERED:
-                #qualifies = True
                 buffered = False
             elif pr.scope == ReadScope.NEXT:
-                #qualifies = frame.stop_timestamp > pr.start_time
                 buffered = frame.stop_timestamp <= pr.start_time
             elif pr.scope == ReadScope.LAST_WRITE:
                 if self._last_write_timestamp is not None:
@@ -637,10 +621,12 @@ class AdapterWorker(Generic[DataT]):
                     buffered = frame.stop_timestamp <= self._last_write_timestamp
 
         # Experiment : Move it here so that a protocol listening to an event can actually use it
+        #pylint: disable=protected-access
         self._interface._worker_emit_event(AdapterFrameEvent(frame, buffered))
         if buffered:
             # Not consumed by a pending read => buffer it
             self.frame_buffer.append(frame)
+            #pylint: disable=protected-access
             self._interface._worker_emit_event(AdapterBufferEvent(
                 added_frame_ids=[frame.id],
                 removed_frame_ids=[]
@@ -650,6 +636,7 @@ class AdapterWorker(Generic[DataT]):
             self._pending_read = None
             self._worker_on_pending_read_cleared(pr)
             buffered = False
+            #pylint: disable=protected-access
             self._interface._worker_emit_event(AdapterReadEvent(frame, False))
 
     def _worker_fail_pending_read_timeout(self) -> None:
@@ -663,7 +650,7 @@ class AdapterWorker(Generic[DataT]):
         # Resolve timeout again the same way as begin_read  did
         cmd = pr.cmd
         if cmd.timeout is ...:
-            read_timeout = self._timeout
+            read_timeout = self.timeout
         elif cmd.timeout is None:
             read_timeout = None
         else:

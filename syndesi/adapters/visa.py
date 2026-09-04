@@ -5,6 +5,7 @@
 """
 VISA adatper, uses a VISA backend like pyvisa-py or NI to communicate with instruments
 """
+from __future__ import annotations
 
 import queue
 import re
@@ -14,10 +15,15 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from types import EllipsisType
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-import pyvisa
-from pyvisa.resources import MessageBasedResource
+try:
+    import pyvisa
+except ImportError:
+    pyvisa = None  # type: ignore[assignment]
+
+if TYPE_CHECKING:
+    from pyvisa.resources import MessageBasedResource
 
 from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.stop_conditions import BytesFragment, Continuation, StopCondition
@@ -64,8 +70,8 @@ class VisaDescriptor(Descriptor):
     """
 
     DETECTION_PATTERN = (
-        r"([A-Z]+)(\d*|\/[^:]+)?::([^:]+)(?:::([^:]+))?"
-        + "(?:::([^:]+))?(?:::([^:]+))?::(INSTR|SOCKET)"
+        r"^([A-Z]+)(\d*|\/[^:]+)?::([^:]+)(?:::([^:]+))?"
+        + "(?:::([^:]+))?(?:::([^:]+))?::(INSTR|SOCKET)$"
     )
 
     descriptor: str
@@ -231,7 +237,7 @@ class Visa(BytesAdapter):
         # NOTE: self._rm is always defined in __init__ when pyvisa is present
 
         self._inst = cast(
-            MessageBasedResource,
+            "MessageBasedResource",
             self._rm.open_resource(self._descriptor.descriptor),
         )
         self._inst.write_termination = ""

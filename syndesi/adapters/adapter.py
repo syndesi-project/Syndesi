@@ -7,8 +7,9 @@ Adapters provide a common abstraction for the media layers (physical + data link
 
 The user calls methods of the Adapter class synchronously.
 
-An adapter is meant to work with bytes objects but it can accept strings.
-Strings will automatically be converted to bytes using utf-8 encoding
+An adapter's read/write data type is defined by its DataT generic parameter
+(e.g. BytesAdapter subclasses read/write bytes). No implicit str<->bytes
+conversion is performed; protocols such as Delimited handle encoding instead.
 
 Each adapter contains a worker thread that monitors the low-level communication layers.
 This approach allows for precise time management (when each fragment is sent/received) and allows
@@ -41,7 +42,6 @@ from .adapterworker import (
     ClearEventCallbacksCommand,
     CloseCommand,
     FlushReadCommand,
-    IsOpenCommand,
     OpenCommand,
     ReadCommand,
     SetTimeoutCommand,
@@ -74,9 +74,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         *,
         worker: AdapterWorker[DataT],
         timeout: TimeoutParameterType,
-        # stop_conditions : StopCondition | list[StopCondition] | EllipsisType,
         alias: str,
-        # encoding: str = "utf-8",
         auto_open: bool = True,
     ) -> None:
         Component.__init__(self, LoggerAlias.ADAPTER)
@@ -85,7 +83,6 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         self._alias = alias
         self._worker = worker
         self._auto_open = auto_open
-        self._timeout : TimeoutType
 
         # Default timeout
         self.is_default_timeout = timeout is Ellipsis
@@ -145,7 +142,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
 
     def _cleanup(self) -> None:
         try:
-            if self.is_open():
+            if self.is_open:
                 self.close()
         except AdapterError:
             pass
@@ -167,11 +164,13 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         cmd = SetTimeoutCommand(timeout)
         self._worker.send_command(cmd)
         cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
-        self._timeout = timeout
 
     @property
     def timeout(self) -> TimeoutType:
-        return self._timeout
+        """Return the adapter's timeout. The timeout is used:
+            * To set the opening time
+            * Define the maximum time before a fragment is received when reading"""
+        return self._worker.timeout
 
     def set_default_timeout(self, default_timeout: TimeoutType) -> None:
         """
@@ -222,7 +221,6 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         """
         Open adapter communication with the target (blocking)
         """
-        
         # If timeout is None, wait indefinitely
         # If timeout is not None, add a small amount (IMMEDIATE_COMMAND)
         # To let the worker setup and respond. The "real" timeout is used in the _worker_open
@@ -396,29 +394,10 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
 
     # ==== Other ====
 
-    def _is_open_future(self) -> IsOpenCommand:
-        cmd = IsOpenCommand()
-        self._worker.send_command(cmd)
-        return cmd
-
+    @property
     def is_open(self) -> bool:
-        """Check if the adapter is open"""
-        return self._is_open_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
-
-    async def ais_open(self) -> bool:
-        """Asynchronously check if the adapter is open"""
-        return await asyncio.wrap_future(self._is_open_future())
-
-# def find_adapter_data_type(cls: type) -> object:
-#     for base in get_original_bases(cls):
-#         origin = get_origin(base)
-#         if origin is AdapterBase:
-#             args = get_args(base)
-#             if args:
-#                 return args[0]
-#         else:
-#             raise TypeError("Class is not an Adapter")
-#     return None
+        """Return True if the adapter is open"""
+        return self._worker._is_open
 
 def find_adapter_data_type(obj : type[Adapter[Any]] | Adapter[Any]) -> Any:
     """

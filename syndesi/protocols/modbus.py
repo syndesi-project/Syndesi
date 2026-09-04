@@ -401,12 +401,6 @@ class ModbusRequestSDU(ModbusSDU):
         raise NotImplementedError()
 
 
-# class ModbusResponseSDU(ModbusSDU):
-#     def make_sdu(self) -> bytes:
-#         """Generate a bytes array containing the SDU"""
-#         raise NotImplementedError("make_sdu() not implemented for this SDU")
-
-
 class SerialLineOnlySDU(ModbusRequestSDU):
     """
     Marker class for serial line only Modbus function codes
@@ -1379,10 +1373,14 @@ class Modbus(BytesProtocol[ModbusSDU]):
     """
     Modbus protocol
 
+    Only Modbus TCP (adapter=IP) is currently implemented. Constructing this class
+    with a SerialPort adapter (Modbus RTU/ASCII) raises NotImplementedError.
+
     Parameters
     ----------
     adapter : Adapter
-        SerialPort or IP
+        IP (Modbus TCP). SerialPort (Modbus RTU/ASCII) is accepted by this
+        signature but not yet implemented, see above.
     timeout : float | int | None | ...
     _type : str
         Only used with SerialPort adapter

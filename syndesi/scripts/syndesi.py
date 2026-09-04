@@ -9,8 +9,6 @@ import argparse
 import logging
 from enum import Enum
 
-from syndesi.ui.ui import main as start_ui
-
 from ..cli.shell import AdapterShell, AdapterType
 
 from ..version import __version__
@@ -62,6 +60,13 @@ def main() -> None:
         elif command == SyndesiCommands.VISA:
             AdapterShell(AdapterType.VISA, remaining_args).run()
         elif command == SyndesiCommands.UI:
+            try:
+                from syndesi.ui.ui import main as start_ui
+            except ImportError as e:
+                raise ImportError(
+                    "Missing optional dependency 'dearpygui'. Install with:\n"
+                    "  python -m pip install syndesi[ui]"
+                ) from e
             start_ui(remaining_args)
         else:
             raise NotImplementedError(f"Command '{command.value}' is not supported yet")
