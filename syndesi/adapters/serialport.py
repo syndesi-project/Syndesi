@@ -19,7 +19,8 @@ import serial
 from serial.serialutil import PortNotOpenError
 from serial.tools.list_ports import comports
 
-from syndesi.adapters.bytesadapter import BytesAdapter
+from syndesi.adapters.adapterworker import AdapterWorkerInterface
+from syndesi.adapters.bytesadapter import AsyncBytesAdapter, BytesAdapter
 from syndesi.component import Descriptor
 from syndesi.tools.errors import AdapterOpenError, AdapterReadError
 
@@ -48,6 +49,7 @@ class SerialPortDescriptor(Descriptor):
 
     DETECTION_PATTERN = r"^(COM\d+|/dev[/\w\d]+):\d+$"
     port: str
+    # baudrate can be None to allow for default baudrate
     baudrate: int | None = None
     bytesize: int = 8
     stopbits: int = 1
@@ -83,41 +85,23 @@ class SerialPortDescriptor(Descriptor):
     def is_initialized(self) -> bool:
         return self.baudrate is not None
 
-
-class SerialPort(BytesAdapter):
-    """
-    Serial communication adapter
-
-    Parameters
-    ----------
-    port : str
-        Serial port (COMx or ttyACMx)
-    baudrate : int
-        Baudrate
-    """
-
+class _SerialPortCommon:
     _open_ports: set[str] = set()
-    _open_ports_lock = threading.Lock()
-
+    #_open_ports_lock = threading.Lock()
+    
     def __init__(
-        self,
-        port: str,
-        baudrate: int | None = None,
-        *,
-        timeout: TimeoutParameterType = ...,
-        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
-        alias: str = "",
-        bytesize: int = 8,
-        stopbits: int = 1,
-        parity: str = Parity.NONE.value,
-        rts_cts: bool = False,
-        xon_xoff: bool = False,
-        dsr_dtr: bool = False,
-        auto_open: bool = True,
-    ) -> None:
-        """
-        Instanciate new SerialPort adapter
-        """
+            self,
+            *,
+            port: str,
+            baudrate: int | None = None,
+            bytesize: int = 8,
+            stopbits: int = 1,
+            parity: str = Parity.NONE.value,
+            rts_cts: bool = False,
+            xon_xoff: bool = False,
+            dsr_dtr: bool = False
+            ) -> None:
+
         self._port: serial.Serial | None = None
         self._descriptor = SerialPortDescriptor(
             port=port,
@@ -129,21 +113,7 @@ class SerialPort(BytesAdapter):
             dsr_dtr=dsr_dtr,
             xon_xoff=xon_xoff,
         )
-        super().__init__(
-            timeout=timeout,
-            stop_conditions=stop_conditions,
-            alias=alias,
-            auto_open=auto_open,
-        )
 
-        self._logger.info(
-            f"Setting up SerialPort adapter {self._descriptor}, \
-                timeout={timeout} and stop_conditions={stop_conditions}"
-        )
-
-    @property
-    def descriptor(self) -> SerialPortDescriptor:
-        return self._descriptor
 
     @staticmethod
     def list_ports() -> list[str]:
@@ -162,8 +132,12 @@ class SerialPort(BytesAdapter):
 
         raise RuntimeError(f"Invalid platform : {sys.platform}")
 
-    @staticmethod
-    def default_timeout() -> float | None:
+    @property
+    def descriptor(self) -> SerialPortDescriptor:
+        return self._descriptor
+
+    @property
+    def default_timeout(self) -> float | None:
         """Default timeout"""
         return 2.0
 
@@ -178,7 +152,7 @@ class SerialPort(BytesAdapter):
             )
 
         if self._port is not None:
-            self.close()
+            self._worker_close()
 
         try:
             self._port = serial.Serial(
@@ -201,26 +175,21 @@ class SerialPort(BytesAdapter):
                 ) from e
             raise AdapterOpenError(f"SerialPort open error : {str(e)}") from None
 
-        if self._port.isOpen():  # type: ignore
-            self._logger.info(f"Adapter {self._descriptor} opened")
-        else:
+        if not self._port.isOpen():  # type: ignore
+            #self._logger.info(f"Adapter {self._descriptor} opened")
+        #else:
             # with self._open_ports_lock:
             #    self._open_ports.discard(self._descriptor.port)
             raise AdapterOpenError("Unknown error")
 
     def _worker_close(self) -> None:
-        super()._worker_close()
+        #super()._worker_close()
         if self._port is not None:
             self._port.close()
-            self._logger.info(f"Adapter {self._descriptor} closed")
+            #self._logger.info(f"Adapter {self._descriptor} closed")
             self._port = None
-            with self._open_ports_lock:
-                self._open_ports.discard(self._descriptor.port)
-
-    async def aflush_read(self) -> None:
-        await super().aflush_read()
-        if self._port is not None:
-            self._port.flush()
+            #with self._open_ports_lock:
+            self._open_ports.discard(self._descriptor.port)
 
     def set_default_baudrate(self, baudrate: int) -> None:
         """
@@ -231,8 +200,8 @@ class SerialPort(BytesAdapter):
         baudrate : int
         """
         if self._descriptor.set_default_baudrate(baudrate):
-            self.close()
-            self.open()
+            self._worker_close()
+            self._worker_open()
 
     def _worker_write(self, data: bytes) -> None:
         if self._descriptor.rts_cts:  # Experimental
@@ -259,3 +228,110 @@ class SerialPort(BytesAdapter):
 
     def _selectable(self) -> HasFileno | None:
         return self._port
+
+class SerialPort(_SerialPortCommon, BytesAdapter):
+    """
+    Serial communication adapter
+
+    Parameters
+    ----------
+    port : str
+        Serial port (COMx or ttyACMx)
+    baudrate : int
+        Baudrate
+    """
+
+    def __init__(
+        self,
+        port: str,
+        baudrate: int | None = None,
+        *,
+        timeout: TimeoutParameterType = ...,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+        alias: str = "",
+        bytesize: int = 8,
+        stopbits: int = 1,
+        parity: str = Parity.NONE.value,
+        rts_cts: bool = False,
+        xon_xoff: bool = False,
+        dsr_dtr: bool = False,
+        auto_open: bool = True,
+    ) -> None:
+        _SerialPortCommon.__init__(
+            self,
+            port=port,
+            baudrate=baudrate,
+            bytesize=bytesize,
+            stopbits=stopbits,
+            parity=parity,
+            rts_cts=rts_cts,
+            xon_xoff=xon_xoff,
+            dsr_dtr=dsr_dtr
+        )
+        BytesAdapter.__init__(
+            self,
+            timeout=timeout,
+            stop_conditions=stop_conditions,
+            alias=alias,
+            auto_open=auto_open
+        )
+
+        self._logger.info(
+            f"Setting up SerialPort adapter {self._descriptor}, \
+                timeout={timeout} and stop_conditions={stop_conditions}"
+        )
+
+    def clear_read_buffer(self) -> None:
+        super().clear_read_buffer()
+        if self._port is not None:
+            self._port.flush()
+
+class AsyncSerialPort(_SerialPortCommon, AsyncBytesAdapter):
+    """
+    The AsyncSerialPort class allows asynchronous communication with serial devices
+    """
+
+    def __init__(
+        self,
+        port: str,
+        baudrate: int | None = None,
+        *,
+        timeout: TimeoutParameterType = ...,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+        alias: str = "",
+        bytesize: int = 8,
+        stopbits: int = 1,
+        parity: str = Parity.NONE.value,
+        rts_cts: bool = False,
+        xon_xoff: bool = False,
+        dsr_dtr: bool = False,
+        auto_open: bool = True,
+    ) -> None:
+        _SerialPortCommon.__init__(
+            self,
+            port=port,
+            baudrate=baudrate,
+            bytesize=bytesize,
+            stopbits=stopbits,
+            parity=parity,
+            rts_cts=rts_cts,
+            xon_xoff=xon_xoff,
+            dsr_dtr=dsr_dtr
+        )
+        AsyncBytesAdapter.__init__(
+            self,
+            timeout=timeout,
+            stop_conditions=stop_conditions,
+            alias=alias,
+            auto_open=auto_open
+        )
+
+        self._logger.info(
+            f"Setting up SerialPort adapter {self._descriptor}, \
+                timeout={timeout} and stop_conditions={stop_conditions}"
+        )
+
+    async def clear_read_buffer(self) -> None:
+        await super().clear_read_buffer()
+        if self._port is not None:
+            self._port.flush()

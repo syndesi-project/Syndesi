@@ -10,10 +10,9 @@ from syndesi.adapters.utils import TimeoutParameterType
 
 from ..adapters.stop_conditions import Termination
 from ..component import ReadFrame
-from .protocol import BytesProtocol, ProtocolReadFrame
+from .protocol import AsyncProtocol, Protocol, ProtocolReadFrame
 
-
-class Delimited(BytesProtocol[str]):
+class Delimited(Protocol[str]):
     """
     Protocol with string decoding and delimiter, like LF, CR, etc... LF is used by default
 
@@ -34,7 +33,7 @@ class Delimited(BytesProtocol[str]):
         Termination when receiving only, optional
         if not set, the value of termination is used
     """
-
+    adapter : BytesAdapter
     def __init__(
         self,
         adapter: BytesAdapter,
@@ -85,8 +84,8 @@ class Delimited(BytesProtocol[str]):
     def __repr__(self) -> str:
         return self.__str__()
 
-    @staticmethod
-    def default_timeout() -> float | None:
+    @property
+    def default_timeout(self) -> float | None:
         """Default timeout"""
         return 2.0
 
@@ -158,3 +157,6 @@ class Delimited(BytesProtocol[str]):
     def receive_termination(self) -> str:
         """Expected termination when receiving data"""
         return self._receive_termination
+
+class AsyncDelimited(AsyncProtocol[str]):
+    ...

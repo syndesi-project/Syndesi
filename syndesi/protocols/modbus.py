@@ -49,7 +49,7 @@ from ..adapters.bytesadapter import BytesAdapter
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..tools.errors import ProtocolError, ProtocolReadError
-from .protocol import BytesProtocol, ProtocolReadFrame
+from .protocol import AsyncProtocol, Protocol, ProtocolCommon, ProtocolReadFrame
 
 MODBUS_TCP_DEFAULT_PORT = 502
 
@@ -1367,9 +1367,118 @@ class ModbusFrame(ProtocolReadFrame[ModbusSDU]):
     def __str__(self) -> str:
         return f"ModbusFrame({self.payload})"
 
+class ModbusCommon(ProtocolCommon[ModbusSDU]):
+
+    def _make_multi_register_value(
+        self,
+        n_registers: int,
+        value_type: str,
+        value: str | bytes | int | float,
+        *,
+        byte_order: str = Endian.BIG.value,
+        word_order: str = Endian.BIG.value,
+        encoding: str = "utf-8",
+        padding: int = 0,
+    ) -> list[int]:
+        _type = TypeCast(value_type)
+        n_bytes = n_registers * 2
+        if _type.is_number():
+            _word_order = Endian(word_order)
+        else:
+            _word_order = Endian.BIG
+        _byte_order = Endian(byte_order)
+
+        array = b""
+        if _type in [TypeCast.INT, TypeCast.UINT, TypeCast.FLOAT]:
+            # Make one big array using word_order endian
+            array = struct.pack(
+                endian_symbol[_word_order] + struct_format(_type, n_bytes), value
+            )
+
+        elif _type == TypeCast.ARRAY:
+            if isinstance(value, bytes):
+                if len(value) > n_registers * 2:
+                    raise ValueError(
+                        f"Cannot store {len(value)} bytes array in {n_registers} registers"
+                    )
+            else:
+                raise ValueError(f"Invalid value type : {type(value)}")
+
+            array = value
+        elif _type == TypeCast.STRING:
+            if isinstance(value, str):
+                array = value.encode(encoding)
+            else:
+                raise ValueError(f"Invalid value type : {type(value)}")
+
+            if len(array) < n_bytes:
+                # Padding
+                array = array + padding.to_bytes(1, byteorder="big") * (
+                    n_bytes - len(value)
+                )
+
+        if len(array) != n_registers * 2:
+            raise ValueError(
+                f"Cannot store a {len(array)} bytes array in {n_registers} registers"
+            )
+
+        unpack_endian = Endian.BIG if _byte_order == _word_order else Endian.LITTLE
+        registers = [
+            struct.unpack(endian_symbol[unpack_endian] + "H", array[2 * i : 2 * i + 2])[
+                0
+            ]
+            for i in range(len(array) // 2)
+        ]
+
+        return registers
+
+    def _parse_multi_register_value(
+        self,
+        n_registers: int,
+        registers: list[int],
+        value_type: str,
+        *,
+        byte_order: str = Endian.BIG.value,
+        word_order: str = Endian.BIG.value,
+        encoding: str = "utf-8",
+        padding: int | None = 0,
+    ) -> str | bytes | int | float:
+
+        type_cast = TypeCast(value_type)
+        _byte_order = Endian(byte_order)
+        if type_cast.is_number():
+            _word_order = Endian(word_order)
+        else:
+            _word_order = Endian.BIG
+        # Create a buffer
+        to_bytes_endian = Endian.BIG if _byte_order == _word_order else Endian.LITTLE
+        buffer = b"".join(
+            [x.to_bytes(2, byteorder=to_bytes_endian.value) for x in registers]
+        )
+        # Use struct_format to convert to the corresponding value directly
+        # Swap the buffer accordingly
+        data: bytes | int | float = struct.unpack(
+            endian_symbol[_word_order] + struct_format(type_cast, n_registers * 2),
+            buffer,
+        )[0]
+
+        # If data is a string, do additionnal processing
+        output: bytes | int | float | str
+        if type_cast == TypeCast.STRING:
+            data = cast(bytes, data)
+            # If null termination is enabled, remove any \0
+            if padding is not None and padding in data:
+                data = data[: data.index(padding)]
+            # Cast
+            output = data.decode(encoding)
+        else:
+            output = data
+
+        return output
+
 
 # pylint: disable=too-many-public-methods
-class Modbus(BytesProtocol[ModbusSDU]):
+class Modbus(Protocol[ModbusSDU], ModbusCommon):
     """
     Modbus protocol
 
@@ -1415,8 +1524,8 @@ class Modbus(BytesProtocol[ModbusSDU]):
         self._last_sdu: ModbusSDU | None = None
         self._transaction_id = 0
 
-    @staticmethod
-    def default_timeout() -> float | None:
+    @property
+    def default_timeout(self) -> float | None:
         return 1.0
 
     def _protocol_to_adapter(self, protocol_payload: ModbusSDU) -> bytes:
@@ -1518,28 +1627,6 @@ class Modbus(BytesProtocol[ModbusSDU]):
 
         return output.coils
 
-    async def aread_coils(self, start_address: int, number_of_coils: int) -> list[bool]:
-        """
-        Asynchronously read a defined number of coils starting at a set address
-
-        Parameters
-        ----------
-        start_address : int
-        number_of_coils : int
-
-        Returns
-        -------
-        coils : list
-        """
-
-        payload = ReadCoilsSDU(
-            start_address=start_address, number_of_coils=number_of_coils
-        )
-
-        output = cast(ReadCoilsSDU.Response, await self.aquery(payload))
-
-        return output.coils
-
     # This is a wrapper for the read_coils method
     def read_single_coil(self, address: int) -> bool:
         """
@@ -1555,22 +1642,6 @@ class Modbus(BytesProtocol[ModbusSDU]):
         coil : bool
         """
         coil = self.read_coils(start_address=address, number_of_coils=1)[0]
-        return coil
-
-    async def aread_single_coil(self, address: int) -> bool:
-        """
-        Asynchronously read a single coil at a specified address.
-        This is a wrapper for the read_coils method with the number of coils set to 1
-
-        Parameters
-        ----------
-        address : int
-
-        Returns
-        -------
-        coil : bool
-        """
-        coil = (await self.aread_coils(start_address=address, number_of_coils=1))[0]
         return coil
 
     # Read Discrete inputs - 0x02
@@ -1599,31 +1670,6 @@ class Modbus(BytesProtocol[ModbusSDU]):
 
         return output.inputs
 
-    async def aread_discrete_inputs(
-        self, start_address: int, number_of_inputs: int
-    ) -> list[bool]:
-        """
-        Read a defined number of discrete inputs at a set starting address
-
-        Parameters
-        ----------
-        start_address : int
-        number_of_inputs : int
-
-        Returns
-        -------
-        inputs : list
-        List of booleans
-        """
-
-        payload = ReadDiscreteInputs(
-            start_address=start_address, number_of_inputs=number_of_inputs
-        )
-
-        output = cast(ReadDiscreteInputs.Response, await self.aquery(payload))
-
-        return output.inputs
-
     # Read Holding Registers - 0x03
     def read_holding_registers(
         self, start_address: int, number_of_registers: int
@@ -1649,75 +1695,6 @@ class Modbus(BytesProtocol[ModbusSDU]):
         output = cast(ReadHoldingRegisters.Response, self.query(payload))
 
         return output.registers
-
-    async def aread_holding_registers(
-        self, start_address: int, number_of_registers: int
-    ) -> list[int]:
-        """
-        Asynchronously Reads a defined number of registers starting at a set address
-
-        Parameters
-        ----------
-        start_address : int
-        number_of_registers : int
-            1 to 125
-
-        Returns
-        -------
-        registers : list
-        """
-
-        payload = ReadHoldingRegisters(
-            start_address=start_address, number_of_registers=number_of_registers
-        )
-
-        output = cast(ReadHoldingRegisters.Response, await self.aquery(payload))
-
-        return output.registers
-
-    def _parse_multi_register_value(
-        self,
-        n_registers: int,
-        registers: list[int],
-        value_type: str,
-        *,
-        byte_order: str = Endian.BIG.value,
-        word_order: str = Endian.BIG.value,
-        encoding: str = "utf-8",
-        padding: int | None = 0,
-    ) -> str | bytes | int | float:
-
-        type_cast = TypeCast(value_type)
-        _byte_order = Endian(byte_order)
-        if type_cast.is_number():
-            _word_order = Endian(word_order)
-        else:
-            _word_order = Endian.BIG
-        # Create a buffer
-        to_bytes_endian = Endian.BIG if _byte_order == _word_order else Endian.LITTLE
-        buffer = b"".join(
-            [x.to_bytes(2, byteorder=to_bytes_endian.value) for x in registers]
-        )
-        # Use struct_format to convert to the corresponding value directly
-        # Swap the buffer accordingly
-        data: bytes | int | float = struct.unpack(
-            endian_symbol[_word_order] + struct_format(type_cast, n_registers * 2),
-            buffer,
-        )[0]
-
-        # If data is a string, do additionnal processing
-        output: bytes | int | float | str
-        if type_cast == TypeCast.STRING:
-            data = cast(bytes, data)
-            # If null termination is enabled, remove any \0
-            if padding is not None and padding in data:
-                data = data[: data.index(padding)]
-            # Cast
-            output = data.decode(encoding)
-        else:
-            output = data
-
-        return output
 
     def read_multi_register_value(
         self,
@@ -1775,125 +1752,6 @@ class Modbus(BytesProtocol[ModbusSDU]):
             padding=padding,
         )
 
-    async def aread_multi_register_value(
-        self,
-        address: int,
-        n_registers: int,
-        value_type: str,
-        *,
-        byte_order: str = Endian.BIG.value,
-        word_order: str = Endian.BIG.value,
-        encoding: str = "utf-8",
-        padding: int | None = 0,
-    ) -> str | bytes | int | float:
-        """
-        Asynchronously read an integer, a float, or a string over multiple registers
-
-        Parameters
-        ----------
-        address : int
-            Address of the first register
-        n_registers : int
-            Number of registers (half the number of bytes)
-        value_type : str
-            Type to which the value will be cast
-                'int' : signed integer
-                'uint' : unsigned integer
-                'float' : float or double
-                'string' : string
-                'array' : Bytes array
-            Each type will be adapted based on the number of bytes (_bytes parameter)
-        byte_order : str
-            Byte order, 'big' means the high bytes will come first, 'little' means the low bytes
-            will come first
-            Byte order inside a register (2 bytes) is always big as per
-            Modbus specification (4.2 Data Encoding)
-        encoding : str
-            String encoding (if used). UTF-8 by default
-        padding : int | None
-            String padding, None to return the raw string
-        Returns
-        -------
-        data : any
-        """
-        # Read N registers
-        registers = await self.aread_holding_registers(
-            start_address=address, number_of_registers=n_registers
-        )
-
-        return self._parse_multi_register_value(
-            n_registers=n_registers,
-            registers=registers,
-            value_type=value_type,
-            byte_order=byte_order,
-            word_order=word_order,
-            encoding=encoding,
-            padding=padding,
-        )
-
-    def _make_multi_register_value(
-        self,
-        n_registers: int,
-        value_type: str,
-        value: str | bytes | int | float,
-        *,
-        byte_order: str = Endian.BIG.value,
-        word_order: str = Endian.BIG.value,
-        encoding: str = "utf-8",
-        padding: int = 0,
-    ) -> list[int]:
-        _type = TypeCast(value_type)
-        n_bytes = n_registers * 2
-        if _type.is_number():
-            _word_order = Endian(word_order)
-        else:
-            _word_order = Endian.BIG
-        _byte_order = Endian(byte_order)
-
-        array = b""
-        if _type in [TypeCast.INT, TypeCast.UINT, TypeCast.FLOAT]:
-            # Make one big array using word_order endian
-            array = struct.pack(
-                endian_symbol[_word_order] + struct_format(_type, n_bytes), value
-            )
-
-        elif _type == TypeCast.ARRAY:
-            if isinstance(value, bytes):
-                if len(value) > n_registers * 2:
-                    raise ValueError(
-                        f"Cannot store {len(value)} bytes array in {n_registers} registers"
-                    )
-            else:
-                raise ValueError(f"Invalid value type : {type(value)}")
-
-            array = value
-        elif _type == TypeCast.STRING:
-            if isinstance(value, str):
-                array = value.encode(encoding)
-            else:
-                raise ValueError(f"Invalid value type : {type(value)}")
-
-            if len(array) < n_bytes:
-                # Padding
-                array = array + padding.to_bytes(1, byteorder="big") * (
-                    n_bytes - len(value)
-                )
-
-        if len(array) != n_registers * 2:
-            raise ValueError(
-                f"Cannot store a {len(array)} bytes array in {n_registers} registers"
-            )
-
-        unpack_endian = Endian.BIG if _byte_order == _word_order else Endian.LITTLE
-        registers = [
-            struct.unpack(endian_symbol[unpack_endian] + "H", array[2 * i : 2 * i + 2])[
-                0
-            ]
-            for i in range(len(array) // 2)
-        ]
-
-        return registers
-
     def write_multi_register_value(
         self,
         address: int,
@@ -1950,7 +1808,787 @@ class Modbus(BytesProtocol[ModbusSDU]):
 
         self.write_multiple_registers(start_address=address, values=registers)
 
-    async def awrite_multi_register_value(
+    # Read Input Registers - 0x04
+    def read_input_registers(
+        self, start_address: int, number_of_registers: int
+    ) -> list[int]:
+        """
+        Reads a defined number of input registers starting at a set address
+
+        Parameters
+        ----------
+        start_address : int
+        number_of_registers : int
+            1 to 125
+
+        Returns
+        -------
+        registers : list
+            List of integers
+        """
+        payload = ReadInputRegistersSDU(
+            start_address=start_address,
+            number_of_registers=number_of_registers,
+        )
+
+        output = cast(ReadInputRegistersSDU.Response, self.query(payload))
+
+        return output.registers
+
+    # Write Single coil - 0x05
+    def write_single_coil(self, address: int, status: bool) -> None:
+        """
+        Write a single output to either ON or OFF
+
+        Parameters
+        ----------
+        address : int
+        status : bool
+        """
+        payload = WriteSingleCoilSDU(address=address, status=status)
+
+        self.query(payload)
+
+    # Write Single Register - 0x06
+    def write_single_register(self, address: int, value: int) -> None:
+        """
+        Write a single register
+
+        Parameters
+        ----------
+        address : int
+        value : int
+            value between 0x0000 and 0xFFFF
+        """
+        payload = WriteSingleRegisterSDU(
+            address=address,
+            value=value,
+        )
+
+        self.query(payload)
+
+    def read_single_register(self, address: int) -> int:
+        """
+        Read a single register
+
+        Parameters
+        ----------
+        address : int
+
+        Returns
+        -------
+        value : int
+        """
+        return self.read_holding_registers(address, 1)[0]
+
+    # Read Exception Status - 0x07
+    def read_exception_status(self) -> int:
+        """
+        Read exeption status
+
+        Returns
+        -------
+        exceptions : int
+        """
+        payload = ReadExceptionStatusSDU()
+
+        output = cast(ReadExceptionStatusSDU.Response, self.query(payload))
+
+        return output.status
+
+    # Diagnostics - 0x08
+    def diagnostics_return_query_data(self, data: int = 0x1234) -> bool:
+        """
+        Run "Return Query Data" diagnostic
+
+        A query is sent and should be return identical
+
+        Parameters
+        ----------
+        data : int
+            data to send (16 bits integer)
+
+        Returns
+        -------
+        success : bool
+        """
+        subfunction_data = struct.pack(ENDIAN + "H", data)
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.RETURN_QUERY_DATA,
+            subfunction_data=subfunction_data,
+            return_subfunction_bytes=2,
+        )
+
+        output = cast(DiagnosticsSDU.Response, self.query(payload))
+
+        return output.data == subfunction_data
+
+    # TODO : Check how this function interracts with Listen Only mode
+    def diagnostics_restart_communications_option(
+        self, clear_communications_event_log: bool = False
+    ) -> None:
+        """
+        Initialize and restart serial line port. Brings the device out of Listen Only Mode
+
+        Parameters
+        ----------
+        clear_communications_event_log : bool
+            False by default
+        """
+        subfunction_data = struct.pack(
+            ENDIAN + "H", 0xFF00 if clear_communications_event_log else 0x0000
+        )
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.RESTART_COMMUNICATIONS_OPTION,
+            subfunction_data=subfunction_data,
+            return_subfunction_bytes=2,
+        )
+
+        self.query(payload)
+
+    def diagnostics_return_diagnostic_register(self) -> int:
+        """
+        Return 16 bit diagnostic register
+
+        Returns
+        -------
+        register : int
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.RETURN_DIAGNOSTIC_REGISTER,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=2,
+        )
+
+        output = cast(DiagnosticsSDU.Response, self.query(payload))
+
+        return int(struct.unpack(ENDIAN + "H", output.data)[0])
+
+    def diagnostics_change_ascii_input_delimiter(self, char: bytes | str) -> None:
+        """
+        Change the ASCII input delimiter to specified value
+
+        Parameters
+        ----------
+        char : bytes or str
+            Single character
+        """
+        if len(char) != 1:
+            raise ValueError(f"Invalid char length : {len(char)}")
+        if isinstance(char, str):
+            char = char.encode("ASCII")
+
+        subfunction_data = struct.pack("cB", char, 0)
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.CHANGE_ASCII_INPUT_DELIMITER,
+            subfunction_data=subfunction_data,
+            return_subfunction_bytes=2,
+        )
+
+        self.query(payload)
+
+    def diagnostics_force_listen_only_mode(self) -> None:
+        """
+        Forces the addressed remote device to its Listen Only Mode for MODBUS communications.
+        This isolates it from the other devices on the network, allowing them to continue
+        communicating without interruption from the addressed remote device. No response is
+        returned.
+        When the remote device enters its Listen Only Mode, all active communication controls are
+        turned off. The Ready watchdog timer is allowed to expire, locking the controls off.
+        While the device is in this mode, any MODBUS messages addressed to it or broadcast
+        are monitored, but no actions will be taken and no responses will be sent.
+        The only function that will be processed after the mode is entered will be the Restart
+        Communications Option function (function code 8, sub-function 1).
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.FORCE_LISTEN_ONLY_MODE,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=0,
+            check_response=False,
+        )
+
+        self.query(payload)
+
+    def diagnostics_clear_counters_and_diagnostic_register(self) -> None:
+        """
+        Clear all counters and the diagnostic register
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.CLEAR_COUNTERS_AND_DIAGNOSTIC_REGISTER,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=0,
+        )
+
+        self.query(payload)
+
+    def diagnostics_return_bus_message_count(self) -> int:
+        """
+        Return the number of messages that the remote device has detection on the communications
+        system since its last restat, clear counters operation, or power-up
+
+        Returns
+        -------
+        count : int
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.RETURN_BUS_MESSAGE_COUNT,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=2,
+        )
+
+        output = cast(DiagnosticsSDU.Response, self.query(payload))
+
+        return int(struct.unpack(ENDIAN + "H", output.data)[0])
+
+    def diagnostics_return_bus_communication_error_count(self) -> int:
+        """
+        Return the number of messages that the remote device has detection on the communications
+        system since its last restart, clear counters operation, or power-up
+
+        Returns
+        -------
+        count : int
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.RETURN_BUS_COMMUNICATION_ERROR_COUNT,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=2,
+        )
+
+        output = cast(DiagnosticsSDU.Response, self.query(payload))
+
+        return int(struct.unpack(ENDIAN + "H", output.data)[0])
+
+    def diagnostics_return_bus_exception_error_count(self) -> int:
+        """
+        Return the number of Modbus exceptions responses returned by the remote device since
+        its last restart, clear counters operation, or power-up
+
+        Returns
+        -------
+        count : int
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.RETURN_BUS_EXCEPTION_ERROR_COUNT,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=2,
+        )
+
+        output = cast(DiagnosticsSDU.Response, self.query(payload))
+
+        return int(struct.unpack(ENDIAN + "H", output.data)[0])
+
+    def diagnostics_return_server_no_response_count(self) -> int:
+        """
+        Return the number of messages addressed to the remote device for which it has returned
+        no response since its last restart, clear counters operation, or power-up
+
+        Returns
+        -------
+        count : int
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.RETURN_SERVER_NO_RESPONSE_COUNT,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=2,
+        )
+
+        output = cast(DiagnosticsSDU.Response, self.query(payload))
+
+        return int(struct.unpack(ENDIAN + "H", output.data)[0])
+
+    def diagnostics_return_server_nak_count(self) -> int:
+        """
+        Return the number of messages addressed to the remote device for which it returned
+        a negative acnowledge (NAK) exception response since its last restart, clear counters
+        operation, or power-up
+
+        Returns
+        -------
+        count : int
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.RETURN_SERVER_NAK_COUNT,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=2,
+        )
+
+        output = cast(DiagnosticsSDU.Response, self.query(payload))
+
+        return int(struct.unpack(ENDIAN + "H", output.data)[0])
+
+    def diagnostics_return_server_busy_count(self) -> int:
+        """
+        Return the number of messages addressed to the remote device for which it returned a
+        server device busy exception response since its last restart, clear counters operation,
+        or power-up
+
+        Returns
+        -------
+        count : int
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.RETURN_SERVER_BUSY_COUNT,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=2,
+        )
+
+        output = cast(DiagnosticsSDU.Response, self.query(payload))
+
+        return int(struct.unpack(ENDIAN + "H", output.data)[0])
+
+    def diagnostics_return_bus_character_overrun_count(self) -> int:
+        """
+        Return the number of messages addressed to the remote device that it could not handle
+        due to a character overrun condition since its last restart, clear counters operation,
+        or power-up
+
+        Returns
+        -------
+        count : int
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.RETURN_BUS_CHARACTER_OVERRUN_COUNT,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=2,
+        )
+
+        output = cast(DiagnosticsSDU.Response, self.query(payload))
+
+        return int(struct.unpack(ENDIAN + "H", output.data)[0])        
+
+    def diagnostics_clear_overrun_counter_and_flag(self) -> None:
+        """
+        Clear the overrun error counter and reset the error flag
+        """
+        payload = DiagnosticsSDU(
+            code=DiagnosticsCode.CLEAR_OVERRUN_COUNTER_AND_FLAG,
+            subfunction_data=b"\x00\x00",
+            return_subfunction_bytes=0,
+        )
+
+        self.query(payload)
+
+    # Get Comm Event Counter - 0x0B
+    def get_comm_event_counter(self) -> tuple[int, int]:
+        """
+        Retrieve status word and event count from the remote device's communication event counter
+
+        Returns
+        -------
+        status : int
+        event_count : int
+        """
+        payload = GetCommEventCounterSDU()
+
+        output = cast(GetCommEventCounterSDU.Response, self.query(payload))
+
+        return output.status, output.event_count
+
+
+
+    # Get Comm Event Log - 0x0C
+    def get_comm_event_log(self) -> tuple[int, int, int, bytes]:
+        """
+        Retrieve status word, event count, message count and a field of event bytes from
+        the remote device
+
+        Status word and event count are identical to those returned by get_comm_event_counter()
+
+        Returns
+        -------
+        status : int
+        event_count : int
+        message_count : int
+            Number of messages processed since its last restart, clear counters operation,
+            or power-up
+            Identical to diagnostics_return_bus_message_count()
+        events : bytes
+            0-64 bytes, each corresponding to the status of one Modbus send or receive
+            operation for the remote device. Byte 0 is the most recent event
+        """
+        payload = GetCommEventLogSDU()
+
+        output = cast(GetCommEventLogSDU.Response, self.query(payload))
+
+        return output.status, output.event_count, output.message_count, output.events
+
+    # Write Multiple Coils - 0x0F
+    def write_multiple_coils(self, start_address: int, values: list[bool]) -> None:
+        """
+        Write multiple coil values
+
+        Parameters
+        ----------
+        start_address : int
+        value : list
+            Bool values
+        """
+        payload = WriteMultipleCoilsSDU(
+            start_address=start_address,
+            values=values,
+        )
+
+        self.query(payload)
+
+    # Write Multiple Registers - 0x10
+    def write_multiple_registers(self, start_address: int, values: list[int]) -> None:
+        """
+        Write multiple registers
+
+        Parameters
+        ----------
+        start_address : int
+        values : list
+            List of integers
+
+        """
+        payload = WriteMultipleRegistersSDU(
+            start_address=start_address,
+            values=values,
+        )
+
+        self.query(payload)
+
+    # Report Server ID - 0x11
+    def report_server_id(
+        self, server_id_length: int, additional_data_length: int
+    ) -> tuple[bytes, bool, bytes]:
+        """
+        Read description of the type, current status and other information specific to
+        a remote device
+
+        Parameters
+        ----------
+        server_id_length : int
+            Length of server id field (bytes)
+        additional_data_length : int
+            Length of additional data (bytes), 0 if none
+        Returns
+        -------
+        server_id : bytes
+        run_indicator_status : bool
+        additional_data : bytes
+        """
+        payload = ReportServerIdSDU(
+            server_id_length=server_id_length,
+            additional_data_length=additional_data_length,
+        )
+
+        output = cast(ReportServerIdSDU.Response, self.query(payload))
+
+        return output.server_id, output.run_indicator_status, output.additional_data    
+
+    # Read File Record - 0x14
+    def read_file_record(self, records: list[tuple[int, int, int]]) -> list[bytes]:
+        """
+        Perform a single or multiple file record read
+
+        Total response length cannot exceed 253 bytes, meaning the number of records
+        and their length is limited.
+
+
+        Query equation : 2 + 7*N <= 253
+        Response equation : 2 + N*2 + sum(Li*2) <= 253
+
+        Parameters
+        ----------
+        records : list
+            List of tuples : (file_number, record_number, record_length)
+
+        Returns
+        -------
+        records_data : list
+            List of bytes
+        """
+        payload = ReadFileRecordSDU(records=records)
+
+        output = cast(ReadFileRecordSDU.Response, self.query(payload))
+
+        return output.records_data
+
+    # Write File Record - 0x15
+    def write_file_record(self, records: list[tuple[int, int, bytes]]) -> None:
+        """
+        Perform a single or multiple file record write
+
+        Total query and response length cannot exceed 253 bytes, meaning the number of
+        records and their length is limited.
+
+        Query equation : 2 + 7*N + sum(Li*2) <= 253
+        Response equation : identical
+
+        File number can be between 0x0001 and 0xFFFF but lots of legacy equipment will
+        not support file number above 0x000A (10)
+
+        Parameters
+        ----------
+        records : list
+            List of tuples : (file_number, record_number, data)
+        """
+        payload = WriteFileRecordSDU(records=records)
+
+        self.query(payload)
+
+    # Mask Write Register - 0x16
+    def mask_write_register(self, address: int, and_mask: int, or_mask: int) -> None:
+        """
+        This function is used to modify the contents of a holding register using a
+        combination of AND and OR masks applied to the current contents of the register.
+
+        The algorithm is :
+        
+        New value = (old value & and_mask) | (or_mask & (~and_mask))
+
+        Parameters
+        ----------
+        address : int
+            0x0000 to 0xFFFF
+        and_mask : int
+            0x0000 to 0xFFFF
+        or_mask : int
+            0x0000 to 0xFFFF
+        """
+        payload = MaskWriteRegisterSDU(
+            address=address,
+            and_mask=and_mask,
+            or_mask=or_mask,
+        )
+
+        self.query(payload)
+
+    # Read/Write Multiple Registers - 0x17
+    def read_write_multiple_registers(
+        self,
+        read_starting_address: int,
+        number_of_read_registers: int,
+        write_starting_address: int,
+        write_values: list[int],
+    ) -> list[int]:
+        """
+        Do a write, then a read operation, each on a specific set of registers.
+
+        Parameters
+        ----------
+        read_starting_address : int
+        number_of_read_registers : int
+        write_starting_address : int
+        write_values : list
+            List of registers values
+
+        Returns
+        -------
+        read_values : list
+        """
+        payload = ReadWriteMultipleRegistersSDU(
+            read_starting_address=read_starting_address,
+            number_of_read_registers=number_of_read_registers,
+            write_starting_address=write_starting_address,
+            write_values=write_values,
+        )
+
+        output = cast(ReadWriteMultipleRegistersSDU.Response, self.query(payload))
+        return output.read_values
+
+    # Read FIFO Queue - 0x18
+    def read_fifo_queue(self, fifo_address: int) -> list[int]:
+        """
+        Read the contents of a First-In-First-Out (FIFO) queue of registers
+
+        Parameters
+        ----------
+        fifo_address : int
+
+        Returns
+        -------
+        registers : list
+        """
+        payload = ReadFifoQueueSDU(fifo_address=fifo_address)
+        
+        output = cast(ReadFifoQueueSDU.Response, self.query(payload))
+        return output.values
+
+    # Encapsulate Interface Transport - 0x2B
+    def encapsulated_interface_transport(
+        self,
+        mei_type: int,
+        mei_data: bytes,
+        extra_exceptions: dict[int, str] | None = None,
+    ) -> bytes:
+        """
+        The MODBUS Encapsulated Interface (MEI) Transport is a mechanism for tunneling
+        service requests and method invocations
+
+        Parameters
+        ----------
+        mei_type : int
+        mei_data : bytes
+
+        Returns
+        -------
+        returned_mei_data : bytes
+        """
+        payload = EncapsulatedInterfaceTransportSDU(
+            mei_type=mei_type,
+            mei_data=mei_data,
+            extra_exceptions=extra_exceptions,
+        )
+
+        output = cast(EncapsulatedInterfaceTransportSDU.Response, self.query(payload))
+
+        return output.data
+
+class AsyncModbus(AsyncProtocol[ModbusSDU], ModbusCommon):
+
+    # Read Coils - 0x01
+    async def aread_coils(self, start_address: int, number_of_coils: int) -> list[bool]:
+        """
+        Asynchronously read a defined number of coils starting at a set address
+
+        Parameters
+        ----------
+        start_address : int
+        number_of_coils : int
+
+        Returns
+        -------
+        coils : list
+        """
+
+        payload = ReadCoilsSDU(
+            start_address=start_address, number_of_coils=number_of_coils
+        )
+
+        output = cast(ReadCoilsSDU.Response, await self.query(payload))
+
+        return output.coils
+
+    # This is a wrapper for the read_coils method
+    async def aread_single_coil(self, address: int) -> bool:
+        """
+        Asynchronously read a single coil at a specified address.
+        This is a wrapper for the read_coils method with the number of coils set to 1
+
+        Parameters
+        ----------
+        address : int
+
+        Returns
+        -------
+        coil : bool
+        """
+        coil = (await self.aread_coils(start_address=address, number_of_coils=1))[0]
+        return coil
+
+    # Read Discrete inputs - 0x02
+    async def aread_discrete_inputs(
+        self, start_address: int, number_of_inputs: int
+    ) -> list[bool]:
+        """
+        Read a defined number of discrete inputs at a set starting address
+
+        Parameters
+        ----------
+        start_address : int
+        number_of_inputs : int
+
+        Returns
+        -------
+        inputs : list
+        List of booleans
+        """
+
+        payload = ReadDiscreteInputs(
+            start_address=start_address, number_of_inputs=number_of_inputs
+        )
+
+        output = cast(ReadDiscreteInputs.Response, await self.query(payload))
+
+        return output.inputs
+
+    # Read Holding Registers - 0x03
+    async def read_holding_registers(
+        self, start_address: int, number_of_registers: int
+    ) -> list[int]:
+        """
+        Asynchronously Reads a defined number of registers starting at a set address
+
+        Parameters
+        ----------
+        start_address : int
+        number_of_registers : int
+            1 to 125
+
+        Returns
+        -------
+        registers : list
+        """
+
+        payload = ReadHoldingRegisters(
+            start_address=start_address, number_of_registers=number_of_registers
+        )
+
+        output = cast(ReadHoldingRegisters.Response, await self.query(payload))
+
+        return output.registers
+    
+    async def read_multi_register_value(
+        self,
+        address: int,
+        n_registers: int,
+        value_type: str,
+        *,
+        byte_order: str = Endian.BIG.value,
+        word_order: str = Endian.BIG.value,
+        encoding: str = "utf-8",
+        padding: int | None = 0,
+    ) -> str | bytes | int | float:
+        """
+        Asynchronously read an integer, a float, or a string over multiple registers
+
+        Parameters
+        ----------
+        address : int
+            Address of the first register
+        n_registers : int
+            Number of registers (half the number of bytes)
+        value_type : str
+            Type to which the value will be cast
+                'int' : signed integer
+                'uint' : unsigned integer
+                'float' : float or double
+                'string' : string
+                'array' : Bytes array
+            Each type will be adapted based on the number of bytes (_bytes parameter)
+        byte_order : str
+            Byte order, 'big' means the high bytes will come first, 'little' means the low bytes
+            will come first
+            Byte order inside a register (2 bytes) is always big as per
+            Modbus specification (4.2 Data Encoding)
+        encoding : str
+            String encoding (if used). UTF-8 by default
+        padding : int | None
+            String padding, None to return the raw string
+        Returns
+        -------
+        data : any
+        """
+        # Read N registers
+        registers = await self.read_holding_registers(
+            start_address=address, number_of_registers=n_registers
+        )
+
+        return self._parse_multi_register_value(
+            n_registers=n_registers,
+            registers=registers,
+            value_type=value_type,
+            byte_order=byte_order,
+            word_order=word_order,
+            encoding=encoding,
+            padding=padding,
+        )
+
+    async def write_multi_register_value(
         self,
         address: int,
         n_registers: int,
@@ -2004,36 +2642,10 @@ class Modbus(BytesProtocol[ModbusSDU]):
             padding=padding,
         )
 
-        await self.awrite_multiple_registers(start_address=address, values=registers)
+        await self.write_multiple_registers(start_address=address, values=registers)
 
     # Read Input Registers - 0x04
-    def read_input_registers(
-        self, start_address: int, number_of_registers: int
-    ) -> list[int]:
-        """
-        Reads a defined number of input registers starting at a set address
-
-        Parameters
-        ----------
-        start_address : int
-        number_of_registers : int
-            1 to 125
-
-        Returns
-        -------
-        registers : list
-            List of integers
-        """
-        payload = ReadInputRegistersSDU(
-            start_address=start_address,
-            number_of_registers=number_of_registers,
-        )
-
-        output = cast(ReadInputRegistersSDU.Response, self.query(payload))
-
-        return output.registers
-
-    async def aread_input_registers(
+    async def read_input_registers(
         self, start_address: int, number_of_registers: int
     ) -> list[int]:
         """
@@ -2055,25 +2667,12 @@ class Modbus(BytesProtocol[ModbusSDU]):
             number_of_registers=number_of_registers,
         )
 
-        output = cast(ReadInputRegistersSDU.Response, await self.aquery(payload))
+        output = cast(ReadInputRegistersSDU.Response, await self.query(payload))
 
         return output.registers
 
     # Write Single coil - 0x05
-    def write_single_coil(self, address: int, status: bool) -> None:
-        """
-        Write a single output to either ON or OFF
-
-        Parameters
-        ----------
-        address : int
-        status : bool
-        """
-        payload = WriteSingleCoilSDU(address=address, status=status)
-
-        self.query(payload)
-
-    async def awrite_single_coil(self, address: int, status: bool) -> None:
+    async def write_single_coil(self, address: int, status: bool) -> None:
         """
         Asynchronously write a single output to either ON or OFF
 
@@ -2084,27 +2683,10 @@ class Modbus(BytesProtocol[ModbusSDU]):
         """
         payload = WriteSingleCoilSDU(address=address, status=status)
 
-        await self.aquery(payload)
+        await self.query(payload)
 
     # Write Single Register - 0x06
-    def write_single_register(self, address: int, value: int) -> None:
-        """
-        Write a single register
-
-        Parameters
-        ----------
-        address : int
-        value : int
-            value between 0x0000 and 0xFFFF
-        """
-        payload = WriteSingleRegisterSDU(
-            address=address,
-            value=value,
-        )
-
-        self.query(payload)
-
-    async def awrite_single_register(self, address: int, value: int) -> None:
+    async def write_single_register(self, address: int, value: int) -> None:
         """
         Asynchronously write a single register
 
@@ -2119,9 +2701,9 @@ class Modbus(BytesProtocol[ModbusSDU]):
             value=value,
         )
 
-        await self.aquery(payload)
+        await self.query(payload)
 
-    def read_single_register(self, address: int) -> int:
+    async def read_single_register(self, address: int) -> int:
         """
         Read a single register
 
@@ -2133,24 +2715,10 @@ class Modbus(BytesProtocol[ModbusSDU]):
         -------
         value : int
         """
-        return self.read_holding_registers(address, 1)[0]
+        return (await self.read_holding_registers(address, 1))[0]
 
     # Read Exception Status - 0x07
-    def read_exception_status(self) -> int:
-        """
-        Read exeption status
-
-        Returns
-        -------
-        exceptions : int
-        """
-        payload = ReadExceptionStatusSDU()
-
-        output = cast(ReadExceptionStatusSDU.Response, self.query(payload))
-
-        return output.status
-
-    async def aread_exception_status(self) -> int:
+    async def read_exception_status(self) -> int:
         """
         Asynchronously read exeption status
 
@@ -2160,38 +2728,11 @@ class Modbus(BytesProtocol[ModbusSDU]):
         """
         payload = ReadExceptionStatusSDU()
 
-        output = cast(ReadExceptionStatusSDU.Response, await self.aquery(payload))
+        output = cast(ReadExceptionStatusSDU.Response, await self.query(payload))
 
         return output.status
 
-    # Diagnostics - 0x08
-    def diagnostics_return_query_data(self, data: int = 0x1234) -> bool:
-        """
-        Run "Return Query Data" diagnostic
-
-        A query is sent and should be return identical
-
-        Parameters
-        ----------
-        data : int
-            data to send (16 bits integer)
-
-        Returns
-        -------
-        success : bool
-        """
-        subfunction_data = struct.pack(ENDIAN + "H", data)
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.RETURN_QUERY_DATA,
-            subfunction_data=subfunction_data,
-            return_subfunction_bytes=2,
-        )
-
-        output = cast(DiagnosticsSDU.Response, self.query(payload))
-
-        return output.data == subfunction_data
-
-    async def adiagnostics_return_query_data(self, data: int = 0x1234) -> bool:
+    async def diagnostics_return_query_data(self, data: int = 0x1234) -> bool:
         """
         Asynchronously run "Return Query Data" diagnostic
 
@@ -2213,34 +2754,11 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        output = cast(DiagnosticsSDU.Response, await self.aquery(payload))
+        output = cast(DiagnosticsSDU.Response, await self.query(payload))
 
         return output.data == subfunction_data
 
-    # TODO : Check how this function interracts with Listen Only mode
-    def diagnostics_restart_communications_option(
-        self, clear_communications_event_log: bool = False
-    ) -> None:
-        """
-        Initialize and restart serial line port. Brings the device out of Listen Only Mode
-
-        Parameters
-        ----------
-        clear_communications_event_log : bool
-            False by default
-        """
-        subfunction_data = struct.pack(
-            ENDIAN + "H", 0xFF00 if clear_communications_event_log else 0x0000
-        )
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.RESTART_COMMUNICATIONS_OPTION,
-            subfunction_data=subfunction_data,
-            return_subfunction_bytes=2,
-        )
-
-        self.query(payload)
-
-    async def adiagnostics_restart_communications_option(
+    async def diagnostics_restart_communications_option(
         self, clear_communications_event_log: bool = False
     ) -> None:
         """
@@ -2261,27 +2779,9 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        await self.aquery(payload)
+        await self.query(payload)
 
-    def diagnostics_return_diagnostic_register(self) -> int:
-        """
-        Return 16 bit diagnostic register
-
-        Returns
-        -------
-        register : int
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.RETURN_DIAGNOSTIC_REGISTER,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=2,
-        )
-
-        output = cast(DiagnosticsSDU.Response, self.query(payload))
-
-        return int(struct.unpack(ENDIAN + "H", output.data)[0])
-
-    async def adiagnostics_return_diagnostic_register(self) -> int:
+    async def diagnostics_return_diagnostic_register(self) -> int:
         """
         Asynchronously return 16 bit diagnostic register
 
@@ -2295,36 +2795,11 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        output = cast(DiagnosticsSDU.Response, await self.aquery(payload))
+        output = cast(DiagnosticsSDU.Response, await self.query(payload))
 
         return int(struct.unpack(ENDIAN + "H", output.data)[0])
 
-    def diagnostics_change_ascii_input_delimiter(self, char: bytes | str) -> None:
-        """
-        Change the ASCII input delimiter to specified value
-
-        Parameters
-        ----------
-        char : bytes or str
-            Single character
-        """
-        if len(char) != 1:
-            raise ValueError(f"Invalid char length : {len(char)}")
-        if isinstance(char, str):
-            char = char.encode("ASCII")
-
-        subfunction_data = struct.pack("cB", char, 0)
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.CHANGE_ASCII_INPUT_DELIMITER,
-            subfunction_data=subfunction_data,
-            return_subfunction_bytes=2,
-        )
-
-        self.query(payload)
-
-    async def adiagnostics_change_ascii_input_delimiter(
-        self, char: bytes | str
-    ) -> None:
+    async def diagnostics_change_ascii_input_delimiter(self, char: bytes | str) -> None:
         """
         Asynchronously change the ASCII input delimiter to specified value
 
@@ -2345,11 +2820,11 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        await self.aquery(payload)
+        await self.query(payload)
 
-    def diagnostics_force_listen_only_mode(self) -> None:
+    async def diagnostics_force_listen_only_mode(self) -> None:
         """
-        Forces the addressed remote device to its Listen Only Mode for MODBUS communications.
+        Asynchronously forces the addressed remote device to its Listen Only Mode for MODBUS communications.
         This isolates it from the other devices on the network, allowing them to continue
         communicating without interruption from the addressed remote device. No response is
         returned.
@@ -2367,35 +2842,9 @@ class Modbus(BytesProtocol[ModbusSDU]):
             check_response=False,
         )
 
-        self.query(payload)
+        await self.query(payload)
 
-    async def adiagnostics_force_listen_only_mode(self) -> None:
-        """
-        Asynchronously force the addressed remote device to its Listen Only Mode
-        for MODBUS communications.
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.FORCE_LISTEN_ONLY_MODE,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=0,
-            check_response=False,
-        )
-
-        await self.aquery(payload)
-
-    def diagnostics_clear_counters_and_diagnostic_register(self) -> None:
-        """
-        Clear all counters and the diagnostic register
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.CLEAR_COUNTERS_AND_DIAGNOSTIC_REGISTER,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=0,
-        )
-
-        self.query(payload)
-
-    async def adiagnostics_clear_counters_and_diagnostic_register(self) -> None:
+    async def diagnostics_clear_counters_and_diagnostic_register(self) -> None:
         """
         Asynchronously clear all counters and the diagnostic register
         """
@@ -2405,28 +2854,9 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=0,
         )
 
-        await self.aquery(payload)
+        await self.query(payload)
 
-    def diagnostics_return_bus_message_count(self) -> int:
-        """
-        Return the number of messages that the remote device has detection on the communications
-        system since its last restat, clear counters operation, or power-up
-
-        Returns
-        -------
-        count : int
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.RETURN_BUS_MESSAGE_COUNT,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=2,
-        )
-
-        output = cast(DiagnosticsSDU.Response, self.query(payload))
-
-        return int(struct.unpack(ENDIAN + "H", output.data)[0])
-
-    async def adiagnostics_return_bus_message_count(self) -> int:
+    async def diagnostics_return_bus_message_count(self) -> int:
         """
         Asynchronously return the number of messages that the remote device has detection on the
         communications system since its last restat, clear counters operation, or power-up
@@ -2437,30 +2867,11 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        output = cast(DiagnosticsSDU.Response, await self.aquery(payload))
+        output = cast(DiagnosticsSDU.Response, await self.query(payload))
 
         return int(struct.unpack(ENDIAN + "H", output.data)[0])
 
-    def diagnostics_return_bus_communication_error_count(self) -> int:
-        """
-        Return the number of messages that the remote device has detection on the communications
-        system since its last restart, clear counters operation, or power-up
-
-        Returns
-        -------
-        count : int
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.RETURN_BUS_COMMUNICATION_ERROR_COUNT,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=2,
-        )
-
-        output = cast(DiagnosticsSDU.Response, self.query(payload))
-
-        return int(struct.unpack(ENDIAN + "H", output.data)[0])
-
-    async def adiagnostics_return_bus_communication_error_count(self) -> int:
+    async def diagnostics_return_bus_communication_error_count(self) -> int:
         """
         Asynchronously return the number of messages that the remote device has detection on the
         communications system since its last restart, clear counters operation, or power-up
@@ -2471,30 +2882,11 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        output = cast(DiagnosticsSDU.Response, await self.aquery(payload))
+        output = cast(DiagnosticsSDU.Response, await self.query(payload))
 
         return int(struct.unpack(ENDIAN + "H", output.data)[0])
 
-    def diagnostics_return_bus_exception_error_count(self) -> int:
-        """
-        Return the number of Modbus exceptions responses returned by the remote device since
-        its last restart, clear counters operation, or power-up
-
-        Returns
-        -------
-        count : int
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.RETURN_BUS_EXCEPTION_ERROR_COUNT,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=2,
-        )
-
-        output = cast(DiagnosticsSDU.Response, self.query(payload))
-
-        return int(struct.unpack(ENDIAN + "H", output.data)[0])
-
-    async def adiagnostics_return_bus_exception_error_count(self) -> int:
+    async def diagnostics_return_bus_exception_error_count(self) -> int:
         """
         Asynchronously return the number of Modbus exceptions responses returned by the remote
         device since its last restart, clear counters operation, or power-up
@@ -2505,30 +2897,11 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        output = cast(DiagnosticsSDU.Response, await self.aquery(payload))
+        output = cast(DiagnosticsSDU.Response, await self.query(payload))
 
         return int(struct.unpack(ENDIAN + "H", output.data)[0])
 
-    def diagnostics_return_server_no_response_count(self) -> int:
-        """
-        Return the number of messages addressed to the remote device for which it has returned
-        no response since its last restart, clear counters operation, or power-up
-
-        Returns
-        -------
-        count : int
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.RETURN_SERVER_NO_RESPONSE_COUNT,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=2,
-        )
-
-        output = cast(DiagnosticsSDU.Response, self.query(payload))
-
-        return int(struct.unpack(ENDIAN + "H", output.data)[0])
-
-    async def adiagnostics_return_server_no_response_count(self) -> int:
+    async def diagnostics_return_server_no_response_count(self) -> int:
         """
         Asynchronously return the number of messages addressed to the remote device for which it
         has returned no response since its last restart, clear counters operation, or power-up
@@ -2539,31 +2912,11 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        output = cast(DiagnosticsSDU.Response, await self.aquery(payload))
+        output = cast(DiagnosticsSDU.Response, await self.query(payload))
 
         return int(struct.unpack(ENDIAN + "H", output.data)[0])
 
-    def diagnostics_return_server_nak_count(self) -> int:
-        """
-        Return the number of messages addressed to the remote device for which it returned
-        a negative acnowledge (NAK) exception response since its last restart, clear counters
-        operation, or power-up
-
-        Returns
-        -------
-        count : int
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.RETURN_SERVER_NAK_COUNT,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=2,
-        )
-
-        output = cast(DiagnosticsSDU.Response, self.query(payload))
-
-        return int(struct.unpack(ENDIAN + "H", output.data)[0])
-
-    async def adiagnostics_return_server_nak_count(self) -> int:
+    async def diagnostics_return_server_nak_count(self) -> int:
         """
         Asynchronously return the number of messages addressed to the remote device for which it
         returned a negative acnowledge (NAK) exception response since its last restart,
@@ -2575,35 +2928,19 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        output = cast(DiagnosticsSDU.Response, await self.aquery(payload))
+        output = cast(DiagnosticsSDU.Response, await self.query(payload))
 
         return int(struct.unpack(ENDIAN + "H", output.data)[0])
 
-    def diagnostics_return_server_busy_count(self) -> int:
-        """
-        Return the number of messages addressed to the remote device for which it returned a
-        server device busy exception response since its last restart, clear counters operation,
-        or power-up
-
-        Returns
-        -------
-        count : int
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.RETURN_SERVER_BUSY_COUNT,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=2,
-        )
-
-        output = cast(DiagnosticsSDU.Response, self.query(payload))
-
-        return int(struct.unpack(ENDIAN + "H", output.data)[0])
-
-    async def adiagnostics_return_server_busy_count(self) -> int:
+    async def diagnostics_return_server_busy_count(self) -> int:
         """
         Asynchronously return the number of messages addressed to the remote device for which it
         returned a server device busy exception response since its last restart, clear counters
         operation, or power-up
+
+        Returns
+        -------
+        count : int
         """
         payload = DiagnosticsSDU(
             code=DiagnosticsCode.RETURN_SERVER_BUSY_COUNT,
@@ -2611,15 +2948,15 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        output = cast(DiagnosticsSDU.Response, await self.aquery(payload))
+        output = cast(DiagnosticsSDU.Response, await self.query(payload))
 
         return int(struct.unpack(ENDIAN + "H", output.data)[0])
 
-    def diagnostics_return_bus_character_overrun_count(self) -> int:
+    async def diagnostics_return_bus_character_overrun_count(self) -> int:
         """
-        Return the number of messages addressed to the remote device that it could not handle
-        due to a character overrun condition since its last restart, clear counters operation,
-        or power-up
+        Asynchronously return the number of messages addressed to the remote device that it could
+        not handle due to a character overrun condition since its last restart, clear counters
+        operation, or power-up
 
         Returns
         -------
@@ -2631,39 +2968,11 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=2,
         )
 
-        output = cast(DiagnosticsSDU.Response, self.query(payload))
+        output = cast(DiagnosticsSDU.Response, await self.query(payload))
 
         return int(struct.unpack(ENDIAN + "H", output.data)[0])
 
-    async def adiagnostics_return_bus_character_overrun_count(self) -> int:
-        """
-        Asynchronously return the number of messages addressed to the remote device that it could
-        not handle due to a character overrun condition since its last restart, clear counters
-        operation, or power-up
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.RETURN_BUS_CHARACTER_OVERRUN_COUNT,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=2,
-        )
-
-        output = cast(DiagnosticsSDU.Response, await self.aquery(payload))
-
-        return int(struct.unpack(ENDIAN + "H", output.data)[0])
-
-    def diagnostics_clear_overrun_counter_and_flag(self) -> None:
-        """
-        Clear the overrun error counter and reset the error flag
-        """
-        payload = DiagnosticsSDU(
-            code=DiagnosticsCode.CLEAR_OVERRUN_COUNTER_AND_FLAG,
-            subfunction_data=b"\x00\x00",
-            return_subfunction_bytes=0,
-        )
-
-        self.query(payload)
-
-    async def adiagnostics_clear_overrun_counter_and_flag(self) -> None:
+    async def diagnostics_clear_overrun_counter_and_flag(self) -> None:
         """
         Asynchronously clear the overrun error counter and reset the error flag
         """
@@ -2673,37 +2982,22 @@ class Modbus(BytesProtocol[ModbusSDU]):
             return_subfunction_bytes=0,
         )
 
-        await self.aquery(payload)
+        await self.query(payload)
 
     # Get Comm Event Counter - 0x0B
-    def get_comm_event_counter(self) -> tuple[int, int]:
-        """
-        Retrieve status word and event count from the remote device's communication event counter
-
-        Returns
-        -------
-        status : int
-        event_count : int
-        """
-        payload = GetCommEventCounterSDU()
-
-        output = cast(GetCommEventCounterSDU.Response, self.query(payload))
-
-        return output.status, output.event_count
-
-    async def aget_comm_event_counter(self) -> tuple[int, int]:
+    async def get_comm_event_counter(self) -> tuple[int, int]:
         """
         Asynchronously retrieve status word and event count from the remote device's
         communication event counter
         """
         payload = GetCommEventCounterSDU()
 
-        output = cast(GetCommEventCounterSDU.Response, await self.aquery(payload))
+        output = cast(GetCommEventCounterSDU.Response, await self.query(payload))
 
         return output.status, output.event_count
 
     # Get Comm Event Log - 0x0C
-    def get_comm_event_log(self) -> tuple[int, int, int, bytes]:
+    async def get_comm_event_log(self) -> tuple[int, int, int, bytes]:
         """
         Retrieve status word, event count, message count and a field of event bytes from
         the remote device
@@ -2724,23 +3018,14 @@ class Modbus(BytesProtocol[ModbusSDU]):
         """
         payload = GetCommEventLogSDU()
 
-        output = cast(GetCommEventLogSDU.Response, self.query(payload))
+        output = cast(GetCommEventLogSDU.Response, await self.query(payload))
 
         return output.status, output.event_count, output.message_count, output.events
-
-    async def aget_comm_event_log(self) -> tuple[int, int, int, bytes]:
-        """
-        Asynchronously retrieve status word, event count, message count and a field of event bytes
-        from the remote device
-        """
-        payload = GetCommEventLogSDU()
-
-        output = cast(GetCommEventLogSDU.Response, await self.aquery(payload))
-
-        return output.status, output.event_count, output.message_count, output.events
-
+    
     # Write Multiple Coils - 0x0F
-    def write_multiple_coils(self, start_address: int, values: list[bool]) -> None:
+    async def write_multiple_coils(
+        self, start_address: int, values: list[bool]
+    ) -> None:
         """
         Write multiple coil values
 
@@ -2755,23 +3040,12 @@ class Modbus(BytesProtocol[ModbusSDU]):
             values=values,
         )
 
-        self.query(payload)
-
-    async def awrite_multiple_coils(
-        self, start_address: int, values: list[bool]
-    ) -> None:
-        """
-        Asynchronously write multiple coil values
-        """
-        payload = WriteMultipleCoilsSDU(
-            start_address=start_address,
-            values=values,
-        )
-
-        await self.aquery(payload)
+        await self.query(payload)
 
     # Write Multiple Registers - 0x10
-    def write_multiple_registers(self, start_address: int, values: list[int]) -> None:
+    async def write_multiple_registers(
+        self, start_address: int, values: list[int]
+    ) -> None:
         """
         Write multiple registers
 
@@ -2787,51 +3061,10 @@ class Modbus(BytesProtocol[ModbusSDU]):
             values=values,
         )
 
-        self.query(payload)
-
-    async def awrite_multiple_registers(
-        self, start_address: int, values: list[int]
-    ) -> None:
-        """
-        Asynchronously write multiple registers
-        """
-        payload = WriteMultipleRegistersSDU(
-            start_address=start_address,
-            values=values,
-        )
-
-        await self.aquery(payload)
+        await self.query(payload)
 
     # Report Server ID - 0x11
-    def report_server_id(
-        self, server_id_length: int, additional_data_length: int
-    ) -> tuple[bytes, bool, bytes]:
-        """
-        Read description of the type, current status and other information specific to
-        a remote device
-
-        Parameters
-        ----------
-        server_id_length : int
-            Length of server id field (bytes)
-        additional_data_length : int
-            Length of additional data (bytes), 0 if none
-        Returns
-        -------
-        server_id : bytes
-        run_indicator_status : bool
-        additional_data : bytes
-        """
-        payload = ReportServerIdSDU(
-            server_id_length=server_id_length,
-            additional_data_length=additional_data_length,
-        )
-
-        output = cast(ReportServerIdSDU.Response, self.query(payload))
-
-        return output.server_id, output.run_indicator_status, output.additional_data
-
-    async def areport_server_id(
+    async def report_server_id(
         self, server_id_length: int, additional_data_length: int
     ) -> tuple[bytes, bool, bytes]:
         """
@@ -2843,12 +3076,14 @@ class Modbus(BytesProtocol[ModbusSDU]):
             additional_data_length=additional_data_length,
         )
 
-        output = cast(ReportServerIdSDU.Response, await self.aquery(payload))
+        output = cast(ReportServerIdSDU.Response, await self.query(payload))
 
         return output.server_id, output.run_indicator_status, output.additional_data
-
+    
     # Read File Record - 0x14
-    def read_file_record(self, records: list[tuple[int, int, int]]) -> list[bytes]:
+    async def read_file_record(
+        self, records: list[tuple[int, int, int]]
+    ) -> list[bytes]:
         """
         Perform a single or multiple file record read
 
@@ -2871,24 +3106,12 @@ class Modbus(BytesProtocol[ModbusSDU]):
         """
         payload = ReadFileRecordSDU(records=records)
 
-        output = cast(ReadFileRecordSDU.Response, self.query(payload))
-
-        return output.records_data
-
-    async def aread_file_record(
-        self, records: list[tuple[int, int, int]]
-    ) -> list[bytes]:
-        """
-        Asynchronously perform a single or multiple file record read
-        """
-        payload = ReadFileRecordSDU(records=records)
-
-        output = cast(ReadFileRecordSDU.Response, await self.aquery(payload))
+        output = cast(ReadFileRecordSDU.Response, await self.query(payload))
 
         return output.records_data
 
     # Write File Record - 0x15
-    def write_file_record(self, records: list[tuple[int, int, bytes]]) -> None:
+    async def write_file_record(self, records: list[tuple[int, int, bytes]]) -> None:
         """
         Perform a single or multiple file record write
 
@@ -2908,15 +3131,7 @@ class Modbus(BytesProtocol[ModbusSDU]):
         """
         payload = WriteFileRecordSDU(records=records)
 
-        self.query(payload)
-
-    async def awrite_file_record(self, records: list[tuple[int, int, bytes]]) -> None:
-        """
-        Asynchronously perform a single or multiple file record write
-        """
-        payload = WriteFileRecordSDU(records=records)
-
-        await self.aquery(payload)
+        await self.query(payload)
 
     # Mask Write Register - 0x16
     async def amask_write_register(
@@ -2945,62 +3160,16 @@ class Modbus(BytesProtocol[ModbusSDU]):
             or_mask=or_mask,
         )
 
-        await self.aquery(payload)
-
-    def mask_write_register(self, address: int, and_mask: int, or_mask: int) -> None:
-        """
-        This function is used to modify the contents of a holding register using a
-        combination of AND and OR masks applied to the current contents of the register.
-        """
-        payload = MaskWriteRegisterSDU(
-            address=address,
-            and_mask=and_mask,
-            or_mask=or_mask,
-        )
-
-        self.query(payload)
+        await self.query(payload)
 
     # Read/Write Multiple Registers - 0x17
-    def read_write_multiple_registers(
+    async def read_write_multiple_registers(
         self,
         read_starting_address: int,
         number_of_read_registers: int,
         write_starting_address: int,
         write_values: list[int],
-    ) -> list[int]:
-        """
-        Do a write, then a read operation, each on a specific set of registers.
-
-        Parameters
-        ----------
-        read_starting_address : int
-        number_of_read_registers : int
-        write_starting_address : int
-        write_values : list
-            List of registers values
-
-        Returns
-        -------
-        read_values : list
-        """
-        payload = ReadWriteMultipleRegistersSDU(
-            read_starting_address=read_starting_address,
-            number_of_read_registers=number_of_read_registers,
-            write_starting_address=write_starting_address,
-            write_values=write_values,
-        )
-
-        output = cast(ReadWriteMultipleRegistersSDU.Response, self.query(payload))
-
-        return output.read_values
-
-    async def aread_write_multiple_registers(
-        self,
-        read_starting_address: int,
-        number_of_read_registers: int,
-        write_starting_address: int,
-        write_values: list[int],
-    ) -> list[int]:
+        ) -> list[int]:
         """
         Asynchronously do a write, then a read operation, each on a specific set of registers.
         """
@@ -3012,71 +3181,24 @@ class Modbus(BytesProtocol[ModbusSDU]):
         )
 
         output = cast(
-            ReadWriteMultipleRegistersSDU.Response, await self.aquery(payload)
+            ReadWriteMultipleRegistersSDU.Response, await self.query(payload)
         )
 
         return output.read_values
-
+    
     # Read FIFO Queue - 0x18
-    def read_fifo_queue(self, fifo_address: int) -> list[int]:
-        """
-        Read the contents of a First-In-First-Out (FIFO) queue of registers
-
-        Parameters
-        ----------
-        fifo_address : int
-
-        Returns
-        -------
-        registers : list
-        """
-        payload = ReadFifoQueueSDU(fifo_address=fifo_address)
-
-        output = cast(ReadFifoQueueSDU.Response, self.query(payload))
-
-        return output.values
-
     async def aread_fifo_queue(self, fifo_address: int) -> list[int]:
         """
         Asynchronously read the contents of a First-In-First-Out (FIFO) queue of registers
         """
         payload = ReadFifoQueueSDU(fifo_address=fifo_address)
 
-        output = cast(ReadFifoQueueSDU.Response, await self.aquery(payload))
+        output = cast(ReadFifoQueueSDU.Response, await self.query(payload))
 
         return output.values
 
     # Encapsulate Interface Transport - 0x2B
-    def encapsulated_interface_transport(
-        self,
-        mei_type: int,
-        mei_data: bytes,
-        extra_exceptions: dict[int, str] | None = None,
-    ) -> bytes:
-        """
-        The MODBUS Encapsulated Interface (MEI) Transport is a mechanism for tunneling
-        service requests and method invocations
-
-        Parameters
-        ----------
-        mei_type : int
-        mei_data : bytes
-
-        Returns
-        -------
-        returned_mei_data : bytes
-        """
-        payload = EncapsulatedInterfaceTransportSDU(
-            mei_type=mei_type,
-            mei_data=mei_data,
-            extra_exceptions=extra_exceptions,
-        )
-
-        output = cast(EncapsulatedInterfaceTransportSDU.Response, self.query(payload))
-
-        return output.data
-
-    async def aencapsulated_interface_transport(
+    async def encapsulated_interface_transport(
         self,
         mei_type: int,
         mei_data: bytes,
@@ -3092,7 +3214,7 @@ class Modbus(BytesProtocol[ModbusSDU]):
         )
 
         output = cast(
-            EncapsulatedInterfaceTransportSDU.Response, await self.aquery(payload)
+            EncapsulatedInterfaceTransportSDU.Response, await self.query(payload)
         )
 
         return output.data

@@ -23,199 +23,40 @@ Async facade:
 import asyncio
 import threading
 import weakref
-from abc import abstractmethod
-from collections.abc import Callable
-from enum import Enum
 from types import EllipsisType
 from typing import Any, Generic, TypeVar, get_args, get_origin
 
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.tools.errors import AdapterError
 
-from ..component import Component, Descriptor, ReadFrame, ReadScope, WriteFrame
+from ..component import AsyncComponent, Component, ComponentCommon, ReadFrame, ReadScope
 from ..tools.log_settings import LoggerAlias
 from .adapterworker import (
-    AdapterEvent,
     AdapterWorker,
     AdapterWorkerInterface,
-    AddEventCallbackCommand,
-    ClearEventCallbacksCommand,
-    CloseCommand,
-    FlushReadCommand,
-    OpenCommand,
-    ReadCommand,
-    SetTimeoutCommand,
-    StopThreadCommand,
-    WriteCommand,
 )
 from .utils import TimeoutParameterType, TimeoutType
 
 DataT = TypeVar("DataT")
 
-# pylint: disable=too-many-public-methods, too-many-instance-attributes
-class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
+class AdapterCommon(Generic[DataT], ComponentCommon[DataT], AdapterWorkerInterface[DataT]):
     """
-    Adapter class
-
-    An adapter manages communication with a hardware device.
+    This is a generic class from which all adapters (sync and async) should inherit.
+    It provides basic functionnalities common to each
     """
-
-    class WorkerTimeout(Enum):
-        """Timeout value for each worker command scenario"""
-        OPEN = 2
-        STOP = 1
-        IMMEDIATE_COMMAND = 0.2
-        CLOSE = 0.5
-        WRITE = 0.5
-        READ = None
-
     def __init__(
-        self,
-        *,
-        worker: AdapterWorker[DataT],
-        timeout: TimeoutParameterType,
-        alias: str,
-        auto_open: bool = True,
-    ) -> None:
-        Component.__init__(self, LoggerAlias.ADAPTER)
-        AdapterWorkerInterface.__init__(self)
-
-        self._alias = alias
-        self._worker = worker
-        self._auto_open = auto_open
-
-        # Default timeout
-        self.is_default_timeout = timeout is Ellipsis
-
-        self._initial_timeout : float | None
-        if timeout is ...:
-            self._initial_timeout = self.default_timeout()
-        elif timeout is None:
-            self._initial_timeout = None
-        else:
-            try:
-                self._initial_timeout = float(timeout)
-            except (ValueError, TypeError) as e:
-                raise ValueError(f"Invalid timeout : {timeout}") from e
-
-        # Serialize read/write/query ordering for sync callers.
-        self._sync_io_lock = threading.Lock()
-        # Serialize read/write/query ordering for async callers.
-        self._async_io_lock = asyncio.Lock()
-
-        self._logger.info(f"Setting up {self.descriptor} adapter ")
-        self.set_timeout(self._initial_timeout)
-
-        if self.descriptor.is_initialized() and self._auto_open:
-            self.open()
+            self,
+            worker: AdapterWorker[DataT],
+            timeout: TimeoutParameterType,
+            alias: str,
+            auto_open: bool,
+            logger_alias: LoggerAlias
+        ) -> None:
+        ComponentCommon.__init__(self, logger_alias)
+        AdapterWorkerInterface.__init__(self, worker, timeout, alias, auto_open)
 
         weakref.finalize(self, self._cleanup)
 
-    @property
-    @abstractmethod
-    def descriptor(self) -> Descriptor:
-        ...
-
-    # ┌──────────────────────────┐
-    # │ Defaults / configuration │
-    # └──────────────────────────┘
-
-    def _stop(self) -> None:
-        cmd = StopThreadCommand()
-        self._worker.send_command(cmd)
-        try:
-            cmd.result(self.WorkerTimeout.STOP.value)
-        except AdapterError:
-            pass
-
-    @staticmethod
-    @abstractmethod
-    def default_timeout() -> float | None:
-        """Default timeout"""
-        raise NotImplementedError
-
-    def __str__(self) -> str:
-        return str(self.descriptor)
-
-    def __repr__(self) -> str:
-        return self.__str__()
-
-    def _cleanup(self) -> None:
-        try:
-            if self.is_open:
-                self.close()
-        except AdapterError:
-            pass
-        self._stop()
-
-    # ┌────────────┐
-    # │ Public API │
-    # └────────────┘
-
-    def set_timeout(self, timeout: TimeoutType) -> None:
-        """
-        Set adapter timeout
-
-        Parameters
-        ----------
-        timeout : float | int | None
-        """
-        # This is read by the worker when ReadCommand.timeout is ...
-        cmd = SetTimeoutCommand(timeout)
-        self._worker.send_command(cmd)
-        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
-
-    @property
-    def timeout(self) -> TimeoutType:
-        """Return the adapter's timeout. The timeout is used:
-            * To set the opening time
-            * Define the maximum time before a fragment is received when reading"""
-        return self._worker.timeout
-
-    def set_default_timeout(self, default_timeout: TimeoutType) -> None:
-        """
-        Configure adapter default timeout. Timeout will only be set if none
-        has been configured before
-
-        Parameters
-        ----------
-        default_timeout : float | int | None
-        """
-        if self.is_default_timeout:
-            self._logger.debug(f"Setting default timeout to {default_timeout}")
-            self.set_timeout(default_timeout)
-
-    def register_event_callback(self, event_callback: Callable[[AdapterEvent], None]) -> None:
-        """
-        Configure event callback. Event callback is called as such :
-
-        callback(event : AdapterEvent)
-
-        Parameters
-        ----------
-        event_callback : Callable[[AdapterEvent], None]
-
-        """
-        cmd = AddEventCallbackCommand(event_callback)
-        self._worker.send_command(cmd)
-        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
-
-    def clear_event_callbacks(self) -> None:
-        cmd = ClearEventCallbacksCommand()
-        self._worker.send_command(cmd)
-        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
-
-    @property
-    def frame_buffer(self) -> list[ReadFrame[Any]]:
-        """Return a list of ReadFrame available in the frame buffer"""
-        return list(self._worker.frame_buffer)
-
-    # ==== open ====
-
-    def _open_future(self) -> OpenCommand:
-        cmd = OpenCommand()
-        self._worker.send_command(cmd)
-        return cmd
 
     def open(self) -> None:
         """
@@ -234,18 +75,7 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         output = self._open_future().result(timeout)
         return output
 
-    async def aopen(self) -> None:
-        """
-        Open adapter communication with the target (async)
-        """
-        await asyncio.wrap_future(self._open_future())
 
-    # ==== close ====
-
-    def _close_future(self) -> CloseCommand:
-        cmd = CloseCommand()
-        self._worker.send_command(cmd)
-        return cmd
 
     def close(self) -> None:
         """
@@ -253,25 +83,62 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         """
         self._close_future().result(self.WorkerTimeout.CLOSE.value)
 
-    async def aclose(self) -> None:
-        """
-        Close adapter communication with the target (async)
-        """
-        await asyncio.wrap_future(self._close_future())
+    @property
+    def timeout(self) -> TimeoutType:
+        """Return the adapter's timeout. The timeout is used:
+            * To set the opening time
+            * Define the maximum time before a fragment is received when reading"""
+        return self._worker.timeout
 
-    # ==== read_detailed ====
+    def _cleanup(self) -> None:
+        try:
+            if self.is_open:
+                self.close()
+        except AdapterError:
+            pass
+        self._stop()
 
-    def _read_detailed_future(
+class Adapter(Generic[DataT], AdapterCommon[DataT], Component[DataT]):
+    """
+    Adapter class
+
+    An adapter manages communication with a hardware device.
+    """    
+
+    def __init__(
         self,
+        *,
+        worker: AdapterWorker[DataT],
         timeout: TimeoutParameterType,
-        scope: ReadScope,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition],
-    ) -> ReadCommand[DataT]:
-        cmd: ReadCommand[DataT] = ReadCommand(
-            timeout=timeout, scope=scope, stop_conditions=stop_conditions
+        alias: str,
+        auto_open: bool = True,
+    ) -> None:
+        super().__init__(
+            worker=worker,
+            timeout=timeout,
+            alias=alias,
+            auto_open=auto_open,
+            logger_alias=LoggerAlias.ADAPTER
         )
-        self._worker.send_command(cmd)
-        return cmd
+
+        self._sync_io_lock = threading.Lock()
+
+        if self.descriptor.is_initialized() and self._auto_open:
+            self.open()
+
+    # ┌──────────────────────────┐
+    # │ Defaults / configuration │
+    # └──────────────────────────┘
+
+    def __str__(self) -> str:
+        return str(self.descriptor)
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    # ┌────────────┐
+    # │ Public API │
+    # └────────────┘
 
     def read_detailed(
         self,
@@ -285,21 +152,6 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
             ).result(self.WorkerTimeout.READ.value)
         return result
 
-    async def aread_detailed(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> ReadFrame[DataT]:
-        async with self._async_io_lock:
-            return await asyncio.wrap_future(
-                self._read_detailed_future(
-                    timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
-                )
-            )
-
-    # ==== read ====
-
     def read(
         self,
         timeout: TimeoutParameterType = ...,
@@ -311,93 +163,32 @@ class Adapter(Generic[DataT], AdapterWorkerInterface[DataT], Component[DataT]):
         )
         return frame.data
 
-    async def aread(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> DataT:
-        frame = await self.aread_detailed(
-            timeout=timeout, scope=scope, stop_conditions=stop_conditions
-        )
-        return frame.data
-
-    # ==== flush_read ====
-
-    def _flush_read_future(self) -> FlushReadCommand:
-        cmd = FlushReadCommand()
-        self._worker.send_command(cmd)
-        return cmd
-
-    async def aflush_read(self) -> None:
-        """
-        Clear buffered completed frames and reset current fragment assembly (async)
-        """
-        async with self._async_io_lock:
-            await asyncio.wrap_future(self._flush_read_future())
-
-    def flush_read(self) -> None:
+    def clear_read_buffer(self) -> None:
         """
         Clear buffered completed frames and reset current fragment assembly (blocking)
         """
         with self._sync_io_lock:
-            self._flush_read_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
-
-    # ==== write ====
-
-    def _write_future(self, data: DataT) -> WriteCommand[DataT]:
-        cmd = WriteCommand(WriteFrame(data))
-        self._worker.send_command(cmd)
-        return cmd
+            self._clear_read_buffer_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)    
 
     def write(self, data: DataT) -> None:
         with self._sync_io_lock:
             self._write_future(data).result(self.WorkerTimeout.WRITE.value)
 
-    async def awrite(self, data: DataT) -> None:
-        async with self._async_io_lock:
-            await asyncio.wrap_future(self._write_future(data))
-
-    # ==== query ====
-
-    async def aquery_detailed(
-        self,
-        payload: DataT,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.LAST_WRITE.value,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> ReadFrame[DataT]:
-        async with self._async_io_lock:
-            await asyncio.wrap_future(self._flush_read_future())
-            await asyncio.wrap_future(self._write_future(payload))
-            return await asyncio.wrap_future(
-                self._read_detailed_future(
-                    timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
-                )
-            )
-
     def query_detailed(
         self,
         payload: DataT,
         timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.LAST_WRITE.value,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
     ) -> ReadFrame[DataT]:
 
         with self._sync_io_lock:
-            self._flush_read_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
             self._write_future(payload).result(self.WorkerTimeout.WRITE.value)
             output = self._read_detailed_future(
-                timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
+                timeout=timeout,
+                scope=ReadScope.LAST_WRITE,
+                stop_conditions=stop_conditions
             ).result(self.WorkerTimeout.READ.value)
         return output
-
-    # ==== Other ====
-
-    @property
-    def is_open(self) -> bool:
-        """Return True if the adapter is open"""
-        return self._worker._is_open
 
 def find_adapter_data_type(obj : type[Adapter[Any]] | Adapter[Any]) -> Any:
     """
@@ -425,3 +216,91 @@ def find_adapter_data_type(obj : type[Adapter[Any]] | Adapter[Any]) -> Any:
             return args[0] if args else None
 
     return None
+
+class AsyncAdapter(Generic[DataT], AdapterCommon[DataT], AsyncComponent[DataT]):
+    """
+    AsyncAdapter class
+
+    An adapter manages communication with a hardware device.
+    """
+
+    def __init__(
+            self,
+            *,
+            worker: AdapterWorker[DataT],
+            timeout: TimeoutParameterType,
+            alias: str,
+            auto_open: bool = False,
+        ) -> None:
+        AsyncComponent.__init__(self, LoggerAlias.ADAPTER)
+        AdapterWorkerInterface.__init__(self, worker, timeout, alias, auto_open)
+
+        self._logger.info(f"Setting up {self.descriptor} adapter ")
+
+        self._async_io_lock = asyncio.Lock()
+
+        if self.descriptor.is_initialized() and self._auto_open:
+            self.open()
+
+    async def open_async(self) -> None:
+        """
+        Open adapter communication with the target (async)
+        """
+        await asyncio.wrap_future(self._open_future())
+
+    async def close_async(self) -> None:
+        """
+        Close adapter communication with the target (async)
+        """
+        await asyncio.wrap_future(self._close_future())
+
+    async def read_detailed(
+        self,
+        timeout: TimeoutParameterType = ...,
+        scope: str = ReadScope.BUFFERED,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> ReadFrame[DataT]:
+        async with self._async_io_lock:
+            return await asyncio.wrap_future(
+                self._read_detailed_future(
+                    timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
+                )
+            )
+
+    async def read(
+        self,
+        timeout: TimeoutParameterType = ...,
+        scope: str = ReadScope.BUFFERED,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+    ) -> DataT:
+        frame = await self.read_detailed(
+            timeout=timeout, scope=scope, stop_conditions=stop_conditions
+        )
+        return frame.data
+
+    async def clear_read_buffer(self) -> None:
+        """
+        Clear buffered completed frames and reset current fragment assembly (async)
+        """
+        async with self._async_io_lock:
+            await asyncio.wrap_future(self._clear_read_buffer_future())
+
+    async def write(self, data: DataT) -> None:
+        async with self._async_io_lock:
+            await asyncio.wrap_future(self._write_future(data))
+
+    async def query_detailed(
+        self,
+        payload: DataT,
+        timeout: TimeoutParameterType = ...,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
+        ) -> ReadFrame[DataT]:
+        async with self._async_io_lock:
+            await asyncio.wrap_future(self._write_future(payload))
+            return await asyncio.wrap_future(
+                self._read_detailed_future(
+                    timeout=timeout,
+                    scope=ReadScope.LAST_WRITE,
+                    stop_conditions=stop_conditions
+                )
+            )

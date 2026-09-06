@@ -5,7 +5,9 @@
 """
 Adapter worker mixin and worker command types.
 """
+from __future__ import annotations
 
+from enum import Enum
 import logging
 import queue
 import socket
@@ -25,6 +27,7 @@ from syndesi.tools.log_settings import LoggerAlias
 from ..component import Descriptor, ReadFrame, ReadScope, SyndesiEvent, ThreadCommand, WriteFrame
 from ..tools.errors import (
     AdapterDisconnected,
+    AdapterError,
     AdapterOpenError,
     AdapterReadError,
     AdapterTimeoutError,
@@ -195,11 +198,58 @@ class AdapterWorkerInterface(Generic[DataT]):
     """Adapter base class for worker interface.
     The worker will call these methods that the final adapter will implement"""
 
-    def __init__(self) -> None:
+    class WorkerTimeout(Enum):
+            """Timeout value for each worker command scenario"""
+            OPEN = 2
+            STOP = 1
+            IMMEDIATE_COMMAND = 0.2
+            CLOSE = 0.5
+            WRITE = 0.5
+            READ = None
+            
+    def __init__(
+            self,
+            worker : AdapterWorker[DataT],
+            timeout: TimeoutParameterType,
+            alias : str,
+            auto_open : bool
+        ) -> None:
+
+        self._alias = alias
+        self._worker = worker
+        self._auto_open = auto_open
+
+        # Default timeout
+        self.is_default_timeout = timeout is Ellipsis
+
+        self._initial_timeout : float | None
+        if timeout is ...:
+            self._initial_timeout = self.default_timeout
+        elif timeout is None:
+            self._initial_timeout = None
+        else:
+            try:
+                self._initial_timeout = float(timeout)
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid timeout : {timeout}") from e
+
+        self.set_timeout(self._initial_timeout)
+
+
         self._worker_logger = logging.getLogger(LoggerAlias.ADAPTER_WORKER.value)
         # Events
         self._event_callbacks: set[Callable[[AdapterEvent], None]] = set()
 
+    @property
+    def is_open(self) -> bool:
+        """Return True if the adapter is open"""
+        return self._worker._is_open
+
+    @property
+    @abstractmethod
+    def default_timeout(self) -> float | None:
+        """Default timeout"""
+    
     @property
     @abstractmethod
     def descriptor(self) -> Descriptor:
@@ -235,6 +285,101 @@ class AdapterWorkerInterface(Generic[DataT]):
                     "Adapter event callback failed with error : %s", str(e)
                 )
 
+    def _stop(self) -> None:
+        cmd = StopThreadCommand()
+        self._worker.send_command(cmd)
+        try:
+            cmd.result(self.WorkerTimeout.STOP.value)
+        except AdapterError:
+            pass
+
+    # ==== Public API ====
+
+
+
+    def set_timeout(self, timeout: TimeoutType) -> None:
+        """
+        Set adapter timeout
+
+        Parameters
+        ----------
+        timeout : float | int | None
+        """
+        # This is read by the worker when ReadCommand.timeout is ...
+        cmd = SetTimeoutCommand(timeout)
+        self._worker.send_command(cmd)
+        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+
+    def set_default_timeout(self, default_timeout: TimeoutType) -> None:
+        """
+        Configure adapter default timeout. Timeout will only be set if none
+        has been configured before
+
+        Parameters
+        ----------
+        default_timeout : float | int | None
+        """
+        if self.is_default_timeout:
+            self.set_timeout(default_timeout)
+
+    def register_event_callback(self, event_callback: Callable[[AdapterEvent], None]) -> None:
+        """
+        Configure event callback. Event callback is called as such :
+
+        callback(event : AdapterEvent)
+
+        Parameters
+        ----------
+        event_callback : Callable[[AdapterEvent], None]
+
+        """
+        cmd = AddEventCallbackCommand(event_callback)
+        self._worker.send_command(cmd)
+        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+
+    def clear_event_callbacks(self) -> None:
+        cmd = ClearEventCallbacksCommand()
+        self._worker.send_command(cmd)
+        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+
+    @property
+    def frame_buffer(self) -> list[ReadFrame[Any]]:
+        """Return a list of ReadFrame available in the frame buffer"""
+        return list(self._worker.frame_buffer)
+    
+    # ==== Future methods ====
+
+    def _open_future(self) -> OpenCommand:
+        cmd = OpenCommand()
+        self._worker.send_command(cmd)
+        return cmd
+
+    def _close_future(self) -> CloseCommand:
+        cmd = CloseCommand()
+        self._worker.send_command(cmd)
+        return cmd    
+
+    def _read_detailed_future(
+        self,
+        timeout: TimeoutParameterType,
+        scope: ReadScope,
+        stop_conditions: StopCondition | EllipsisType | list[StopCondition],
+    ) -> ReadCommand[DataT]:
+        cmd: ReadCommand[DataT] = ReadCommand(
+            timeout=timeout, scope=scope, stop_conditions=stop_conditions
+        )
+        self._worker.send_command(cmd)
+        return cmd
+
+    def _clear_read_buffer_future(self) -> FlushReadCommand:
+        cmd = FlushReadCommand()
+        self._worker.send_command(cmd)
+        return cmd
+
+    def _write_future(self, data: DataT) -> WriteCommand[DataT]:
+        cmd = WriteCommand(WriteFrame(data))
+        self._worker.send_command(cmd)
+        return cmd
 
 # pylint: disable=too-many-instance-attributes
 class AdapterWorker(Generic[DataT]):

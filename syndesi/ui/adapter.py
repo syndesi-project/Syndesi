@@ -26,8 +26,8 @@ from ..adapters.adapterworker import (
     AdapterStopConditionsUpdatedEvent,
     AdapterTimeoutUpdatedEvent,
 )
-from ..adapters.bytesadapter import BytesAdapter
-from ..adapters.ip import IP, IPDescriptor
+from ..adapters.bytesadapter import AsyncBytesAdapter, BytesAdapter
+from ..adapters.ip import IP, AsyncIP, IPDescriptor
 from ..adapters.stop_conditions import (
     Continuation,
     FragmentSC,
@@ -171,8 +171,7 @@ class FragmentBlock(StopConditionBlock[FragmentSC]):
             ...
         self.items += [self.tab]
 
-AdapterT = TypeVar("AdapterT", bound=BytesAdapter)
-
+AdapterT = TypeVar("AdapterT", bound=AsyncBytesAdapter)
 
 class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
     """BytesAdapter UI block"""
@@ -312,13 +311,13 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._add_tab = dpg.add_tab(label="+", parent=self._tab_bar)
 
     async def _read_callback(self, scope : ReadScope) -> None:
-        data = await self._adapter.aread(scope=scope)
+        data = await self._adapter.read(scope=scope)
         if self._is_top_level:
             await self._ui_read_callback(str(data))
 
-    def _write_callback(self, raw_data : str) -> None:
+    async def _write_callback(self, raw_data : str) -> None:
         data : bytes = ast.literal_eval(f"b'{raw_data}'")
-        self._adapter.write(data)
+        await self._adapter.write(data)
         if self._is_top_level:
             self._ui_write_callback(str(data))
 
@@ -390,11 +389,11 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
     @abstractmethod
     def open(self) -> None: ...
 
-class IPBlock(BytesAdapterBlock[IP]):
+class IPBlock(BytesAdapterBlock[AsyncIP]):
     """IP adapter block"""
     title = "IP Adapter"
     def __init__(self,
-                 adapter : IP,
+                 adapter : AsyncIP,
                  write_callback : Callable[[str], None],
                  read_callback : Callable[[str], Awaitable[None]],
                  read_fail_callback : Callable[[str], Awaitable[None]],

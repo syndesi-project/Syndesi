@@ -62,8 +62,8 @@ class SCPI(Delimited):
             receive_termination=receive_termination,
         )
 
-    @staticmethod
-    def default_timeout() -> float | None:
+    @property
+    def default_timeout(self) -> float | None:
         """Default timeout"""
         return 5.0
 

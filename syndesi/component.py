@@ -118,7 +118,7 @@ class ReadScope(StrEnum):
     BUFFERED = "buffered"
     LAST_WRITE = "last_write"
 
-class ComponentBase(ABC, Generic[DataT]):
+class ComponentCommon(ABC, Generic[DataT]):
     def __init__(self, logger_alias: LoggerAlias) -> None:
         self._logger = logging.getLogger(logger_alias.value)
 
@@ -141,7 +141,11 @@ class ComponentBase(ABC, Generic[DataT]):
     def clear_event_callbacks(self) -> None:
         """Remove all event callbacks"""
 
-class Component(Generic[DataT], ComponentBase[DataT]):
+    @abstractmethod
+    def open(self) -> None:
+        """Open the component"""
+
+class Component(Generic[DataT], ComponentCommon[DataT]):
     """Syndesi Component
 
     A Component is the elementary class of Syndesi. It is the base
@@ -149,10 +153,6 @@ class Component(Generic[DataT], ComponentBase[DataT]):
 
     A generic is used to define the data type of the component (used when reading and writing)
     """
-
-    @abstractmethod
-    def open(self) -> None:
-        """Open the component"""
 
     def try_open(self) -> bool:
         """
@@ -219,7 +219,7 @@ class Component(Generic[DataT], ComponentBase[DataT]):
         )
         return output_frame.data
 
-class AsyncComponent(ComponentBase, Generic[DataT]):
+class AsyncComponent(Generic[DataT], ComponentCommon[DataT]):
     """Async Syndesi Component
     
     A Component is the elementary class of Syndesi. Is is the base
@@ -227,13 +227,11 @@ class AsyncComponent(ComponentBase, Generic[DataT]):
     
     A generic is used to define the data type of the component (used when reading and writing)
     """
-
     def __init__(self, logger_alias: LoggerAlias) -> None:
-        self._logger = logging.getLogger(logger_alias.value)
-
+        super().__init__(logger_alias)
 
     @abstractmethod
-    async def open(self) -> None:
+    async def open_async(self) -> None:
         """Asynchronously open the component"""
 
     async def try_open(self) -> bool:
@@ -246,13 +244,13 @@ class AsyncComponent(ComponentBase, Generic[DataT]):
         success : bool
         """
         try:
-            await self.open()
+            await self.open_async()
             return True
         except AdapterOpenError:
             return False
     
     @abstractmethod
-    async def close(self) -> None:
+    async def close_async(self) -> None:
         """Asynchronously close the component"""
 
     @abstractmethod

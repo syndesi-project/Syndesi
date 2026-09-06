@@ -188,8 +188,8 @@ class IPServer(Adapter[Client]):
     def _default_stop_conditions() -> list[StopCondition]:
         return [Continuation(continuation=0.2)]
 
-    @staticmethod
-    def default_timeout() -> float | None:
+    @property
+    def default_timeout(self) -> float | None:
         """Default timeout"""
         return 1.0
 

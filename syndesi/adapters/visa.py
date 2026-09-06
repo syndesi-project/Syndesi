@@ -162,8 +162,8 @@ class Visa(BytesAdapter):
     def descriptor(self) -> VisaDescriptor:
         return self._descriptor
 
-    @staticmethod
-    def default_timeout() -> float | None:
+    @property
+    def default_timeout(self) -> float | None:
         """Default timeout"""
         return 5.0
 

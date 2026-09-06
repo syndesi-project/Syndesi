@@ -21,9 +21,9 @@ happens because of them.
 """
 
 from collections.abc import Callable
-from typing import TypeVar
+from typing import Any, TypeVar
 
-_F = TypeVar("_F", bound=Callable)
+_F = TypeVar("_F", bound=Callable[[Any], Any])
 
 
 def asyncify(func: _F) -> _F:

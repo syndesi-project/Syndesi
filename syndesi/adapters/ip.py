@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
 
-from syndesi.adapters.bytesadapter import BytesAdapter
+from syndesi.adapters.adapter import AdapterCommon
+from syndesi.adapters.adapterworker import AdapterWorkerInterface
+from syndesi.adapters.bytesadapter import AsyncBytesAdapter, BytesAdapter
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
 from syndesi.component import Descriptor
 from syndesi.tools.errors import (
@@ -23,7 +25,6 @@ from syndesi.tools.errors import (
 from .stop_conditions import BytesFragment
 from .tracehub import tracehub
 from .utils import Fragment, HasFileno, TimeoutParameterType
-
 
 @dataclass
 class IPDescriptor(Descriptor):
@@ -83,62 +84,13 @@ class IPDescriptor(Descriptor):
 
 BUFFER_SIZE = 65535
 
-class IP(BytesAdapter):
-    """
-    IP stack adapter. The IP Adapter reads and writes bytes units (frames)
-
-    Parameters
-    ----------
-    address : str
-        IP address
-    port : int or None, default : None
-        IP port
-    transport : {'TCP', 'UDP'}
-        Transport layer
-    timeout : float | int | None
-        Specify communication timeout, the time it takes for the target to respond
-    stop_conditions : list[StopCondition] or StopCondition
-        Stop coniditions are used to decide when a read data block is finished
-        and should be returned
-
-        These include
-
-        * Termination : stop on a specific sequence like ``\\n`` at the end of the data
-        * Length : stop when a specific number of bytes has been received
-        * Continuation : stop when no data has been received for a
-        specified amount of time
-        * Total : stop if the time since the first piece of data received exceeds
-        a given amount of time
-        * FragmentStopCondition : Return each piece of data individually as received
-        by the low-level communication layer
-
-        Multiple stop conditions can be used to create more complex behaviours
-    encoding : str
-        Used to convert str to bytes if the user chooses to send str
-    alias : str
-        Name of the adapter, may be removed in the future
-    event_callback : f(event : AdapterEvent)
-        Function called when an event is received by the adapter worker thread.
-        The event can be either one of :
-
-        * ``AdapterOpenedEvent``
-        * ``AdapterClosedEvent``
-        * ``AdapterFrameEvent``
-        * ``FirstFragmentEvent``
-    auto_open : bool, default to True
-        Automatically open the adapter after instanciation
-    """
-
+class _IPCommon(AdapterCommon[bytes]):
     def __init__(
         self,
+        *,
         address: str,
         port: int | None = None,
         transport: str = IPDescriptor.Transport.TCP.value,
-        *,
-        timeout: TimeoutParameterType = ...,
-        stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
-        alias: str = "",
-        auto_open: bool = True,
         server_socket: socket.socket | None = None,
     ):
 
@@ -153,13 +105,6 @@ class IP(BytesAdapter):
             auto_open = False
             tracehub.emit_open(str(self._descriptor))
             self._socket = server_socket
-
-        super().__init__(
-            stop_conditions=stop_conditions,
-            timeout=timeout,
-            alias=alias,
-            auto_open=auto_open,
-        )
 
     @property
     def descriptor(self) -> IPDescriptor:
@@ -239,7 +184,152 @@ class IP(BytesAdapter):
     def _default_stop_conditions() -> list[StopCondition]:
         return [Continuation(continuation=0.2)]
 
-    @staticmethod
-    def default_timeout() -> float | None:
+    @property
+    def default_timeout(self) -> float | None:
         """Default timeout"""
         return 1.0
+    
+class IP(_IPCommon, BytesAdapter):
+    """
+    IP stack adapter. The IP Adapter reads and writes bytes units (frames)
+
+    Parameters
+    ----------
+    address : str
+        IP address
+    port : int or None, default : None
+        IP port
+    transport : {'TCP', 'UDP'}
+        Transport layer
+    timeout : float | int | None
+        Specify communication timeout, the time it takes for the target to respond
+    stop_conditions : list[StopCondition] or StopCondition
+        Stop coniditions are used to decide when a read data block is finished
+        and should be returned
+
+        These include
+
+        * Termination : stop on a specific sequence like ``\\n`` at the end of the data
+        * Length : stop when a specific number of bytes has been received
+        * Continuation : stop when no data has been received for a
+        specified amount of time
+        * Total : stop if the time since the first piece of data received exceeds
+        a given amount of time
+        * FragmentStopCondition : Return each piece of data individually as received
+        by the low-level communication layer
+
+        Multiple stop conditions can be used to create more complex behaviours
+    encoding : str
+        Used to convert str to bytes if the user chooses to send str
+    alias : str
+        Name of the adapter, may be removed in the future
+    event_callback : f(event : AdapterEvent)
+        Function called when an event is received by the adapter worker thread.
+        The event can be either one of :
+
+        * ``AdapterOpenedEvent``
+        * ``AdapterClosedEvent``
+        * ``AdapterFrameEvent``
+        * ``FirstFragmentEvent``
+    auto_open : bool, default to True
+        Automatically open the adapter after instanciation
+    """
+
+    def __init__(
+        self,
+        address: str,
+        port: int | None = None,
+        transport: str = IPDescriptor.Transport.TCP.value,
+        *,
+        timeout: TimeoutParameterType = ...,
+        stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
+        alias: str = "",
+        auto_open: bool = True,
+        server_socket: socket.socket | None = None,
+    ):
+        _IPCommon.__init__(
+            self,
+            address=address,
+            port=port,
+            transport=transport,
+            server_socket=server_socket,
+        )
+        BytesAdapter.__init__(
+            self,
+            stop_conditions=stop_conditions,
+            timeout=timeout,
+            alias=alias,
+            auto_open=auto_open,
+        )
+class AsyncIP(_IPCommon, AsyncBytesAdapter):
+    """
+    IP stack adapter. The IP Adapter reads and writes bytes units (frames)
+
+    Parameters
+    ----------
+    address : str
+        IP address
+    port : int or None, default : None
+        IP port
+    transport : {'TCP', 'UDP'}
+        Transport layer
+    timeout : float | int | None
+        Specify communication timeout, the time it takes for the target to respond
+    stop_conditions : list[StopCondition] or StopCondition
+        Stop coniditions are used to decide when a read data block is finished
+        and should be returned
+
+        These include
+
+        * Termination : stop on a specific sequence like ``\\n`` at the end of the data
+        * Length : stop when a specific number of bytes has been received
+        * Continuation : stop when no data has been received for a
+        specified amount of time
+        * Total : stop if the time since the first piece of data received exceeds
+        a given amount of time
+        * FragmentStopCondition : Return each piece of data individually as received
+        by the low-level communication layer
+
+        Multiple stop conditions can be used to create more complex behaviours
+    encoding : str
+        Used to convert str to bytes if the user chooses to send str
+    alias : str
+        Name of the adapter, may be removed in the future
+    event_callback : f(event : AdapterEvent)
+        Function called when an event is received by the adapter worker thread.
+        The event can be either one of :
+
+        * ``AdapterOpenedEvent``
+        * ``AdapterClosedEvent``
+        * ``AdapterFrameEvent``
+        * ``FirstFragmentEvent``
+    auto_open : bool, default to True
+        Automatically open the adapter after instanciation
+    """
+    
+    def __init__(
+        self,
+        address: str,
+        port: int | None = None,
+        transport: str = IPDescriptor.Transport.TCP.value,
+        *,
+        timeout: TimeoutParameterType = ...,
+        stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
+        alias: str = "",
+        auto_open: bool = True,
+        server_socket: socket.socket | None = None,
+    ):
+        _IPCommon.__init__(
+            self,
+            address=address,
+            port=port,
+            transport=transport,
+            server_socket=server_socket,
+        )
+        AsyncBytesAdapter.__init__(
+            self,
+            stop_conditions=stop_conditions,
+            timeout=timeout,
+            alias=alias,
+            auto_open=auto_open
+        )

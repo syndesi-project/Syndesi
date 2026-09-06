@@ -11,7 +11,7 @@ import inspect
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any, Awaitable, get_type_hints
+from typing import Any, Awaitable, Coroutine, get_type_hints
 
 import dearpygui.dearpygui as dpg # type: ignore
 
@@ -186,7 +186,7 @@ def bytes_help() -> None:
 
 class StringTestingGroup:
     def __init__(self,
-                 write_callback : Callable[[str], None],
+                 write_callback : Callable[[str], Coroutine[Any, Any, None]],#Callable[[str], None],
                  read_callback : Callable[[ReadScope], Awaitable[None]],
                 ) -> None:
         self._write_callback = write_callback
@@ -194,10 +194,10 @@ class StringTestingGroup:
         self._write_status : int | str = -1
         self._read_scope_combo : int | str = -1
 
-    def _write_button_callback(self) -> None:
+    async def _write_button_callback(self) -> None:
         dpg.set_value(self._write_status, "")
         try:
-            self._write_callback(dpg.get_value(self._write_input))
+            await self._write_callback(dpg.get_value(self._write_input))
         except SyndesiError as e:
             dpg.set_value(self._write_status, e)
 
@@ -205,7 +205,7 @@ class StringTestingGroup:
 
         dpg.set_value(self._query_status, "")
         try:
-            self._write_callback(dpg.get_value(self._query_input))
+            await self._write_callback(dpg.get_value(self._query_input))
             await self._read_callback(ReadScope.LAST_WRITE)
         except SyndesiError as e:
             dpg.set_value(self._query_status, e)

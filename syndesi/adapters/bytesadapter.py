@@ -11,7 +11,7 @@ from abc import abstractmethod
 from types import EllipsisType
 
 from ..component import ReadFrame
-from .adapter import Adapter
+from .adapter import Adapter, AsyncAdapter
 from .adapterworker import (
     AdapterFragmentEvent,
     AdapterWorker,
@@ -314,6 +314,99 @@ class BytesAdapter(Adapter[bytes]):
             auto_open=auto_open,
         )
         # Default stop conditions
+        self._initial_stop_conditions: list[StopCondition]
+        if stop_conditions is ...:
+            self._is_default_stop_condition = True
+            self._initial_stop_conditions = self._default_stop_conditions()
+        else:
+            self._is_default_stop_condition = False
+            if isinstance(stop_conditions, StopCondition):
+                self._initial_stop_conditions = [stop_conditions]
+            elif isinstance(stop_conditions, list):
+                self._initial_stop_conditions = stop_conditions
+            else:
+                raise ValueError("Invalid stop_conditions")
+
+        self.set_stop_conditions(self._initial_stop_conditions)
+
+    def set_stop_conditions(
+        self, stop_conditions: StopCondition | None | list[StopCondition]
+    ) -> None:
+        """
+        Set adapter stop-conditions
+
+        Parameters
+        ----------
+        stop_conditions : [StopCondition] or None
+        """
+        if isinstance(stop_conditions, list):
+            lst = stop_conditions
+        elif isinstance(stop_conditions, StopCondition):
+            lst = [stop_conditions]
+        elif stop_conditions is None:
+            lst = []
+        else:
+            raise ValueError("Invalid stop_conditions")
+
+        cmd = SetStopConditionsCommand(lst)
+        self._worker.send_command(cmd)
+        cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+
+    @property
+    def stop_conditions(self) -> list[StopCondition]:
+        """
+        Return the list of stop-conditions configured for this adapter
+        """
+        cmd = GetStopConditionsCommand()
+        self._worker.send_command(cmd)
+        stop_conditions = cmd.result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)
+        return stop_conditions
+
+    def set_default_stop_conditions(self, stop_conditions: list[StopCondition]) -> None:
+        """
+        Configure adapter default stop-condition. Stop-condition will only be set if none
+        has been configured before
+
+        Parameters
+        ----------
+        stop_conditions : [StopCondition]
+        """
+        if self._is_default_stop_condition:
+            self.set_stop_conditions(stop_conditions)
+
+    @staticmethod
+    @abstractmethod
+    def _default_stop_conditions() -> list[StopCondition]: ...
+
+class AsyncBytesAdapter(AsyncAdapter[bytes]):
+    """
+    Async bytes adapter with stop-conditions
+
+    Parameters
+    ----------
+    descriptor : Descriptor
+    timeout : float | int | None | ...
+    stop_conditions : StopCondition | [StopCondition] | ...
+    alias : str
+    auto_open : bool
+    """
+    def __init__(
+            self,
+            timeout: EllipsisType | float | int | None,
+            stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
+            *,
+            alias: str,
+            auto_open: bool = False
+        ) -> None:
+        super().__init__(
+            worker=BytesAdapterWorker(self),
+            timeout=timeout,
+            alias=alias,
+            auto_open=auto_open
+        )
+        # Default stop conditions
+
+    
         self._initial_stop_conditions: list[StopCondition]
         if stop_conditions is ...:
             self._is_default_stop_condition = True

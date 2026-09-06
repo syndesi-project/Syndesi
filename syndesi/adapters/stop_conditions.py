@@ -58,7 +58,7 @@ class StopCondition:
         """
 
     @abstractmethod
-    def flush_read(self) -> None:
+    def clear_read_buffer(self) -> None:
         """
         Reset read operation
         """
@@ -96,7 +96,7 @@ class Termination(StopCondition):
     def initiate_read(self, timestamp: float) -> None:
         self._sequence_found_length = 0
 
-    def flush_read(self) -> None:
+    def clear_read_buffer(self) -> None:
         self._sequence_found_length = 0
 
     def evaluate(
@@ -164,7 +164,7 @@ class Length(StopCondition):
     def type(self) -> StopConditionType:
         return StopConditionType.LENGTH
 
-    def flush_read(self) -> None:
+    def clear_read_buffer(self) -> None:
         self._counter = 0
 
     def evaluate(
@@ -201,7 +201,7 @@ class Continuation(StopCondition):
     def initiate_read(self, timestamp: float) -> None:
         self._last_fragment = timestamp
 
-    def flush_read(self) -> None:
+    def clear_read_buffer(self) -> None:
         self._last_fragment = None
 
     def evaluate(
@@ -251,7 +251,7 @@ class Total(StopCondition):
     def initiate_read(self, timestamp: float) -> None:
         self._start_time = timestamp
 
-    def flush_read(self) -> None:
+    def clear_read_buffer(self) -> None:
         self._start_time = None
 
     def evaluate(
@@ -293,7 +293,7 @@ class FragmentSC(StopCondition):
     def initiate_read(self, timestamp: float) -> None:
         pass
 
-    def flush_read(self) -> None:
+    def clear_read_buffer(self) -> None:
         pass
 
     def evaluate(
