@@ -118,177 +118,9 @@ class ReadScope(StrEnum):
     BUFFERED = "buffered"
     LAST_WRITE = "last_write"
 
-
-#pylint: disable-next=too-many-public-methods
-class Component(ABC, Generic[DataT]):
-    """Syndesi Component
-
-    A Component is the elementary class of Syndesi. It is the base
-    of all classes the user will be using
-
-    A generic is used to define the data type of the component (used when reading and writing)
-    """
-
+class ComponentBase(ABC, Generic[DataT]):
     def __init__(self, logger_alias: LoggerAlias) -> None:
         self._logger = logging.getLogger(logger_alias.value)
-
-    # ==== open ====
-
-    @abstractmethod
-    def open(self) -> None:
-        """Open the component"""
-
-    @abstractmethod
-    async def aopen(self) -> None:
-        """Asynchronously open the component"""
-
-    # ==== try_open ====
-
-    async def atry_open(self) -> bool:
-        """
-        Async try to open communication with the device
-        Return True if sucessful and False otherwise
-
-        Returns
-        -------
-        success : bool
-        """
-        try:
-            await self.aopen()
-            return True
-        except AdapterOpenError:
-            return False
-
-    def try_open(self) -> bool:
-        """
-        Try to open communication with the device
-        Return True if sucessful and False otherwise
-
-        Returns
-        -------
-        success : bool
-        """
-        try:
-            self.open()
-        except AdapterOpenError:
-            return False
-        return True
-
-    # ==== close ====
-
-    @abstractmethod
-    def close(self) -> None:
-        """Close the component"""
-
-    @abstractmethod
-    async def aclose(self) -> None:
-        """Asynchronously close the component"""
-
-    # ==== read_detailed ====
-
-    @abstractmethod
-    async def aread_detailed(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
-    ) -> ReadFrame[DataT]:
-        """Asynchronously read data from the component and return a Frame object"""
-
-    @abstractmethod
-    def read_detailed(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
-    ) -> ReadFrame[DataT]:
-        """Read data from the component and return a Frame object"""
-
-    # ==== read ====
-
-    @abstractmethod
-    async def aread(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
-    ) -> DataT:
-        """Asynchronously read data from the component"""
-
-    @abstractmethod
-    def read(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
-    ) -> DataT:
-        """Read data from the component"""
-
-    # ==== flush_read ====
-
-    @abstractmethod
-    async def aflush_read(self) -> None:
-        """Clear input buffer"""
-
-    @abstractmethod
-    def flush_read(self) -> None:
-        """Clear input buffer"""
-
-    # ==== write ====
-
-    @abstractmethod
-    async def awrite(self, data: DataT) -> None:
-        """Asynchronously write data to the component"""
-
-    @abstractmethod
-    def write(self, data: DataT) -> None:
-        """Synchronously write data to the component"""
-
-    # ==== query_detailed ====
-
-    @abstractmethod
-    async def aquery_detailed(
-        self,
-        payload: DataT,
-        timeout: TimeoutParameterType = ...,
-    ) -> ReadFrame[DataT]:
-        """
-        Asynchronously query the component and return a Frame object
-        """
-
-    @abstractmethod
-    def query_detailed(
-        self,
-        payload: DataT,
-        timeout: TimeoutParameterType = ...
-    ) -> ReadFrame[DataT]:
-        """
-        Synchronously query the component and return a Frame object
-        """
-
-    # ==== query ====
-
-    async def aquery(
-        self,
-        payload: DataT,
-        timeout: TimeoutParameterType = ...
-    ) -> DataT:
-        """Asynchronously query the component"""
-        output_frame = await self.aquery_detailed(
-            payload=payload,
-            timeout=timeout
-        )
-        return output_frame.data
-
-    def query(
-        self,
-        payload: DataT,
-        timeout: TimeoutParameterType = ...
-    ) -> DataT:
-        """Query the component"""
-        output_frame = self.query_detailed(
-            payload=payload,
-            timeout=timeout,
-        )
-        return output_frame.data
-
-    # ==== Other ====
 
     @property
     @abstractmethod
@@ -308,3 +140,163 @@ class Component(ABC, Generic[DataT]):
     @abstractmethod
     def clear_event_callbacks(self) -> None:
         """Remove all event callbacks"""
+
+class Component(Generic[DataT], ComponentBase[DataT]):
+    """Syndesi Component
+
+    A Component is the elementary class of Syndesi. It is the base
+    of all classes the user will be using
+
+    A generic is used to define the data type of the component (used when reading and writing)
+    """
+
+    @abstractmethod
+    def open(self) -> None:
+        """Open the component"""
+
+    def try_open(self) -> bool:
+        """
+        Try to open communication with the device
+        Return True if sucessful and False otherwise
+
+        Returns
+        -------
+        success : bool
+        """
+        try:
+            self.open()
+        except AdapterOpenError:
+            return False
+        return True
+
+    @abstractmethod
+    def close(self) -> None:
+        """Close the component"""
+    
+    @abstractmethod
+    def read_detailed(
+        self,
+        timeout: TimeoutParameterType = ...,
+        scope: str = ReadScope.BUFFERED.value,
+    ) -> ReadFrame[DataT]:
+        """Read data from the component and return a Frame object"""
+
+    @abstractmethod
+    def read(
+        self,
+        timeout: TimeoutParameterType = ...,
+        scope: str = ReadScope.BUFFERED.value,
+    ) -> DataT:
+        """Read data from the component"""
+
+    @abstractmethod
+    def clear_read_buffer(self) -> None:
+        """Clear the read buffer and discard all frames"""
+
+    @abstractmethod
+    def write(self, data: DataT) -> None:
+        """Synchronously write data to the component"""
+
+    @abstractmethod
+    def query_detailed(
+        self,
+        payload: DataT,
+        timeout: TimeoutParameterType = ...
+    ) -> ReadFrame[DataT]:
+        """
+        Synchronously query the component and return a Frame object
+        """
+
+    def query(
+        self,
+        payload: DataT,
+        timeout: TimeoutParameterType = ...
+    ) -> DataT:
+        """Query the component"""
+        output_frame = self.query_detailed(
+            payload=payload,
+            timeout=timeout,
+        )
+        return output_frame.data
+
+class AsyncComponent(ComponentBase, Generic[DataT]):
+    """Async Syndesi Component
+    
+    A Component is the elementary class of Syndesi. Is is the base
+    of all classes the user will be using
+    
+    A generic is used to define the data type of the component (used when reading and writing)
+    """
+
+    def __init__(self, logger_alias: LoggerAlias) -> None:
+        self._logger = logging.getLogger(logger_alias.value)
+
+
+    @abstractmethod
+    async def open(self) -> None:
+        """Asynchronously open the component"""
+
+    async def try_open(self) -> bool:
+        """
+        Async try to open communication with the device
+        Return True if sucessful and False otherwise
+
+        Returns
+        -------
+        success : bool
+        """
+        try:
+            await self.open()
+            return True
+        except AdapterOpenError:
+            return False
+    
+    @abstractmethod
+    async def close(self) -> None:
+        """Asynchronously close the component"""
+
+    @abstractmethod
+    async def read_detailed(
+        self,
+        timeout: TimeoutParameterType = ...,
+        scope: str = ReadScope.BUFFERED.value,
+    ) -> ReadFrame[DataT]:
+        """Asynchronously read data from the component and return a Frame object"""
+
+    @abstractmethod
+    async def read(
+        self,
+        timeout: TimeoutParameterType = ...,
+        scope: str = ReadScope.BUFFERED.value,
+    ) -> DataT:
+        """Asynchronously read data from the component"""
+
+    @abstractmethod
+    async def clear_read_buffer(self) -> None:
+        """Clear the read buffer and discard all frames"""
+    
+    @abstractmethod
+    async def write(self, data: DataT) -> None:
+        """Asynchronously write data to the component"""
+
+    @abstractmethod
+    async def query_detailed(
+        self,
+        payload: DataT,
+        timeout: TimeoutParameterType = ...,
+    ) -> ReadFrame[DataT]:
+        """
+        Asynchronously query the component and return a Frame object
+        """
+
+    async def query(
+        self,
+        payload: DataT,
+        timeout: TimeoutParameterType = ...
+    ) -> DataT:
+        """Asynchronously query the component"""
+        output_frame = await self.query_detailed(
+            payload=payload,
+            timeout=timeout
+        )
+        return output_frame.data
