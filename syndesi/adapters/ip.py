@@ -12,6 +12,7 @@ from types import EllipsisType
 
 from syndesi.adapters.adapter import AdapterCommon
 from syndesi.adapters.adapterworker import AdapterWorkerInterface
+from syndesi.adapters.backend import AdapterBackend
 from syndesi.adapters.bytesadapter import AsyncBytesAdapter, BytesAdapter
 from syndesi.adapters.stop_conditions import Continuation, StopCondition
 from syndesi.component import Descriptor
@@ -99,16 +100,11 @@ class _IPCommon(AdapterCommon[bytes]):
             port=port,
             transport=IPDescriptor.Transport(transport.upper()),
         )
-        self._socket: socket.socket | None = None
+        
 
-        if server_socket is not None:
-            auto_open = False
-            tracehub.emit_open(str(self._descriptor))
-            self._socket = server_socket
-
-    @property
-    def descriptor(self) -> IPDescriptor:
-        return self._descriptor
+    # @property
+    # def descriptor(self) -> IPDescriptor:
+    #     return self._descriptor
 
     def set_default_port(self, port: int) -> None:
         """
@@ -120,74 +116,6 @@ class _IPCommon(AdapterCommon[bytes]):
         """
         if self._descriptor.port is None:
             self._descriptor.port = port
-
-    def _worker_read(self, fragment_timestamp: float) -> BytesFragment:
-        if self._socket is None:
-            raise AdapterDisconnected()
-        try:
-            data = self._socket.recv(BUFFER_SIZE)
-        except (ConnectionRefusedError, OSError) as e:
-            raise AdapterReadError() from e
-
-        if data == b"":
-            raise AdapterDisconnected()
-
-        return Fragment(data, fragment_timestamp)
-
-    def _worker_write(self, data: bytes) -> None:
-        if self._socket is not None:
-            if self._socket.send(data) != len(data):
-                raise AdapterWriteError(
-                    f"Adapter {self._descriptor} couldn't write"
-                    " all of the data to the socket"
-                )
-
-    def _worker_open(self) -> None:
-        # Create the socket instance
-        if self._descriptor.transport == IPDescriptor.Transport.TCP:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        elif self._descriptor.transport == IPDescriptor.Transport.UDP:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        else:
-            raise AdapterOpenError("Invalid transport protocol")
-        try:
-            # TODO : Simulate a very long connect time (bad network) and manage timeout
-            # error accordingly
-            if self.timeout is None:
-                s.settimeout(None)
-            else:
-                s.settimeout(self.timeout)
-            s.connect((self._descriptor.address, self._descriptor.port))
-        except (OSError, ConnectionRefusedError, socket.gaierror) as e:
-            msg = f"Failed to open adapter {self._descriptor} ({e})"
-            raise AdapterOpenError(msg) from None
-
-        # We only set the socket on success to prevent the worker thread
-        # from sending events before the adapter is opened
-        self._socket = s
-        self._logger.info(f"IP Adapter {self._descriptor} opened")
-
-    def _worker_close(self) -> None:
-        super()._worker_close()
-        if self._socket is not None:
-            try:
-                self._socket.shutdown(socket.SHUT_RDWR)
-                self._socket.close()
-            except OSError:
-                pass
-            self._socket = None
-
-    def _selectable(self) -> HasFileno | None:
-        return self._socket
-
-    @staticmethod
-    def _default_stop_conditions() -> list[StopCondition]:
-        return [Continuation(continuation=0.2)]
-
-    @property
-    def default_timeout(self) -> float | None:
-        """Default timeout"""
-        return 1.0
     
 class IP(_IPCommon, BytesAdapter):
     """
@@ -333,3 +261,86 @@ class AsyncIP(_IPCommon, AsyncBytesAdapter):
             alias=alias,
             auto_open=auto_open
         )
+
+
+
+
+
+class IPBackend(AdapterBackend[IPDescriptor, bytes]):
+    def __init__(self,
+                 descriptor : IPDescriptor,
+                 server_socket: socket.socket | None = None,) -> None:
+        super().__init__(descriptor)
+
+        self._socket: socket.socket | None = None
+
+        self.descriptor.server = server_socket is not None
+        if self.descriptor.server:
+            self._socket = server_socket
+
+    def selectable(self) -> HasFileno | None:
+        return self._socket
+    
+    def open(self, timeout : float | None) -> None:
+        # Create the socket instance
+        if self.descriptor.transport == IPDescriptor.Transport.TCP:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        elif self.descriptor.transport == IPDescriptor.Transport.UDP:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        else:
+            raise AdapterOpenError("Invalid transport protocol")
+        try:
+            # TODO : Simulate a very long connect time (bad network) and manage timeout
+            # error accordingly
+            if timeout is None:
+                s.settimeout(None)
+            else:
+                s.settimeout(timeout)
+            s.connect((self.descriptor.address, self.descriptor.port))
+        except (OSError, ConnectionRefusedError, socket.gaierror) as e:
+            msg = f"Failed to open adapter {self.descriptor} ({e})"
+            raise AdapterOpenError(msg) from None
+
+        # We only set the socket on success to prevent the worker thread
+        # from sending events before the adapter is opened
+        self._socket = s
+        #self._logger.info(f"IP Adapter {self.descriptor} opened")
+        
+    def close(self) -> None:
+        if self._socket is not None:
+            try:
+                self._socket.shutdown(socket.SHUT_RDWR)
+                self._socket.close()
+            except OSError:
+                pass
+            self._socket = None
+
+    def read(self, fragment_timestamp: float) -> BytesFragment:
+        if self._socket is None:
+            raise AdapterDisconnected()
+        try:
+            data = self._socket.recv(BUFFER_SIZE)
+        except (ConnectionRefusedError, OSError) as e:
+            raise AdapterReadError() from e
+
+        if data == b"":
+            raise AdapterDisconnected()
+
+        return Fragment(data, fragment_timestamp)
+
+    def write(self, data: bytes) -> None:
+        if self._socket is not None:
+            if self._socket.send(data) != len(data):
+                raise AdapterWriteError(
+                    f"Adapter {self.descriptor} couldn't write"
+                    " all of the data to the socket"
+                )        
+
+    @property
+    def default_stop_conditions(self) -> list[StopCondition]:
+        return [Continuation(continuation=0.2)]
+
+    @property
+    def default_timeout(self) -> float | None:
+        """Default timeout"""
+        return 1.0

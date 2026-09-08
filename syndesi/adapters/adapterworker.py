@@ -394,12 +394,8 @@ class AdapterWorker(Generic[DataT]):
 
         # Frames
         self.frame_buffer: deque[ReadFrame[DataT]] = deque(maxlen=self._FRAME_BUFFER_MAX)
-        self._frame_id = 0
-        # Stop-conditions
-        self._stop_conditions: list[StopCondition] = []
 
         # Timing
-        self._last_write_timestamp: float | None = None
         self.timeout: TimeoutType = None
         self._current_timeout: TimeoutType = None
 
@@ -420,11 +416,6 @@ class AdapterWorker(Generic[DataT]):
             target=self._worker_thread_method, daemon=True
         )
         self._worker_thread.start()
-
-    def _next_frame_id(self) -> int:
-        output = self._frame_id
-        self._frame_id += 1
-        return output
 
     def send_command(self, command: ThreadCommand[Any]) -> None:
         """Send command to the worker thread"""
@@ -551,10 +542,12 @@ class AdapterWorker(Generic[DataT]):
 
     # pylint: disable=too-many-branches too-many-statements
     def _worker_manage_command(self, command: ThreadCommand[Any]) -> None:
+        t = time.time()
         try:
             match command:
                 case WriteCommand():
-                    self._last_write_timestamp = time.time()
+                    framer.signal_write_timestamp(t)
+                    #self._last_write_timestamp = time.time()
                     if self._interface.descriptor is None: # pylint: disable=protected-access
                         command.set_exception(AdapterWriteError("Missing descriptor"))
                     elif not self._is_open:
@@ -716,30 +709,7 @@ class AdapterWorker(Generic[DataT]):
     def _worker_on_pending_read_cleared(self, pending_read: PendingRead[DataT]) -> None:
         """Called right after a pending read is cleared (delivered, timed out, or
         cancelled by a disconnect). Subclasses use this to undo per-read state, such
-        as restoring stop-conditions after a temporary override."""
-
-    def _worker_manage_fragment(self, fragment: Fragment[DataT]) -> None:
-        # pylint: disable=too-many-branches, too-many-statements
-        """This function can be overriden"""
-
-        if self._last_write_timestamp is not None:
-            response_delay = fragment.timestamp - self._last_write_timestamp
-        else:
-            response_delay = float("nan")
-
-        self._worker_logger.debug("New fragment %+.3f %s", response_delay, fragment)
-
-        stop_timestamp = fragment.timestamp
-
-        frame: ReadFrame[DataT] = ReadFrame(
-            data=fragment.data,
-            id=self._next_frame_id(),
-            stop_timestamp=stop_timestamp,
-            previous_read_buffer_used=False,
-            response_delay=response_delay,
-        )
-        self._worker_logger.debug("Frame %s", repr(frame.data))
-        self._worker_deliver_frame(frame)
+        as restoring stop-conditions after a temporary override."""        
 
     def _worker_deliver_frame(self, frame: ReadFrame[DataT]) -> None:
         """

@@ -6,10 +6,10 @@ Log utilities
 Set log level, destination, etc...
 """
 import logging
-from enum import Enum
+from enum import StrEnum
 
 
-class LoggerAlias(Enum):
+class LoggerAlias(StrEnum):
     """
     Name of the Syndesi loggers inside the logging module
     """
@@ -18,6 +18,9 @@ class LoggerAlias(Enum):
     PROTOCOL = "syndesi.protocol"
     CLI = "syndesi.cli"
     ADAPTER_WORKER = "syndesi.adapterworker"
+    FRAMER = "syndesi.framer"
+    ENGINE = "syndesi.engine"
+    REACTOR = "syndesi.reactor"
 
 
 LOGGING_COLORS = {
