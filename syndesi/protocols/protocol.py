@@ -1,513 +1,312 @@
-# NOT YET PORTED to the backend/framer/engine/reactor architecture.
-# This module still targets the removed Component/Adapter classes. It is kept
-# as a reference while it gets ported, and excluded from the checkers until then
-# mypy: ignore-errors
-# pylint: skip-file
-# ruff: noqa
 # File : protocol.py
 # Author : Sébastien Deriaz
 # License : GPL
 """
-Protocol base class. A protocol applies format of outgoing data and removes format
-of incoming data
+Protocols, the endpoints that turn the data of an adapter into payloads
 
-Asumption : A single adapter frame will always be converted to a single protocol frame.
-This could change later
+A protocol always sits on an adapter and uses its engine, the non-blocking side of the
+adapter where every method returns a future. What a protocol does to the data is written
+once, in a Codec, and the ProtocolEngine applies it to the futures of the adapter
+engine. Protocol and AsyncProtocol only wait for those futures, like Adapter and
+AsyncAdapter
+
+    Delimited ──contains──▶ ProtocolEngine ──uses──▶ Engine ◀──contains── IP
+                              └ DelimitedCodec
 """
 
+from __future__ import annotations
+
 import asyncio
-import logging
-import threading
-import time
-from abc import abstractmethod
-from collections import deque
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from concurrent.futures import Future
-from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
-
-from syndesi.adapters.adapterworker import (
-    AdapterClosedEvent,
-    AdapterEvent,
-    AdapterOpenedEvent,
-)
-from syndesi.adapters.utils import TimeoutParameterType
-from syndesi.component import AsyncComponent, Component, ReadFrame, ReadScope, SyndesiEvent
-from syndesi.tools.errors import (
-    AdapterDisconnected,
-    AdapterReadError,
-    AdapterTimeoutError,
-    ProtocolReadError,
-    WorkerThreadError,
-)
+from types import EllipsisType
+from typing import Any, Generic, TypeVar, cast
 
 from ..adapters.adapter import Adapter, AsyncAdapter
-from ..adapters.bytesadapter import BytesAdapter
-from ..tools.log_settings import LoggerAlias
+from ..adapters.engine import Engine, ReadScope
+from ..adapters.events import AdapterEvent
+from ..adapters.framer import ReadFrame
+from ..adapters.stop_conditions import StopCondition
+from ..adapters.utils import TimeoutParameterType, TimeoutType
+from ..endpoint import AsyncEndpoint, Endpoint
+from ..tools.errors import ProtocolReadError, ProtocolWriteError
 
-ProtocolFrameT = TypeVar("ProtocolFrameT")
-
-
-
-@dataclass
-class ProtocolReadFrame(Generic[ProtocolFrameT], ReadFrame[ProtocolFrameT]):
-    """Protocol read frame"""
-
-    def __str__(self) -> str:
-        return f"ProtocolReadFrame({self.data!r})"
-
-class ProtocolEvent(SyndesiEvent):
-    """Protocol event"""
-
-class ProtocolDisconnectedEvent(ProtocolEvent):
-    """Protocol disconnected event"""
-
-@dataclass
-class ProtocolFrameEvent(ProtocolEvent, Generic[ProtocolFrameT]):
-    """Protocol frame event"""
-    frame: ProtocolReadFrame[ProtocolFrameT]
-
-@dataclass
-class ProtocolBufferEvent(ProtocolEvent):
-    """Event in the protocol frame buffer (frames added or removed)"""
-    added_frame_ids : list[int]
-    removed_frame_ids : list[int]
+WireT = TypeVar("WireT")
+PayloadT = TypeVar("PayloadT")
+SourceT = TypeVar("SourceT")
+ResultT = TypeVar("ResultT")
 
 
-@dataclass
-class _PendingProtocolRead(Generic[ProtocolFrameT]):
-    """A single outstanding protocol.read_detailed() call waiting for a frame."""
-
-    future: "Future[ProtocolReadFrame[ProtocolFrameT]]"
-    scope: ReadScope
-    start_time: float
-
-class ProtocolCommon(Generic[ProtocolFrameT]):
+class Codec(ABC, Generic[WireT, PayloadT]):
     """
-    Shared plumbing between Protocol (sync) and AsyncProtocol (async).
+    Translation between the data of an adapter and the payloads of a protocol, no I/O
 
-    The continuous background drain below (_arm_drain / _on_adapter_frame),
-    and the lifecycle handling that re-arms/tears it down, always run on the
-    Adapter's worker thread: adapter event callbacks are invoked synchronously
-    from there (see AdapterWorkerInterface._worker_emit_event), and
-    _arm_drain's re-arm is a Future.add_done_callback fired from that same
-    thread. This is true whether the adapter wrapped is a sync Adapter or an
-    AsyncAdapter, since both are driven by the same AdapterWorker. So none of
-    it needs an async flavor, and it lives here once instead of being
-    duplicated per facade.
-
-    What genuinely differs between Protocol and AsyncProtocol is only the
-    last mile of read_detailed(): how the caller waits for the
-    concurrent.futures.Future registered in _begin_read to resolve
-    (Future.result() for sync, asyncio.wrap_future() + await for async -
-    wrap_future is exactly the thread-safe bridge for "a background thread
-    resolves this Future" into "a coroutine awaits it").
+    A codec is immutable : changing it means handing a new one to the protocol, so a
+    decode running on the reactor thread always sees a consistent codec
     """
-    _FRAME_BUFFER_MAX = 256
-    adapter : Adapter[Any] | AsyncAdapter[Any]
-    # Provided by whichever of Component/AsyncComponent runs its __init__
-    # before _ProtocolBase.__init__ in the concrete subclass - declared here
-    # only so this mixin type-checks on its own.
-    _logger : logging.Logger
-
-    def __init__(self,
-                 adapter : Adapter[Any] | AsyncAdapter[Any],
-                 timeout: TimeoutParameterType
-                ) -> None:
-        self.adapter = adapter # adapter is public as it is used in ui
-        self.adapter.register_event_callback(self._on_lifecycle_event)
-
-        self._event_callbacks : list[Callable[[ProtocolEvent], None]] = []
-        self._frame_id = 0
-        self._last_write_timestamp: float | None = None
-        self._lock = threading.Lock()
-
-        self._frame_buffer: deque[ProtocolReadFrame[ProtocolFrameT]] = deque(
-            maxlen=self._FRAME_BUFFER_MAX
-        )
-
-        self._pending: _PendingProtocolRead[ProtocolFrameT] | None = None
-
-        if timeout is not ...:
-            self.adapter.set_default_timeout(timeout)
-
-        if timeout is ...:
-            self.adapter.set_timeout(self.default_timeout)
-        else:
-            self.adapter.set_timeout(timeout)
-
-        if self.adapter.is_open:
-            self._arm_drain()
 
     @property
-    def default_timeout(self) -> float | None:
-        """Default timeout"""
-
-    def _next_frame_id(self) -> int:
-        output = self._frame_id
-        self._frame_id += 1
-        return output
-
-    # ┌──────────────────────────────────────┐
-    # │ Background drain (decode-once, no    │
-    # │ extra thread - see class docstring)  │
-    # └──────────────────────────────────────┘
-
-    def _arm_drain(self) -> None:
-        # Bypasses Adapter's public locked API on purpose: this is a background,
-        # non-blocking re-arm (add_done_callback never waits), not a user operation.
-        future = self.adapter._read_detailed_future(  # pylint: disable=protected-access
-            timeout=None, scope=ReadScope.BUFFERED, stop_conditions=...
-        )
-        future.add_done_callback(self._on_adapter_frame)
-
-    def _on_adapter_frame(self, future: "Future[ReadFrame[Any]]") -> None:
-        try:
-            adapter_frame = future.result()
-        except (AdapterDisconnected, AdapterReadError):
-            # Adapter closed itself; _on_lifecycle_event handles cleanup and
-            # AdapterOpenedEvent (on reconnect) re-arms the drain.
-            return
-
-        try:
-            protocol_frame = self._adapter_to_protocol(adapter_frame)
-        except Exception:  # pylint: disable=broad-exception-caught
-            self._logger.exception("Failed to decode frame, dropping it")
-            self._arm_drain()
-            return
-
-        resolved: Future[ProtocolReadFrame[ProtocolFrameT]] | None = None
-        buffered = False
-        with self._lock:
-            pending = self._pending
-            if pending is not None and self._frame_matches_scope(
-                protocol_frame, pending.scope, pending.start_time
-            ):
-                self._pending = None
-                resolved = pending.future
-            else:
-                self._frame_buffer.append(protocol_frame)
-                buffered = True
-
-        if resolved is not None:
-            resolved.set_result(protocol_frame)
-        self._emit_event(ProtocolFrameEvent(frame=protocol_frame))
-        if buffered:
-            self._emit_event(
-                ProtocolBufferEvent(added_frame_ids=[protocol_frame.id], removed_frame_ids=[])
-            )
-        self._arm_drain()
-
-    def _on_lifecycle_event(self, event: AdapterEvent) -> None:
-        if isinstance(event, AdapterClosedEvent):
-            with self._lock:
-                cleared_ids = [frame.id for frame in self._frame_buffer]
-                self._frame_buffer.clear()
-                pending = self._pending
-                self._pending = None
-            if pending is not None:
-                pending.future.set_exception(AdapterDisconnected())
-            if cleared_ids:
-                self._emit_event(
-                    ProtocolBufferEvent(added_frame_ids=[], removed_frame_ids=cleared_ids)
-                )
-            self._emit_event(ProtocolDisconnectedEvent())
-        elif isinstance(event, AdapterOpenedEvent):
-            self._arm_drain()
-
-    # ┌──────────────────────────────────┐
-    # │ Local buffer / pending-read glue │
-    # └──────────────────────────────────┘
-
-    def _frame_matches_scope(
-        self, frame: ProtocolReadFrame[ProtocolFrameT], scope: ReadScope, call_start: float
-    ) -> bool:
-        if scope == ReadScope.BUFFERED:
-            return True
-        if scope == ReadScope.NEXT:
-            return frame.stop_timestamp > call_start
-        if scope == ReadScope.LAST_WRITE:
-            return (
-                self._last_write_timestamp is not None
-                and frame.first_fragment_timestamp >= self._last_write_timestamp
-            )
-        return False
-
-    def _pop_matching_locked(
-        self, scope: ReadScope, call_start: float
-    ) -> ProtocolReadFrame[ProtocolFrameT] | None:
-        for index, frame in enumerate(self._frame_buffer):
-            if self._frame_matches_scope(frame, scope, call_start):
-                del self._frame_buffer[index]
-                return frame
-        return None
-
-    def _begin_read(
-        self, scope: ReadScope, call_start: float
-    ) -> tuple[
-        ProtocolReadFrame[ProtocolFrameT] | None,
-        Future[ProtocolReadFrame[ProtocolFrameT]] | None,
-    ]:
-        with self._lock:
-            frame = self._pop_matching_locked(scope, call_start)
-            if frame is None:
-                if self._pending is not None:
-                    raise WorkerThreadError("Concurrent read is not supported")
-                future: Future[ProtocolReadFrame[ProtocolFrameT]] = Future()
-                self._pending = _PendingProtocolRead(
-                    future=future, scope=scope, start_time=call_start
-                )
-
-        if frame is not None:
-            self._emit_event(
-                ProtocolBufferEvent(added_frame_ids=[], removed_frame_ids=[frame.id])
-            )
-            return frame, None
-        return None, future
-
-    def _cancel_pending_if_timed_out(
-            self,
-            future: Future[ProtocolReadFrame[ProtocolFrameT]]
-        ) -> None:
-        with self._lock:
-            if self._pending is not None and self._pending.future is future:
-                self._pending = None
-
     @abstractmethod
-    def _adapter_to_protocol(
-        self, adapter_frame: ReadFrame[Any]
-    ) -> ProtocolReadFrame[ProtocolFrameT]: ...
-
-    @abstractmethod
-    def _protocol_to_adapter(
-        self, protocol_payload: ProtocolFrameT
-    ) -> Any: ...
-
-    def _emit_event(self, event : ProtocolEvent) -> None:
-        for callback in self._event_callbacks:
-            try:
-                callback(event)
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                # Never let user callback break worker
-                self._logger.exception(
-                    "Protocol event callback failed with error : %s", str(e)
-                )
-
-    def register_event_callback(self, event_callback: Callable[[ProtocolEvent], None]) -> None:
-        self._event_callbacks.append(event_callback)
-
-    def clear_event_callbacks(self) -> None:
-        self._event_callbacks.clear()
+    def default_timeout(self) -> TimeoutType:
+        """Timeout used when neither the protocol nor the adapter was given one"""
 
     @property
-    def frame_buffer(self) -> list[ProtocolReadFrame[ProtocolFrameT]]:
-        """List of stored frames"""
-        with self._lock:
-            return list(self._frame_buffer)
+    @abstractmethod
+    def stop_conditions(self) -> list[StopCondition] | None:
+        """Stop-conditions given to the adapter, None to keep the adapter ones"""
 
-class Protocol(Generic[ProtocolFrameT], ProtocolCommon[ProtocolFrameT], Component[ProtocolFrameT]):
+    @abstractmethod
+    def encode(self, payload: PayloadT) -> WireT:
+        """Turn a payload into the data written to the adapter"""
+
+    @abstractmethod
+    def decode(self, data: WireT) -> PayloadT:
+        """Turn the data of a frame read from the adapter into a payload"""
+
+
+def _chain(source: Future[SourceT], convert: Callable[[SourceT], ResultT]) -> Future[ResultT]:
     """
-    Sync base class for protocol layers.
+    Return a future completed with convert() applied to the result of source
 
-    The first generic parameter describes the adapter type expected by the
-    protocol (for example ``BytesAdapter`` or a more specific adapter class).
-    The second parameter describes the protocol payload type.
-
-    The continuous background drain that decodes every incoming Adapter frame
-    exactly once is implemented in _ProtocolBase (shared with AsyncProtocol) -
-    see its docstring. Because of it, the Adapter's own pending-read slot is
-    permanently taken: once wrapped in a Protocol, reading the Adapter
-    directly is not supported.
+    convert runs on the thread completing source, the reactor. Cancelling the returned
+    future cancels source, so the engine frees its read slot
     """
-    adapter : Adapter[Any]
+    output: Future[ResultT] = Future()
 
-    def __init__(
-        self,
-        adapter: Adapter[Any],
-        timeout: TimeoutParameterType = ...,
-    ) -> None:
-        Component.__init__(self, LoggerAlias.PROTOCOL)
-        ProtocolCommon.__init__(self, adapter, timeout)
+    def on_output_done(future: Future[ResultT]) -> None:
+        if future.cancelled():
+            source.cancel()
 
-    # ┌────────────┐
-    # │ Public API │
-    # └────────────┘
-
-    # ==== open ====
-
-    def open(self) -> None:
-        """
-        Open protocol communication with the target (blocking)
-        """
-        self.adapter.open()
-
-    # ==== close ====
-
-    def close(self) -> None:
-        """
-        Close protocol communication with the target (blocking)
-        """
-        self.adapter.close()
-
-    # ==== read_detailed ====
-
-    def read_detailed(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED,
-    ) -> ProtocolReadFrame[ProtocolFrameT]:
-        if not self.is_open:
-            raise ProtocolReadError("Protocol is not opened")
-        frame, future = self._begin_read(ReadScope(scope), time.time())
-        if frame is not None:
-            return frame
-        assert future is not None
-        resolved_timeout = self.adapter.timeout if timeout is ... else timeout
+    def on_source_done(future: Future[SourceT]) -> None:
+        if future.cancelled():
+            output.cancel()
+            return
+        if not output.set_running_or_notify_cancel():
+            return
+        error = future.exception()
+        if error is not None:
+            output.set_exception(error)
+            return
         try:
-            return future.result(resolved_timeout)
-        except TimeoutError as e:
-            self._cancel_pending_if_timed_out(future)
-            raise AdapterTimeoutError(
-                float("nan") if resolved_timeout is None else resolved_timeout
-            ) from e
+            output.set_result(convert(future.result()))
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            output.set_exception(e)
 
-    # ==== read ====
+    output.add_done_callback(on_output_done)
+    source.add_done_callback(on_source_done)
+    return output
+
+
+class ProtocolEngine(Generic[WireT, PayloadT]):
+    """
+    Engine of a protocol : the futures of an adapter engine, carrying payloads
+
+    Payloads are encoded before they are written, frames are decoded when a read
+    completes. Frames nobody reads stay raw in the adapter buffer, so the adapter can
+    still be used on its own
+
+    Parameters
+    ----------
+    engine : Engine
+        Engine of the adapter
+    codec : Codec
+    """
+
+    def __init__(self, engine: Engine[Any, WireT], codec: Codec[WireT, PayloadT]) -> None:
+        self._engine = engine
+        self._codec = codec
+
+    @property
+    def codec(self) -> Codec[WireT, PayloadT]:
+        """Codec of the protocol"""
+        return self._codec
+
+    @property
+    def is_open(self) -> bool:
+        """True if the adapter is open"""
+        return self._engine.is_open
+
+    @property
+    def timeout(self) -> TimeoutType:
+        """Timeout of the adapter"""
+        return self._engine.timeout
+
+    def open(self) -> Future[None]:
+        """Open the adapter"""
+        return self._engine.open()
+
+    def close(self) -> Future[None]:
+        """Close the adapter"""
+        return self._engine.close()
+
+    def set_timeout(self, timeout: TimeoutType) -> Future[None]:
+        """Set the timeout of the adapter"""
+        return self._engine.set_timeout(timeout)
+
+    def clear_buffer(self) -> Future[None]:
+        """Drop the frames buffered by the adapter"""
+        return self._engine.clear_buffer()
+
+    def register_event_callback(self, callback: Callable[[AdapterEvent], None]) -> Future[None]:
+        """Register an adapter event callback"""
+        return self._engine.register_event_callback(callback)
+
+    def clear_event_callbacks(self) -> Future[None]:
+        """Remove every adapter event callback"""
+        return self._engine.clear_event_callbacks()
+
+    def write(self, data: PayloadT) -> Future[None]:
+        """Encode a payload and write it"""
+        try:
+            encoded = self._codec.encode(data)
+        except ValueError as e:  # UnicodeError included
+            raise ProtocolWriteError(f"Cannot encode {data!r} : {e}") from e
+        return self._engine.write(encoded)
 
     def read(
         self,
         timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
-    ) -> ProtocolFrameT:
-        frame = self.read_detailed(timeout=timeout, scope=scope)
-        return frame.data
+        scope: ReadScope = ReadScope.BUFFERED,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+    ) -> Future[ReadFrame[PayloadT]]:
+        """Read one frame and decode it"""
+        return _chain(self._engine.read(timeout, scope, stop_conditions), self._decode)
 
-    # ==== clear_read_buffer ====
+    def set_codec(self, codec: Codec[WireT, PayloadT]) -> Future[None]:
+        """Use another codec, its stop-conditions go to the adapter"""
+        self._codec = codec
+        stop_conditions = codec.stop_conditions
+        if stop_conditions is None:
+            done: Future[None] = Future()
+            done.set_result(None)
+            return done
+        return self._engine.set_stop_conditions(stop_conditions)
 
-    def clear_read_buffer(self) -> None:
-        """
-        Clear read buffer (blocking)
-        """
-        self.adapter.clear_read_buffer()
-        with self._lock:
-            cleared_ids = [frame.id for frame in self._frame_buffer]
-            self._frame_buffer.clear()
-        if cleared_ids:
-            self._emit_event(
-                ProtocolBufferEvent(added_frame_ids=[], removed_frame_ids=cleared_ids)
-            )
+    def _decode(self, frame: ReadFrame[WireT]) -> ReadFrame[PayloadT]:
+        try:
+            data = self._codec.decode(frame.data)
+        except ValueError as e:  # UnicodeError included
+            raise ProtocolReadError(f"Cannot decode {frame.data!r} : {e}") from e
+        return ReadFrame(
+            data=data,
+            id=frame.id,
+            stop_timestamp=frame.stop_timestamp,
+            stop_condition=frame.stop_condition,
+            first_fragment_timestamp=frame.first_fragment_timestamp,
+            response_delay=frame.response_delay,
+        )
 
-    # ==== write ====
 
-    def write(self, data: ProtocolFrameT) -> None:
-        self.adapter.write(self._protocol_to_adapter(data))
-        self._last_write_timestamp = time.time()
-
-class AsyncProtocol(Generic[ProtocolFrameT], ProtocolCommon[ProtocolFrameT], AsyncComponent[ProtocolFrameT]):
+def _build_engine(
+    adapter: Adapter[Any, WireT] | AsyncAdapter[Any, WireT],
+    codec: Codec[WireT, PayloadT],
+    timeout: TimeoutParameterType,
+) -> tuple[ProtocolEngine[WireT, PayloadT], list[Future[None]]]:
     """
-    Async base class for protocol layers.
+    Build the engine of a protocol and configure its adapter
 
-    Mirrors Protocol's public surface with coroutines instead of blocking
-    calls. The background drain itself is inherited unchanged from
-    _ProtocolBase - it already runs on the Adapter's worker thread regardless
-    of facade, so there is nothing async to add there. Only read_detailed's
-    wait step differs: it bridges the pending read's concurrent.futures.Future
-    to a coroutine via asyncio.wrap_future(), the same pattern AsyncAdapter
-    itself uses to expose the sync worker-thread commands as coroutines.
+    The codec stop-conditions replace the adapter ones. ``...`` keeps the adapter
+    timeout if it was given one, and uses the codec one otherwise
+
+    The configuration is submitted to the adapter engine and returned without waiting :
+    the engine runs commands in order, so it applies before any later operation
     """
-    adapter : AsyncAdapter[Any]
+    engine = adapter.engine
+    configuration: list[Future[None]] = []
+
+    stop_conditions = codec.stop_conditions
+    if stop_conditions is not None:
+        configuration.append(engine.set_stop_conditions(stop_conditions))
+
+    if timeout is not ...:
+        configuration.append(engine.set_timeout(timeout))
+    elif adapter.has_default_timeout:
+        configuration.append(engine.set_timeout(codec.default_timeout))
+
+    return ProtocolEngine(engine, codec), configuration
+
+
+class Protocol(Endpoint[PayloadT], Generic[WireT, PayloadT]):
+    """
+    Sync protocol
+
+    Parameters
+    ----------
+    adapter : Adapter
+    codec : Codec
+    timeout : float, None or ...
+        ``...`` keeps the adapter timeout if it was given one, the codec one otherwise
+    """
+
     def __init__(
-            self,
-            adapter: AsyncAdapter[Any],
-            timeout: TimeoutParameterType = ...,
-        ) -> None:
-        AsyncComponent.__init__(self, LoggerAlias.PROTOCOL)
-        ProtocolCommon.__init__(self, adapter, timeout)
+        self,
+        adapter: Adapter[Any, WireT],
+        codec: Codec[WireT, PayloadT],
+        *,
+        timeout: TimeoutParameterType = ...,
+    ) -> None:
+        # Public, the UI uses it
+        self.adapter = adapter
+        engine, configuration = _build_engine(adapter, codec, timeout)
+        # Waited for, so that the adapter attributes (timeout, ...) are up to date
+        for future in configuration:
+            future.result()
+        super().__init__(engine, auto_open=False)
+
+    def __str__(self) -> str:
+        return f"{type(self).__name__}({self.adapter},{self.codec})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
     @property
-    def is_open(self) -> bool:
-        """
-        Return True if the protocol and underlying adapter are open
-        """
-        return self.adapter.is_open
+    def codec(self) -> Codec[WireT, PayloadT]:
+        """Codec of the protocol"""
+        return self._protocol_engine.codec
 
-    # ==== open ====
+    def _set_codec(self, codec: Codec[WireT, PayloadT]) -> None:
+        self._protocol_engine.set_codec(codec).result()
 
-    async def open_async(self) -> None:
-        """
-        Open protocol communication with the target (async)
-        """
-        await self.adapter.open_async()
+    @property
+    def _protocol_engine(self) -> ProtocolEngine[WireT, PayloadT]:
+        return cast("ProtocolEngine[WireT, PayloadT]", self._engine)
 
-    # ==== close ====
 
-    async def close(self) -> None:
-        """
-        Close protocol communication with the target (async)
-        """
-        await self.adapter.close_async()
+class AsyncProtocol(AsyncEndpoint[PayloadT], Generic[WireT, PayloadT]):
+    """
+    Async protocol, same parameters as Protocol
 
-    # ==== read_detailed ====
+    The adapter configuration is submitted without waiting, it applies before any
+    later operation
+    """
 
-    async def read_detailed(
+    def __init__(
         self,
+        adapter: AsyncAdapter[Any, WireT],
+        codec: Codec[WireT, PayloadT],
+        *,
         timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED,
-    ) -> ProtocolReadFrame[ProtocolFrameT]:
-        if not self.is_open:
-            raise ProtocolReadError("Protocol is not opened")
+    ) -> None:
+        # Public, the UI uses it
+        self.adapter = adapter
+        engine, _ = _build_engine(adapter, codec, timeout)
+        super().__init__(engine, auto_open=False)
 
-        frame, future = self._begin_read(ReadScope(scope), time.time())
-        if frame is not None:
-            return frame
-        assert future is not None
-        resolved_timeout = self.adapter.timeout if timeout is ... else timeout
-        try:
-            return await asyncio.wait_for(asyncio.wrap_future(future), resolved_timeout)
-        except (TimeoutError, asyncio.TimeoutError) as e:
-            self._cancel_pending_if_timed_out(future)
-            raise AdapterTimeoutError(
-                float("nan") if resolved_timeout is None else resolved_timeout
-            ) from e
+    def __str__(self) -> str:
+        return f"{type(self).__name__}({self.adapter},{self.codec})"
 
-    # ==== read ====
+    def __repr__(self) -> str:
+        return self.__str__()
 
-    async def read(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
-    ) -> ProtocolFrameT:
-        frame = await self.read_detailed(timeout=timeout, scope=scope)
-        return frame.data
+    @property
+    def codec(self) -> Codec[WireT, PayloadT]:
+        """Codec of the protocol"""
+        return self._protocol_engine.codec
 
-    # ==== clear_read_buffer ====
+    async def _set_codec(self, codec: Codec[WireT, PayloadT]) -> None:
+        await asyncio.wrap_future(self._protocol_engine.set_codec(codec))
 
-    async def clear_read_buffer(self) -> None:
-        """
-        Clear read buffer (async)
-        """
-        await self.adapter.clear_read_buffer()
-        with self._lock:
-            cleared_ids = [frame.id for frame in self._frame_buffer]
-            self._frame_buffer.clear()
-        if cleared_ids:
-            self._emit_event(
-                ProtocolBufferEvent(added_frame_ids=[], removed_frame_ids=cleared_ids)
-            )
-
-    # ==== write ====
-
-    async def write(self, data: ProtocolFrameT) -> None:
-        await self.adapter.write(self._protocol_to_adapter(data))
-        self._last_write_timestamp = time.time()
-
-    # ==== query_detailed ====
-
-    async def query_detailed(
-        self,
-        payload: ProtocolFrameT,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.LAST_WRITE.value,
-    ) -> ProtocolReadFrame[ProtocolFrameT]:
-        await self.clear_read_buffer()
-        await self.write(payload)
-        return await self.read_detailed(timeout=timeout, scope=scope)
+    @property
+    def _protocol_engine(self) -> ProtocolEngine[WireT, PayloadT]:
+        return cast("ProtocolEngine[WireT, PayloadT]", self._engine)

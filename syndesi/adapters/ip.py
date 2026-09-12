@@ -2,13 +2,15 @@
 # Author : Sébastien Deriaz
 # License : GPL
 """
-IP backend, used to communicate with IP targets using the socket module
+IP adapters and backend, used to communicate with IP targets using the socket module
 """
 
 import socket
 from dataclasses import dataclass
 from enum import StrEnum
+from types import EllipsisType
 
+from .adapter import Adapter, AsyncAdapter
 from .backend import (
     AdapterBackend,
     BackendDisconnectedError,
@@ -17,8 +19,9 @@ from .backend import (
     BackendWriteError,
     Descriptor,
 )
+from .framer import BytesFramer
 from .stop_conditions import Continuation, StopCondition
-from .utils import Fragment, HasFileno
+from .utils import Fragment, HasFileno, TimeoutParameterType
 
 
 @dataclass
@@ -167,3 +170,89 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
     def default_timeout(self) -> float | None:
         """Default timeout"""
         return 1.0
+
+
+class IP(Adapter[IPDescriptor, bytes]):
+    """
+    IP adapter, reads and writes bytes
+
+    Parameters
+    ----------
+    address : str
+    port : int or None
+        None lets a protocol set its well-known port with set_default_port
+    transport : {'TCP', 'UDP'}
+    timeout : float, None or ...
+        Time to wait for the target to respond, 1 s by default
+    stop_conditions : StopCondition, list of StopCondition or ...
+        When a frame is complete, Continuation(0.2) by default
+    alias : str
+    auto_open : bool
+        Open on construction, skipped while the port is None
+    """
+
+    def __init__(
+        self,
+        address: str,
+        port: int | None = None,
+        transport: str = IPDescriptor.Transport.TCP.value,
+        *,
+        timeout: TimeoutParameterType = ...,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+        alias: str = "",
+        auto_open: bool = True,
+    ) -> None:
+        backend = IPBackend(
+            IPDescriptor(address, IPDescriptor.Transport(transport.upper()), port)
+        )
+        super().__init__(
+            backend,
+            BytesFramer(backend.default_stop_conditions),
+            timeout=timeout,
+            stop_conditions=stop_conditions,
+            alias=alias,
+            auto_open=auto_open,
+        )
+
+    def set_default_port(self, port: int) -> None:
+        """Set the port, unless one was given. Used by protocols with a well-known port"""
+        if self.descriptor.port is None:
+            self.descriptor.port = port
+
+
+class AsyncIP(AsyncAdapter[IPDescriptor, bytes]):
+    """
+    Async IP adapter, same parameters as IP
+
+    auto_open submits the open without waiting for it : use ``async with`` or
+    ``await open()`` to wait for it, otherwise a failed open is raised by the first
+    operation
+    """
+
+    def __init__(
+        self,
+        address: str,
+        port: int | None = None,
+        transport: str = IPDescriptor.Transport.TCP.value,
+        *,
+        timeout: TimeoutParameterType = ...,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+        alias: str = "",
+        auto_open: bool = True,
+    ) -> None:
+        backend = IPBackend(
+            IPDescriptor(address, IPDescriptor.Transport(transport.upper()), port)
+        )
+        super().__init__(
+            backend,
+            BytesFramer(backend.default_stop_conditions),
+            timeout=timeout,
+            stop_conditions=stop_conditions,
+            alias=alias,
+            auto_open=auto_open,
+        )
+
+    def set_default_port(self, port: int) -> None:
+        """Set the port, unless one was given. Used by protocols with a well-known port"""
+        if self.descriptor.port is None:
+            self.descriptor.port = port

@@ -1,312 +1,225 @@
-# NOT YET PORTED to the backend/framer/engine/reactor architecture.
-# This module still targets the removed Component/Adapter classes. It is kept
-# as a reference while it gets ported, and excluded from the checkers until then
-# mypy: ignore-errors
-# pylint: skip-file
-# ruff: noqa
 # File : adapter.py
 # Author : Sébastien Deriaz
 # License : GPL
-
 """
-Adapters provide a common abstraction for the media layers (physical + data link + network)
+Adapters, the endpoints that talk to a device through a backend
 
-The user calls methods of the Adapter class synchronously.
+An adapter only builds its engine from a backend and a framer, reading, writing and
+waiting are inherited from the endpoint. A transport (IP, SerialPort, ...) is a
+constructor that builds its backend and hands it to Adapter or AsyncAdapter
 
-An adapter's read/write data type is defined by its DataT generic parameter
-(e.g. BytesAdapter subclasses read/write bytes). No implicit str<->bytes
-conversion is performed; protocols such as Delimited handle encoding instead.
-
-Each adapter contains a worker thread that monitors the low-level communication layers.
-This approach allows for precise time management (when each fragment is sent/received) and allows
-for asynchronous events (fragment received).
-
-Async facade:
-- aopen/awrite/aread/aread_detailed simply await the SAME underlying worker-thread commands
-  using asyncio.wrap_future (no extra threads are spawned).
+Adapter and AsyncAdapter are duplicated on purpose : they hold no logic, what they
+share lives in _build_engine
 """
+
+from __future__ import annotations
 
 import asyncio
-import threading
 import weakref
 from types import EllipsisType
-from typing import Any, Generic, TypeVar, get_args, get_origin
+from typing import Generic, TypeVar, cast
 
-from syndesi.adapters.stop_conditions import StopCondition
-from syndesi.tools.errors import AdapterError
-
-from ..component import AsyncComponent, Component, ComponentCommon, ReadFrame, ReadScope
-from ..tools.log_settings import LoggerAlias
-from .adapterworker import (
-    AdapterWorker,
-    AdapterWorkerInterface,
-)
+from ..endpoint import AsyncEndpoint, Endpoint
+from ..tools.errors import AdapterConfigurationError
+from .backend import AdapterBackend, Descriptor
+from .engine import Engine
+from .framer import Framer, SupportsStopConditions
+from .stop_conditions import StopCondition
 from .utils import TimeoutParameterType, TimeoutType
 
+DescriptorT = TypeVar("DescriptorT", bound=Descriptor)
 DataT = TypeVar("DataT")
 
-class AdapterCommon(Generic[DataT], ComponentCommon[DataT], AdapterWorkerInterface[DataT]):
+
+def _as_list(stop_conditions: StopCondition | list[StopCondition]) -> list[StopCondition]:
+    if isinstance(stop_conditions, StopCondition):
+        return [stop_conditions]
+    return list(stop_conditions)
+
+
+def _build_engine(
+    backend: AdapterBackend[DescriptorT, DataT],
+    framer: Framer[DataT],
+    timeout: TimeoutParameterType,
+    stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
+    alias: str,
+) -> Engine[DescriptorT, DataT]:
     """
-    This is a generic class from which all adapters (sync and async) should inherit.
-    It provides basic functionnalities common to each
+    Build the engine of an adapter
+
+    ``...`` keeps the backend timeout and the framer stop-conditions. The user
+    stop-conditions are set on the framer before the engine exists, so the reactor
+    never sees them change
     """
-    def __init__(
-            self,
-            worker: AdapterWorker[DataT],
-            timeout: TimeoutParameterType,
-            alias: str,
-            auto_open: bool,
-            logger_alias: LoggerAlias
-        ) -> None:
-        ComponentCommon.__init__(self, logger_alias)
-        AdapterWorkerInterface.__init__(self, worker, timeout, alias, auto_open)
+    if stop_conditions is not ...:
+        if not isinstance(framer, SupportsStopConditions):
+            raise AdapterConfigurationError(
+                f"{type(framer).__name__} doesn't use stop-conditions"
+            )
+        framer.stop_conditions = _as_list(stop_conditions)
 
-        weakref.finalize(self, self._cleanup)
-
-
-    def open(self) -> None:
-        """
-        Open adapter communication with the target (blocking)
-        """
-        # If timeout is None, wait indefinitely
-        # If timeout is not None, add a small amount (IMMEDIATE_COMMAND)
-        # To let the worker setup and respond. The "real" timeout is used in the _worker_open
-        # method
-        timeout : float | None
-        if self.timeout is None:
-            timeout = None
-        else:
-            timeout = self.timeout + self.WorkerTimeout.IMMEDIATE_COMMAND.value
-
-        output = self._open_future().result(timeout)
-        return output
+    return Engine(
+        backend,
+        framer,
+        timeout=backend.default_timeout if timeout is ... else timeout,
+        alias=alias,
+    )
 
 
-
-    def close(self) -> None:
-        """
-        Close adapter communication with the target (blocking)
-        """
-        self._close_future().result(self.WorkerTimeout.CLOSE.value)
-
-    @property
-    def timeout(self) -> TimeoutType:
-        """Return the adapter's timeout. The timeout is used:
-            * To set the opening time
-            * Define the maximum time before a fragment is received when reading"""
-        return self._worker.timeout
-
-    def _cleanup(self) -> None:
-        try:
-            if self.is_open:
-                self.close()
-        except AdapterError:
-            pass
-        self._stop()
-
-class Adapter(Generic[DataT], AdapterCommon[DataT], Component[DataT]):
+class Adapter(Endpoint[DataT], Generic[DescriptorT, DataT]):
     """
-    Adapter class
+    Sync adapter
 
-    An adapter manages communication with a hardware device.
-    """    
+    Parameters
+    ----------
+    backend : AdapterBackend
+    framer : Framer
+    timeout : float, None or ...
+        Time to wait for the target to respond, ``...`` for the backend default
+    stop_conditions : StopCondition, list of StopCondition or ...
+        When a frame is complete, ``...`` keeps the framer ones
+    alias : str
+    auto_open : bool
+        Open on construction. Skipped while the descriptor is incomplete, a protocol
+        may still have to set a default (port, ...)
+    """
 
     def __init__(
         self,
+        backend: AdapterBackend[DescriptorT, DataT],
+        framer: Framer[DataT],
         *,
-        worker: AdapterWorker[DataT],
-        timeout: TimeoutParameterType,
-        alias: str,
+        timeout: TimeoutParameterType = ...,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+        alias: str = "",
         auto_open: bool = True,
     ) -> None:
-        super().__init__(
-            worker=worker,
-            timeout=timeout,
-            alias=alias,
-            auto_open=auto_open,
-            logger_alias=LoggerAlias.ADAPTER
-        )
+        self._descriptor = backend.descriptor
+        self._is_default_timeout = timeout is ...
+        self._is_default_stop_condition = stop_conditions is ...
 
-        self._sync_io_lock = threading.Lock()
-
-        if self.descriptor.is_initialized() and self._auto_open:
-            self.open()
-
-    # ┌──────────────────────────┐
-    # │ Defaults / configuration │
-    # └──────────────────────────┘
+        engine = _build_engine(backend, framer, timeout, stop_conditions, alias)
+        # The reactor holds the engine, stop it once the adapter is unreachable
+        weakref.finalize(self, engine.stop)
+        super().__init__(engine, auto_open=auto_open and backend.descriptor.is_initialized())
 
     def __str__(self) -> str:
-        return str(self.descriptor)
+        return str(self._descriptor)
 
     def __repr__(self) -> str:
         return self.__str__()
 
-    # ┌────────────┐
-    # │ Public API │
-    # └────────────┘
-
-    def read_detailed(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED.value,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> ReadFrame[DataT]:
-        with self._sync_io_lock:
-            result = self._read_detailed_future(
-                timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
-            ).result(self.WorkerTimeout.READ.value)
-        return result
-
-    def read(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> DataT:
-        frame = self.read_detailed(
-            timeout=timeout, scope=scope, stop_conditions=stop_conditions
-        )
-        return frame.data
-
-    def clear_read_buffer(self) -> None:
+    @property
+    def engine(self) -> Engine[DescriptorT, DataT]:
         """
-        Clear buffered completed frames and reset current fragment assembly (blocking)
+        Non-blocking side of the adapter, every method returns a future
+
+        Neither sync nor async, protocols sit on it
         """
-        with self._sync_io_lock:
-            self._clear_read_buffer_future().result(self.WorkerTimeout.IMMEDIATE_COMMAND.value)    
+        return cast("Engine[DescriptorT, DataT]", self._engine)
 
-    def write(self, data: DataT) -> None:
-        with self._sync_io_lock:
-            self._write_future(data).result(self.WorkerTimeout.WRITE.value)
+    @property
+    def descriptor(self) -> DescriptorT:
+        """Parameters of the target (address, port, baudrate, ...)"""
+        return self._descriptor
 
-    def query_detailed(
-        self,
-        payload: DataT,
-        timeout: TimeoutParameterType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...
-    ) -> ReadFrame[DataT]:
+    @property
+    def has_default_timeout(self) -> bool:
+        """True if no timeout was given at construction, a protocol then sets its own"""
+        return self._is_default_timeout
 
-        with self._sync_io_lock:
-            self._write_future(payload).result(self.WorkerTimeout.WRITE.value)
-            output = self._read_detailed_future(
-                timeout=timeout,
-                scope=ReadScope.LAST_WRITE,
-                stop_conditions=stop_conditions
-            ).result(self.WorkerTimeout.READ.value)
-        return output
+    @property
+    def stop_conditions(self) -> list[StopCondition]:
+        """Stop-conditions of the framer"""
+        return self.engine.stop_conditions
 
-def find_adapter_data_type(obj : type[Adapter[Any]] | Adapter[Any]) -> Any:
+    def set_stop_conditions(self, stop_conditions: StopCondition | list[StopCondition]) -> None:
+        """Set the stop-conditions of the framer"""
+        self.engine.set_stop_conditions(_as_list(stop_conditions)).result()
+
+    def set_default_timeout(self, timeout: TimeoutType) -> None:
+        """Set the timeout, unless one was given at construction"""
+        if self._is_default_timeout:
+            self.set_timeout(timeout)
+
+    def set_default_stop_conditions(
+        self, stop_conditions: StopCondition | list[StopCondition]
+    ) -> None:
+        """Set the stop-conditions, unless some were given at construction"""
+        if self._is_default_stop_condition:
+            self.set_stop_conditions(stop_conditions)
+
+
+class AsyncAdapter(AsyncEndpoint[DataT], Generic[DescriptorT, DataT]):
     """
-    Supports:
-    - Adapter[bytes]
-    - class MyAdapter(Adapter[bytes]): ...
-    - MyAdapter() instance
+    Async adapter, same parameters as Adapter
 
-    Returns the concrete DataT, or None if it cannot be determined.
-    """
-
-    # Case 1: direct parametrized generic, e.g. Adapter[bytes]
-    if get_origin(obj) is Adapter:
-        args = get_args(obj)
-        return args[0] if args else None
-
-    # Normalize class / instance
-    cls = obj if isinstance(obj, type) else type(obj)
-
-    # Case 2: subclass, e.g. class MyAdapter(Adapter[bytes])
-    bases = getattr(cls, "__orig_bases__", cls.__bases__)
-    for base in bases:
-        if get_origin(base) is Adapter:
-            args = get_args(base)
-            return args[0] if args else None
-
-    return None
-
-class AsyncAdapter(Generic[DataT], AdapterCommon[DataT], AsyncComponent[DataT]):
-    """
-    AsyncAdapter class
-
-    An adapter manages communication with a hardware device.
+    auto_open submits the open without waiting for it, see AsyncEndpoint
     """
 
     def __init__(
-            self,
-            *,
-            worker: AdapterWorker[DataT],
-            timeout: TimeoutParameterType,
-            alias: str,
-            auto_open: bool = False,
-        ) -> None:
-        AsyncComponent.__init__(self, LoggerAlias.ADAPTER)
-        AdapterWorkerInterface.__init__(self, worker, timeout, alias, auto_open)
-
-        self._logger.info(f"Setting up {self.descriptor} adapter ")
-
-        self._async_io_lock = asyncio.Lock()
-
-        if self.descriptor.is_initialized() and self._auto_open:
-            self.open()
-
-    async def open_async(self) -> None:
-        """
-        Open adapter communication with the target (async)
-        """
-        await asyncio.wrap_future(self._open_future())
-
-    async def close_async(self) -> None:
-        """
-        Close adapter communication with the target (async)
-        """
-        await asyncio.wrap_future(self._close_future())
-
-    async def read_detailed(
         self,
+        backend: AdapterBackend[DescriptorT, DataT],
+        framer: Framer[DataT],
+        *,
         timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> ReadFrame[DataT]:
-        async with self._async_io_lock:
-            return await asyncio.wrap_future(
-                self._read_detailed_future(
-                    timeout=timeout, scope=ReadScope(scope), stop_conditions=stop_conditions
-                )
-            )
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+        alias: str = "",
+        auto_open: bool = True,
+    ) -> None:
+        self._descriptor = backend.descriptor
+        self._is_default_timeout = timeout is ...
+        self._is_default_stop_condition = stop_conditions is ...
 
-    async def read(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: str = ReadScope.BUFFERED,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-    ) -> DataT:
-        frame = await self.read_detailed(
-            timeout=timeout, scope=scope, stop_conditions=stop_conditions
-        )
-        return frame.data
+        engine = _build_engine(backend, framer, timeout, stop_conditions, alias)
+        # The reactor holds the engine, stop it once the adapter is unreachable
+        weakref.finalize(self, engine.stop)
+        super().__init__(engine, auto_open=auto_open and backend.descriptor.is_initialized())
 
-    async def clear_read_buffer(self) -> None:
+    def __str__(self) -> str:
+        return str(self._descriptor)
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    @property
+    def engine(self) -> Engine[DescriptorT, DataT]:
         """
-        Clear buffered completed frames and reset current fragment assembly (async)
+        Non-blocking side of the adapter, every method returns a future
+
+        Neither sync nor async, protocols sit on it
         """
-        async with self._async_io_lock:
-            await asyncio.wrap_future(self._clear_read_buffer_future())
+        return cast("Engine[DescriptorT, DataT]", self._engine)
 
-    async def write(self, data: DataT) -> None:
-        async with self._async_io_lock:
-            await asyncio.wrap_future(self._write_future(data))
+    @property
+    def descriptor(self) -> DescriptorT:
+        """Parameters of the target (address, port, baudrate, ...)"""
+        return self._descriptor
 
-    async def query_detailed(
-        self,
-        payload: DataT,
-        timeout: TimeoutParameterType = ...,
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
-        ) -> ReadFrame[DataT]:
-        async with self._async_io_lock:
-            await asyncio.wrap_future(self._write_future(payload))
-            return await asyncio.wrap_future(
-                self._read_detailed_future(
-                    timeout=timeout,
-                    scope=ReadScope.LAST_WRITE,
-                    stop_conditions=stop_conditions
-                )
-            )
+    @property
+    def has_default_timeout(self) -> bool:
+        """True if no timeout was given at construction, a protocol then sets its own"""
+        return self._is_default_timeout
+
+    @property
+    def stop_conditions(self) -> list[StopCondition]:
+        """Stop-conditions of the framer"""
+        return self.engine.stop_conditions
+
+    async def set_stop_conditions(
+        self, stop_conditions: StopCondition | list[StopCondition]
+    ) -> None:
+        """Set the stop-conditions of the framer"""
+        await asyncio.wrap_future(self.engine.set_stop_conditions(_as_list(stop_conditions)))
+
+    async def set_default_timeout(self, timeout: TimeoutType) -> None:
+        """Set the timeout, unless one was given at construction"""
+        if self._is_default_timeout:
+            await self.set_timeout(timeout)
+
+    async def set_default_stop_conditions(
+        self, stop_conditions: StopCondition | list[StopCondition]
+    ) -> None:
+        """Set the stop-conditions, unless some were given at construction"""
+        if self._is_default_stop_condition:
+            await self.set_stop_conditions(stop_conditions)

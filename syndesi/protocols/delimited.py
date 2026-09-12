@@ -1,168 +1,196 @@
-# NOT YET PORTED to the backend/framer/engine/reactor architecture.
-# This module still targets the removed Component/Adapter classes. It is kept
-# as a reference while it gets ported, and excluded from the checkers until then
-# mypy: ignore-errors
-# pylint: skip-file
-# ruff: noqa
 # File : delimited.py
 # Author : Sébastien Deriaz
 # License : GPL
 """
-Delimited protocol, formats data when communicating with devices expecting
-command-like formats with specified delimiters (like \\n, \\r, \\r\\n, etc...)
+Delimited protocol, for devices exchanging text commands ended by a delimiter
+(\\n, \\r, \\r\\n, ...)
 """
-from syndesi.adapters.bytesadapter import BytesAdapter
-from syndesi.adapters.utils import TimeoutParameterType
 
-from ..adapters.stop_conditions import Termination
-from ..component import ReadFrame
-from .protocol import AsyncProtocol, Protocol, ProtocolReadFrame
+from __future__ import annotations
 
-class Delimited(Protocol[str]):
+from dataclasses import dataclass
+from typing import Any, cast
+
+from ..adapters.adapter import Adapter, AsyncAdapter
+from ..adapters.stop_conditions import StopCondition, Termination
+from ..adapters.utils import TimeoutParameterType, TimeoutType
+from .protocol import AsyncProtocol, Codec, Protocol
+
+
+@dataclass(frozen=True)
+class DelimitedCodec(Codec[bytes, str]):
     """
-    Protocol with string decoding and delimiter, like LF, CR, etc... LF is used by default
+    Text commands ended by a termination
 
-    No presentation or application layers
+    Parameters
+    ----------
+    termination : str
+        Appended to every payload written
+    receive_termination : str
+        Ends every frame received
+    encoding : str
+    format_response : bool
+        Remove receive_termination from the payloads read
+    """
+
+    termination: str
+    receive_termination: str
+    encoding: str
+    format_response: bool
+
+    def __str__(self) -> str:
+        if self.receive_termination == self.termination:
+            return repr(self.termination)
+        return f"{self.termination!r}/{self.receive_termination!r}"
+
+    @property
+    def default_timeout(self) -> TimeoutType:
+        return 2.0
+
+    @property
+    def stop_conditions(self) -> list[StopCondition]:
+        # A new one on every call, a stop-condition holds the state of the frame being read
+        return [Termination(self.receive_termination.encode(self.encoding))]
+
+    def encode(self, payload: str) -> bytes:
+        return (payload + self.termination).encode(self.encoding)
+
+    def decode(self, data: bytes) -> str:
+        text = data.decode(self.encoding)
+        if self.format_response and text.endswith(self.receive_termination):
+            return text[: -len(self.receive_termination)]
+        return text
+
+def _as_str(value: str | bytes, encoding: str, name: str) -> str:
+    if isinstance(value, bytes):
+        return value.decode(encoding)
+    if isinstance(value, str):
+        return value
+    raise ValueError(f"{name} must be str or bytes, not {type(value).__name__}")
+
+def _delimited_codec(
+    termination: str | bytes,
+    receive_termination: str | bytes | None,
+    encoding: str,
+    format_response: bool,
+) -> DelimitedCodec:
+    send = _as_str(termination, encoding, "termination")
+    return DelimitedCodec(
+        termination=send,
+        receive_termination=(
+            send
+            if receive_termination is None
+            else _as_str(receive_termination, encoding, "receive_termination")
+        ),
+        encoding=encoding,
+        format_response=format_response,
+    )
+
+class Delimited(Protocol[bytes, str]):
+    """
+    Text protocol, every command ends with a termination, LF by default
 
     Parameters
     ----------
     adapter : Adapter
-    termination : bytes
-        Command termination, '\\n' by default
+        Its stop-conditions are replaced by Termination(receive_termination)
+    termination : str or bytes
+        Appended to every payload written, '\\n' by default
     format_response : bool
-        Apply formatting to the response (i.e removing the termination), True by default
-    encoding : str or None
-        If None, delimited will not encode/decode
-    timeout : float | int | None | ...
-        None by default (default timeout)
-    receive_termination : bytes
-        Termination when receiving only, optional
-        if not set, the value of termination is used
+        Remove the termination from the payloads read, True by default
+    encoding : str
+    timeout : float, None or ...
+        ``...`` keeps the adapter timeout if it was given one, 2 s otherwise
+    receive_termination : str, bytes or None
+        Termination of the frames received, the value of termination if None
     """
-    adapter : BytesAdapter
+
     def __init__(
         self,
-        adapter: BytesAdapter,
+        adapter: Adapter[Any, bytes],
         termination: str | bytes = "\n",
         *,
         format_response: bool = True,
         encoding: str = "utf-8",
         timeout: TimeoutParameterType = ...,
-        receive_termination: str | None = None,
+        receive_termination: str | bytes | None = None,
     ) -> None:
-        self._encoding = encoding
-        if isinstance(termination, bytes):
-            termination = termination.decode(self._encoding)
-        elif not isinstance(termination, str):
-            raise ValueError(
-                f"termination argument must be of type str or bytes, not {type(termination)}"
-            )
-        self._termination = termination
-
-        if receive_termination is None:
-            self._receive_termination = termination
-        else:
-            self._receive_termination = receive_termination
-
-            if isinstance(receive_termination, bytes):
-                receive_termination = receive_termination.decode(self._encoding)
-            elif not isinstance(receive_termination, str):
-                raise ValueError(
-                    f"termination argument must be of type str or bytes, not {type(termination)}"
-                )
-
-        self._format_response = format_response
-
-        adapter.set_stop_conditions(
-            stop_conditions=Termination(sequence=self._receive_termination)
+        super().__init__(
+            adapter,
+            _delimited_codec(termination, receive_termination, encoding, format_response),
+            timeout=timeout,
         )
-
-        super().__init__(adapter, timeout=timeout)
-
-    def __str__(self) -> str:
-        if self._receive_termination == self._termination:
-            return f"Delimited({self.adapter},{repr(self._termination)})"
-        return (
-            f"Delimited({self.adapter},{repr(self._termination)}"
-            f"/{repr(self._receive_termination)})"
-        )
-
-    def __repr__(self) -> str:
-        return self.__str__()
 
     @property
-    def default_timeout(self) -> float | None:
-        """Default timeout"""
-        return 2.0
-
-    def _adapter_to_protocol(self, adapter_frame: ReadFrame[bytes]) -> ProtocolReadFrame[str]:
-        data = adapter_frame.data.decode(self._encoding)
-        if data.endswith(self._receive_termination) and self._format_response:
-            data = data[: -len(self._receive_termination)]
-
-        return ProtocolReadFrame(
-            data=data,
-            id=adapter_frame.id,
-            stop_timestamp=adapter_frame.stop_timestamp,
-            stop_condition=adapter_frame.stop_condition,
-            previous_read_buffer_used=adapter_frame.previous_read_buffer_used,
-            response_delay=adapter_frame.response_delay,
-            first_fragment_timestamp=adapter_frame.first_fragment_timestamp,
-        )
-
-    def _protocol_to_adapter(self, protocol_payload: str) -> bytes:
-        terminated_payload = protocol_payload + self._termination
-        return terminated_payload.encode(self._encoding)
-
-    def set_termination(
-            self,
-            termination : str | bytes,
-            receive_termination : str | bytes | None = None
-        ) -> None:
-        """Set Delimited termination.
-        If receive_termination is not specified, termination parameter is used both
-        for send and receive
-
-        Parameters
-        ----------
-        termination : str | bytes
-        receive_termination : str | bytes
-            Optional, specific termination for receive only
-        """
-        if isinstance(termination, bytes):
-            termination = termination.decode(self._encoding)
-        elif not isinstance(termination, str):
-            raise ValueError(
-                f"termination argument must be of type str or bytes, not {type(termination)}"
-            )
-        self._termination = termination
-
-        if receive_termination is None:
-            self._receive_termination = self._termination
-        else:
-            if isinstance(receive_termination, bytes):
-                receive_termination = receive_termination.decode(self._encoding)
-            elif not isinstance(receive_termination, str):
-                raise ValueError(
-                    "receive_termination argument must be of type str or bytes"\
-                        f", not {type(termination)}"
-                )
-            self._receive_termination = receive_termination
-
-        self.adapter.set_stop_conditions(
-            stop_conditions=Termination(sequence=self._receive_termination)
-        )
+    def codec(self) -> DelimitedCodec:
+        """Codec of the protocol"""
+        return cast(DelimitedCodec, super().codec)
 
     @property
     def termination(self) -> str:
-        """Termination added when sending data. Also used as receiveing
-        termination if receive_termination is not set"""
-        return self._termination
+        """Termination appended to every payload written"""
+        return self.codec.termination
 
     @property
     def receive_termination(self) -> str:
-        """Expected termination when receiving data"""
-        return self._receive_termination
+        """Termination of the frames received"""
+        return self.codec.receive_termination
 
-class AsyncDelimited(AsyncProtocol[str]):
-    ...
+    def set_termination(
+        self, termination: str | bytes, receive_termination: str | bytes | None = None
+    ) -> None:
+        """Set the terminations, receive_termination is termination if None"""
+        codec = self.codec
+        self._set_codec(
+            _delimited_codec(
+                termination, receive_termination, codec.encoding, codec.format_response
+            )
+        )
+
+
+class AsyncDelimited(AsyncProtocol[bytes, str]):
+    """
+    Async text protocol, same parameters as Delimited
+    """
+
+    def __init__(
+        self,
+        adapter: AsyncAdapter[Any, bytes],
+        termination: str | bytes = "\n",
+        *,
+        format_response: bool = True,
+        encoding: str = "utf-8",
+        timeout: TimeoutParameterType = ...,
+        receive_termination: str | bytes | None = None,
+    ) -> None:
+        super().__init__(
+            adapter,
+            _delimited_codec(termination, receive_termination, encoding, format_response),
+            timeout=timeout,
+        )
+
+    @property
+    def codec(self) -> DelimitedCodec:
+        """Codec of the protocol"""
+        return cast(DelimitedCodec, super().codec)
+
+    @property
+    def termination(self) -> str:
+        """Termination appended to every payload written"""
+        return self.codec.termination
+
+    @property
+    def receive_termination(self) -> str:
+        """Termination of the frames received"""
+        return self.codec.receive_termination
+
+    async def set_termination(
+        self, termination: str | bytes, receive_termination: str | bytes | None = None
+    ) -> None:
+        """Set the terminations, receive_termination is termination if None"""
+        codec = self.codec
+        await self._set_codec(
+            _delimited_codec(
+                termination, receive_termination, codec.encoding, codec.format_response
+            )
+        )

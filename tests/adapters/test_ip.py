@@ -1,10 +1,11 @@
+import asyncio
 import logging
 import random
 from time import sleep
 import time
 
-from syndesi import IP
-from syndesi.component import ReadFrame
+from syndesi import IP, AsyncIP
+from syndesi.adapters.framer import ReadFrame
 from syndesi.adapters.stop_conditions import *
 import socket
 import os
@@ -16,7 +17,7 @@ import pytest
 
 from pathlib import Path
 
-from syndesi.tools.errors import AdapterTimeoutError
+from syndesi.tools.errors import AdapterOpenError, AdapterTimeoutError
 HOST = "localhost"
 PORT = 8888
 
@@ -145,7 +146,7 @@ def test_response_A():
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     assert data == sequence
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 # Test response timeout
@@ -168,7 +169,7 @@ def test_response_B():
     sleep(2 * TIME_DELTA)
     data = client.read()
     assert data == sequence
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -198,7 +199,7 @@ def test_continuation():
         )
     )
     assert data == sequence_response + sequence_continuation
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 # Test termination
@@ -221,7 +222,7 @@ def test_termination():
     assert data == A + termination
     data = client.read()
     assert data == B + termination
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -253,7 +254,7 @@ def test_termination_partial():
     sleep(delay + TIME_DELTA)
     data = client.read()
     assert data == B + termination
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -267,7 +268,7 @@ def test_length():
     assert data == sequence[:10]
     data = client.read()
     assert data == sequence[10:20]
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 # Test length with short timeout
@@ -293,7 +294,7 @@ def test_length_short_timeout():
     assert data == sequence[N : 2 * N]
     data = client.read()  # Too short
     assert data == sequence[2*N:]
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -422,7 +423,7 @@ def test_timeout_on_return():
     else:
         raise RuntimeError("No timeout error")
     sleep(TIME_DELTA*2)
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -447,7 +448,7 @@ def test_on_response_error():
         raise RuntimeError("No exception raised")
     data = client.read()
     assert data == A + termination
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 # Test on_continuation='return'
@@ -473,7 +474,7 @@ def test_continuation_return():
     assert data == termination
     data = client.read()
     assert data == B
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 # Test if a new configuration is correctly applied
@@ -499,7 +500,7 @@ def test_read_timeout_reconfiguration():
         ...
     else:
         raise RuntimeError("No timeout error")
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -511,11 +512,97 @@ def test_flush():
 
     client.write(encode_sequences([(A, 0)] * 3))
     sleep(1)
-    client.flush_read()
+    client.clear_read_buffer()
     sleep(0.2)
     client.write(encode_sequences([(B, 0)]))
     data = client.read()
     assert data == B
+
+def _closed_port() -> int:
+    """Return a local TCP port nobody listens on"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_open_error():
+    with pytest.raises(AdapterOpenError):
+        IP(HOST, port=_closed_port())
+
+
+def test_async_query():
+    delay = 0.25
+    sequence = b"ABCD"
+
+    async def main():
+        async with AsyncIP(
+            HOST,
+            port=PORT,
+            timeout=delay + TIME_DELTA,
+            stop_conditions=Continuation(0.1),
+        ) as client:
+            return await client.query(encode_sequences([(sequence, delay)]))
+
+    assert asyncio.run(main()) == sequence
+
+
+# The response arrives after the timeout, the next read must get it
+def test_async_timeout():
+    A = b"ABCDEFGH"
+    termination = b"\n"
+    delay = 0.5
+
+    async def main():
+        client = AsyncIP(
+            HOST,
+            port=PORT,
+            timeout=delay - TIME_DELTA,
+            stop_conditions=Termination(termination),
+            transport="UDP",
+        )
+        await client.write(encode_sequences([(A + termination, delay)]))
+        with pytest.raises(AdapterTimeoutError):
+            await client.read()
+        data = await client.read()
+        await client.close()
+        return data
+
+    assert asyncio.run(main()) == A + termination
+
+
+# A read cancelled by asyncio must free the read slot and leave the data to the next read
+def test_async_cancelled_read():
+    A = b"ABCDEFGH"
+    termination = b"\n"
+    delay = 0.5
+
+    async def main():
+        client = AsyncIP(
+            HOST,
+            port=PORT,
+            timeout=delay + TIME_DELTA,
+            stop_conditions=Termination(termination),
+            transport="UDP",
+        )
+        await client.write(encode_sequences([(A + termination, delay)]))
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(client.read(timeout=None), delay / 2)
+        data = await client.read()
+        await client.close()
+        return data
+
+    assert asyncio.run(main()) == A + termination
+
+
+# The open submitted at construction fails, the first operation must raise its error
+def test_async_open_error():
+    async def main():
+        client = AsyncIP(HOST, port=_closed_port())
+        with pytest.raises(AdapterOpenError):
+            await client.write(b"")
+
+    asyncio.run(main())
+
 
 def _test_delayer(ip_delayer_port):
     sequence = b'ABCD'
@@ -533,5 +620,5 @@ def _test_delayer(ip_delayer_port):
         frame : ReadFrame
         assert data == sequence
         assert abs(frame.response_delay - delay) < TIME_DELTA
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
