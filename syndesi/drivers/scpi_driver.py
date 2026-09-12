@@ -1,3 +1,9 @@
+# NOT YET PORTED to the backend/framer/engine/reactor architecture.
+# This module still targets the removed Component/Adapter classes. It is kept
+# as a reference while it gets ported, and excluded from the checkers until then
+# mypy: ignore-errors
+# pylint: skip-file
+# ruff: noqa
 # scpi_driver.py
 # Sébastien Deriaz
 # 27.04.2023

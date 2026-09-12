@@ -10,7 +10,9 @@ Events are emitted by the engine on the reactor thread. Callbacks must not block
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from ..component import ReadFrame, SyndesiEvent, WriteFrame
+from syndesi.adapters.backend import SyndesiEvent
+
+from .framer import ReadFrame, WriteFrame
 from .utils import Fragment
 
 DataT = TypeVar("DataT")

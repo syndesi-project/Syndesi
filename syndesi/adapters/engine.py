@@ -21,10 +21,10 @@ from collections import deque
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
+from enum import StrEnum
 from types import EllipsisType
 from typing import Any, Generic, TypeVar
 
-from ..component import Descriptor, ReadFrame, ReadScope, WriteFrame
 from ..tools.errors import (
     AdapterDisconnected,
     AdapterError,
@@ -42,6 +42,7 @@ from .backend import (
     BackendOpenError,
     BackendReadError,
     BackendWriteError,
+    Descriptor,
 )
 from .events import (
     AdapterBufferEvent,
@@ -55,7 +56,13 @@ from .events import (
     AdapterTimeoutUpdatedEvent,
     AdapterWriteEvent,
 )
-from .framer import Frame, Framer, SupportsStopConditions
+from .framer import (
+    AssembledFrame,
+    Framer,
+    ReadFrame,
+    SupportsStopConditions,
+    WriteFrame,
+)
 from .reactor import Reactor, default_reactor
 from .stop_conditions import StopCondition
 from .tracehub import tracehub
@@ -72,6 +79,19 @@ _BACKEND_ERRORS: dict[type[BackendError], type[AdapterError]] = {
     BackendReadError: AdapterReadError,
     BackendWriteError: AdapterWriteError,
 }
+
+class ReadScope(StrEnum):
+    """
+    Read scope
+
+    NEXT : Only read data after the start of the read() call
+    BUFFERED : Return any data that was present before the read() call
+    LAST_WRITE : Return data received after the last write() call
+    """
+
+    NEXT = "next"
+    BUFFERED = "buffered"
+    LAST_WRITE = "last_write"
 
 
 def adapter_error(error: BackendError) -> AdapterError:
@@ -290,7 +310,7 @@ class Engine(Generic[DescriptorT, DataT]):
 
     def write(self, data: DataT) -> WriteCommand[DataT]:
         """Write data to the target"""
-        return self._submit(WriteCommand(WriteFrame(data)))
+        return self._submit(WriteCommand(WriteFrame(data=data)))
 
     def read(
         self,
@@ -524,7 +544,9 @@ class Engine(Generic[DescriptorT, DataT]):
             timeout=timeout,
         )
 
-        if command.stop_conditions is not ... and isinstance(self._framer, SupportsStopConditions):
+        if command.stop_conditions is not ... and isinstance(
+            self._framer, SupportsStopConditions
+        ):
             pending.previous_stop_conditions = self._framer.stop_conditions
             self._framer.stop_conditions = (
                 [command.stop_conditions]
@@ -545,7 +567,7 @@ class Engine(Generic[DescriptorT, DataT]):
                 return None
         return self.frame_buffer.popleft()
 
-    def _deliver(self, frame: Frame[DataT]) -> None:
+    def _deliver(self, frame: AssembledFrame[DataT]) -> None:
         read_frame = self._build_read_frame(frame)
         tracehub.emit_read_frame(str(self._backend.descriptor), read_frame)
 
@@ -574,22 +596,27 @@ class Engine(Generic[DescriptorT, DataT]):
             )
         return False
 
-    def _build_read_frame(self, frame: Frame[DataT]) -> ReadFrame[DataT]:
+    def _build_read_frame(self, frame: AssembledFrame[DataT]) -> ReadFrame[DataT]:
+        """
+        Add what the framer cannot know : the frame id and the response delay
+
+        The id counts everything this engine delivered, so it stays unique across
+        framer resets and stop-condition overrides. The response delay needs the
+        write timestamp, which never reaches the framer
+        """
         if self._last_write_timestamp is None:
             response_delay = float("nan")
         else:
             response_delay = frame.first_fragment_timestamp - self._last_write_timestamp
 
-        read_frame: ReadFrame[DataT] = ReadFrame(
+        return ReadFrame(
             data=frame.data,
             id=self._next_frame_id(),
             stop_timestamp=frame.stop_timestamp,
-            previous_read_buffer_used=False,
-            response_delay=response_delay,
             stop_condition=frame.stop_condition,
             first_fragment_timestamp=frame.first_fragment_timestamp,
+            response_delay=response_delay,
         )
-        return read_frame
 
     def _fail_read_timeout(self, pending: PendingRead[DataT]) -> None:
         self._clear_pending_read(pending)

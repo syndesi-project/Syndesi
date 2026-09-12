@@ -20,7 +20,7 @@ from typing import Any
 from syndesi.adapters.stop_conditions import StopConditionType
 from syndesi.adapters.utils import Fragment
 
-from ..component import ReadFrame, WriteFrame
+from .framer import ReadFrame, WriteFrame
 
 STOP_CONDITION_INDICATOR = {
     StopConditionType.CONTINUATION: "Cont",

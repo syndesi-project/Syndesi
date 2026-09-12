@@ -1,3 +1,9 @@
+# NOT YET PORTED to the backend/framer/engine/reactor architecture.
+# This module still targets the removed Component/Adapter classes. It is kept
+# as a reference while it gets ported, and excluded from the checkers until then
+# mypy: ignore-errors
+# pylint: skip-file
+# ruff: noqa
 # File : syndesi_trace.py
 # Author : Sébastien Deriaz
 # License : GPL

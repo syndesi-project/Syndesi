@@ -17,20 +17,42 @@ from .utils import Fragment
 
 DataT = TypeVar("DataT")
 
-
-@dataclass
+# Every frame is keyword-only : AssembledFrame has defaulted fields and ReadFrame
+# adds required ones, which a positional dataclass chain would refuse
+@dataclass(kw_only=True)
 class Frame(Generic[DataT]):
     """
-    A complete frame, as produced by a framer
-
-    The adapter adds the frame id, the response delay and the buffer information
-    to build the ReadFrame returned to the user
+    A complete frame of data
     """
-
     data: DataT
-    first_fragment_timestamp: float
+
+@dataclass(kw_only=True)
+class WriteFrame(Generic[DataT], Frame[DataT]):
+    """A data unit sent to a device"""
+
+    def __str__(self) -> str:
+        return f"WriteFrame({self.data})"
+
+@dataclass(kw_only=True)
+class AssembledFrame(Generic[DataT], Frame[DataT]):
+    """
+    A frame completed by a framer
+
+    Holds what only the framer knows : when the assembly started and stopped, and
+    which stop-condition ended it. The engine turns it into a ReadFrame
+    """
     stop_timestamp: float
-    stop_condition: StopCondition | None = None
+    stop_condition : StopCondition | None = None
+    first_fragment_timestamp: float = float("nan")
+
+@dataclass(kw_only=True)
+class ReadFrame(Generic[DataT], AssembledFrame[DataT]):
+    """A data unit received from a device, as returned to the user"""
+    id : int
+    response_delay: float
+
+    def __str__(self) -> str:
+        return f"ReadFrame({self.data})"
 
 
 class Framer(Generic[DataT], ABC):
@@ -39,7 +61,7 @@ class Framer(Generic[DataT], ABC):
     """
 
     @abstractmethod
-    def push(self, fragment: Fragment[DataT]) -> list[Frame[DataT]]:
+    def push(self, fragment: Fragment[DataT]) -> list[AssembledFrame[DataT]]:
         """
         Take a new fragment and return the frames it completes
 
@@ -65,7 +87,7 @@ class Framer(Generic[DataT], ABC):
         """
 
     @abstractmethod
-    def on_deadline(self, now: float) -> list[Frame[DataT]]:
+    def on_deadline(self, now: float) -> list[AssembledFrame[DataT]]:
         """
         Called when the timestamp returned by next_deadline is reached
 
@@ -91,13 +113,12 @@ class Framer(Generic[DataT], ABC):
         Discard the frame currently being assembled
         """
 
-
 @runtime_checkable
 class SupportsStopConditions(Protocol):
     """
     A framer whose behaviour is configured by stop-conditions
 
-    Used by the adapter to read and swap them without knowing the framer type
+    Used by the engine to read and swap them without knowing the framer type
     """
 
     stop_conditions: list[StopCondition]
@@ -110,9 +131,9 @@ class TrivialFramer(Framer[DataT]):
     Used by adapters whose data type is already a complete unit, like IPServer
     """
 
-    def push(self, fragment: Fragment[DataT]) -> list[Frame[DataT]]:
+    def push(self, fragment: Fragment[DataT]) -> list[AssembledFrame[DataT]]:
         return [
-            Frame(
+            AssembledFrame(
                 data=fragment.data,
                 first_fragment_timestamp=fragment.timestamp,
                 stop_timestamp=fragment.timestamp,
@@ -122,7 +143,7 @@ class TrivialFramer(Framer[DataT]):
     def next_deadline(self) -> float | None:
         return None
 
-    def on_deadline(self, now: float) -> list[Frame[DataT]]:
+    def on_deadline(self, now: float) -> list[AssembledFrame[DataT]]:
         return []
 
     @property
@@ -131,7 +152,6 @@ class TrivialFramer(Framer[DataT]):
 
     def reset(self) -> None:
         pass
-
 
 class BytesFramer(Framer[bytes]):
     """
@@ -158,8 +178,8 @@ class BytesFramer(Framer[bytes]):
     # │ Frame assembly    │
     # └───────────────────┘
 
-    def push(self, fragment: BytesFragment) -> list[Frame[bytes]]:
-        frames: list[Frame[bytes]] = []
+    def push(self, fragment: BytesFragment) -> list[AssembledFrame[bytes]]:
+        frames: list[AssembledFrame[bytes]] = []
         kept = fragment
 
         # A fragment can complete more than one frame, the data left over by a
@@ -198,7 +218,7 @@ class BytesFramer(Framer[bytes]):
         deadline, _ = self._deadline()
         return deadline
 
-    def on_deadline(self, now: float) -> list[Frame[bytes]]:
+    def on_deadline(self, now: float) -> list[AssembledFrame[bytes]]:
         deadline, origin = self._deadline()
         if deadline is None or now < deadline or len(self._fragments) == 0:
             return []
@@ -244,8 +264,8 @@ class BytesFramer(Framer[bytes]):
 
     def _build_frame(
         self, stop_timestamp: float, stop_condition: StopCondition | None
-    ) -> Frame[bytes]:
-        frame = Frame(
+    ) -> AssembledFrame[bytes]:
+        frame = AssembledFrame(
             data=b"".join(fragment.data for fragment in self._fragments),
             first_fragment_timestamp=self._fragments[0].timestamp,
             stop_timestamp=stop_timestamp,

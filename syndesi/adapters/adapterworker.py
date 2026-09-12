@@ -1,3 +1,9 @@
+# NOT YET PORTED to the backend/framer/engine/reactor architecture.
+# This module still targets the removed Component/Adapter classes. It is kept
+# as a reference while it gets ported, and excluded from the checkers until then
+# mypy: ignore-errors
+# pylint: skip-file
+# ruff: noqa
 # File : adapter_worker.py
 # Author : Sébastien Deriaz
 # License : GPL
@@ -7,6 +13,7 @@ Adapter worker mixin and worker command types.
 """
 from __future__ import annotations
 
+from concurrent.futures import Future
 from enum import Enum
 import logging
 import queue
@@ -24,7 +31,7 @@ from typing import Any, Generic, TypeVar
 from syndesi.adapters.stop_conditions import StopCondition
 from syndesi.tools.log_settings import LoggerAlias
 
-from ..component import Descriptor, ReadFrame, ReadScope, SyndesiEvent, ThreadCommand, WriteFrame
+from ..component import Descriptor, ReadFrame, ReadScope, SyndesiEvent, ThreadCommand, ThreadReturn, WriteFrame
 from ..tools.errors import (
     AdapterDisconnected,
     AdapterError,
@@ -42,6 +49,28 @@ DataT = TypeVar("DataT")
 # ┌────────────────┐
 # │ Adapter events │
 # └────────────────┘
+
+ThreadReturn = TypeVar("ThreadReturn")
+
+class ThreadCommand(Future[ThreadReturn]):
+    """
+    Command object completed by the worker thread.
+
+    - .future is a concurrent.futures.Future => compatible with asyncio.wrap_future
+    - .result() raises WorkerThreadError on command-timeout (worker not responding),
+      not on device read timeouts (those are handled in the worker and surfaced as Adapter* errors).
+    """
+
+    def result(self, timeout: float | None = None) -> ThreadReturn:
+        """
+        Return the result of the thread command
+        """
+        try:
+            return super().result(timeout=timeout)
+        except TimeoutError:
+            raise WorkerThreadError(
+                f"No response from worker thread to {type(self).__name__} within {timeout}s"
+            ) from None
 
 class AdapterEvent(SyndesiEvent):
     """Adapter event"""

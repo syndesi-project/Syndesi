@@ -2,30 +2,24 @@
 # Author : Sébastien Deriaz
 # License : GPL
 """
-IP Adapter, used to communicate with IP targets using the socket module
+IP backend, used to communicate with IP targets using the socket module
 """
 
 import socket
 from dataclasses import dataclass
 from enum import StrEnum
-from types import EllipsisType
 
-from syndesi.adapters.adapter import AdapterCommon
-from syndesi.adapters.adapterworker import AdapterWorkerInterface
-from syndesi.adapters.backend import AdapterBackend
-from syndesi.adapters.bytesadapter import AsyncBytesAdapter, BytesAdapter
-from syndesi.adapters.stop_conditions import Continuation, StopCondition
-from syndesi.component import Descriptor
-from syndesi.tools.errors import (
-    AdapterDisconnected,
-    AdapterOpenError,
-    AdapterReadError,
-    AdapterWriteError,
+from .backend import (
+    AdapterBackend,
+    BackendDisconnectedError,
+    BackendOpenError,
+    BackendReadError,
+    BackendWriteError,
+    Descriptor,
 )
+from .stop_conditions import Continuation, StopCondition
+from .utils import Fragment, HasFileno
 
-from .stop_conditions import BytesFragment
-from .tracehub import tracehub
-from .utils import Fragment, HasFileno, TimeoutParameterType
 
 @dataclass
 class IPDescriptor(Descriptor):
@@ -85,188 +79,17 @@ class IPDescriptor(Descriptor):
 
 BUFFER_SIZE = 65535
 
-class _IPCommon(AdapterCommon[bytes]):
-    def __init__(
-        self,
-        *,
-        address: str,
-        port: int | None = None,
-        transport: str = IPDescriptor.Transport.TCP.value,
-        server_socket: socket.socket | None = None,
-    ):
-
-        self._descriptor = IPDescriptor(
-            address=address,
-            port=port,
-            transport=IPDescriptor.Transport(transport.upper()),
-        )
-        
-
-    # @property
-    # def descriptor(self) -> IPDescriptor:
-    #     return self._descriptor
-
-    def set_default_port(self, port: int) -> None:
-        """
-        Set the default port number
-
-        Parameters
-        ----------
-        port : int
-        """
-        if self._descriptor.port is None:
-            self._descriptor.port = port
-    
-class IP(_IPCommon, BytesAdapter):
-    """
-    IP stack adapter. The IP Adapter reads and writes bytes units (frames)
-
-    Parameters
-    ----------
-    address : str
-        IP address
-    port : int or None, default : None
-        IP port
-    transport : {'TCP', 'UDP'}
-        Transport layer
-    timeout : float | int | None
-        Specify communication timeout, the time it takes for the target to respond
-    stop_conditions : list[StopCondition] or StopCondition
-        Stop coniditions are used to decide when a read data block is finished
-        and should be returned
-
-        These include
-
-        * Termination : stop on a specific sequence like ``\\n`` at the end of the data
-        * Length : stop when a specific number of bytes has been received
-        * Continuation : stop when no data has been received for a
-        specified amount of time
-        * Total : stop if the time since the first piece of data received exceeds
-        a given amount of time
-        * FragmentStopCondition : Return each piece of data individually as received
-        by the low-level communication layer
-
-        Multiple stop conditions can be used to create more complex behaviours
-    encoding : str
-        Used to convert str to bytes if the user chooses to send str
-    alias : str
-        Name of the adapter, may be removed in the future
-    event_callback : f(event : AdapterEvent)
-        Function called when an event is received by the adapter worker thread.
-        The event can be either one of :
-
-        * ``AdapterOpenedEvent``
-        * ``AdapterClosedEvent``
-        * ``AdapterFrameEvent``
-        * ``FirstFragmentEvent``
-    auto_open : bool, default to True
-        Automatically open the adapter after instanciation
-    """
-
-    def __init__(
-        self,
-        address: str,
-        port: int | None = None,
-        transport: str = IPDescriptor.Transport.TCP.value,
-        *,
-        timeout: TimeoutParameterType = ...,
-        stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
-        alias: str = "",
-        auto_open: bool = True,
-        server_socket: socket.socket | None = None,
-    ):
-        _IPCommon.__init__(
-            self,
-            address=address,
-            port=port,
-            transport=transport,
-            server_socket=server_socket,
-        )
-        BytesAdapter.__init__(
-            self,
-            stop_conditions=stop_conditions,
-            timeout=timeout,
-            alias=alias,
-            auto_open=auto_open,
-        )
-class AsyncIP(_IPCommon, AsyncBytesAdapter):
-    """
-    IP stack adapter. The IP Adapter reads and writes bytes units (frames)
-
-    Parameters
-    ----------
-    address : str
-        IP address
-    port : int or None, default : None
-        IP port
-    transport : {'TCP', 'UDP'}
-        Transport layer
-    timeout : float | int | None
-        Specify communication timeout, the time it takes for the target to respond
-    stop_conditions : list[StopCondition] or StopCondition
-        Stop coniditions are used to decide when a read data block is finished
-        and should be returned
-
-        These include
-
-        * Termination : stop on a specific sequence like ``\\n`` at the end of the data
-        * Length : stop when a specific number of bytes has been received
-        * Continuation : stop when no data has been received for a
-        specified amount of time
-        * Total : stop if the time since the first piece of data received exceeds
-        a given amount of time
-        * FragmentStopCondition : Return each piece of data individually as received
-        by the low-level communication layer
-
-        Multiple stop conditions can be used to create more complex behaviours
-    encoding : str
-        Used to convert str to bytes if the user chooses to send str
-    alias : str
-        Name of the adapter, may be removed in the future
-    event_callback : f(event : AdapterEvent)
-        Function called when an event is received by the adapter worker thread.
-        The event can be either one of :
-
-        * ``AdapterOpenedEvent``
-        * ``AdapterClosedEvent``
-        * ``AdapterFrameEvent``
-        * ``FirstFragmentEvent``
-    auto_open : bool, default to True
-        Automatically open the adapter after instanciation
-    """
-    
-    def __init__(
-        self,
-        address: str,
-        port: int | None = None,
-        transport: str = IPDescriptor.Transport.TCP.value,
-        *,
-        timeout: TimeoutParameterType = ...,
-        stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
-        alias: str = "",
-        auto_open: bool = True,
-        server_socket: socket.socket | None = None,
-    ):
-        _IPCommon.__init__(
-            self,
-            address=address,
-            port=port,
-            transport=transport,
-            server_socket=server_socket,
-        )
-        AsyncBytesAdapter.__init__(
-            self,
-            stop_conditions=stop_conditions,
-            timeout=timeout,
-            alias=alias,
-            auto_open=auto_open
-        )
-
-
-
-
-
 class IPBackend(AdapterBackend[IPDescriptor, bytes]):
+    """
+    Backend talking to an IP target through the socket module
+
+    Parameters
+    ----------
+    descriptor : IPDescriptor
+    server_socket : socket or None
+        An already connected socket, used by IPServer for accepted clients
+    """
+
     def __init__(self,
                  descriptor : IPDescriptor,
                  server_socket: socket.socket | None = None,) -> None:
@@ -280,7 +103,7 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
 
     def selectable(self) -> HasFileno | None:
         return self._socket
-    
+
     def open(self, timeout : float | None) -> None:
         # Create the socket instance
         if self.descriptor.transport == IPDescriptor.Transport.TCP:
@@ -288,7 +111,7 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
         elif self.descriptor.transport == IPDescriptor.Transport.UDP:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         else:
-            raise AdapterOpenError("Invalid transport protocol")
+            raise BackendOpenError("Invalid transport protocol")
         try:
             # TODO : Simulate a very long connect time (bad network) and manage timeout
             # error accordingly
@@ -299,13 +122,13 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
             s.connect((self.descriptor.address, self.descriptor.port))
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:
             msg = f"Failed to open adapter {self.descriptor} ({e})"
-            raise AdapterOpenError(msg) from None
+            raise BackendOpenError(msg) from None
 
         # We only set the socket on success to prevent the worker thread
         # from sending events before the adapter is opened
         self._socket = s
         #self._logger.info(f"IP Adapter {self.descriptor} opened")
-        
+
     def close(self) -> None:
         if self._socket is not None:
             try:
@@ -315,26 +138,26 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
                 pass
             self._socket = None
 
-    def read(self, fragment_timestamp: float) -> BytesFragment:
+    def read(self, fragment_timestamp: float) -> Fragment[bytes]:
         if self._socket is None:
-            raise AdapterDisconnected()
+            raise BackendDisconnectedError()
         try:
             data = self._socket.recv(BUFFER_SIZE)
         except (ConnectionRefusedError, OSError) as e:
-            raise AdapterReadError() from e
+            raise BackendReadError() from e
 
         if data == b"":
-            raise AdapterDisconnected()
+            raise BackendDisconnectedError()
 
         return Fragment(data, fragment_timestamp)
 
     def write(self, data: bytes) -> None:
         if self._socket is not None:
             if self._socket.send(data) != len(data):
-                raise AdapterWriteError(
+                raise BackendWriteError(
                     f"Adapter {self.descriptor} couldn't write"
                     " all of the data to the socket"
-                )        
+                )
 
     @property
     def default_stop_conditions(self) -> list[StopCondition]:
