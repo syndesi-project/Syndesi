@@ -19,9 +19,9 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import Future
 from types import EllipsisType, TracebackType
-from typing import Generic, Protocol, Self, TypeVar
+from typing import Any, Generic, Protocol, Self, TypeVar
 
-from .adapters.engine import ReadScope
+from .adapters.engine import Engine, ReadScope
 from .adapters.events import AdapterEvent
 from .adapters.framer import ReadFrame
 from .adapters.stop_conditions import StopCondition
@@ -31,50 +31,52 @@ from .tools.errors import AdapterOpenError
 DataT = TypeVar("DataT")
 
 
-class EndpointEngine(Protocol[DataT]):
-    """
-    What an endpoint needs from its engine, every method returns a future
+# class EndpointEngine(Protocol[DataT]):
+#     """
+#     What an endpoint needs from its engine, every method returns a future
 
-    Provided by Engine for adapters and by ProtocolEngine for protocols
-    """
+#     Provided by Engine for adapters and by ProtocolEngine for protocols
+#     """
 
-    @property
-    def is_open(self) -> bool:
-        """True if communication with the target is open"""
+#     @property
+#     def is_open(self) -> bool:
+#         """True if communication with the target is open"""
 
-    @property
-    def timeout(self) -> TimeoutType:
-        """Timeout used by the reads that don't specify one"""
+#     @property
+#     def timeout(self) -> TimeoutType:
+#         """Timeout used by the reads that don't specify one"""
 
-    def open(self) -> Future[None]:
-        """Open communication with the target"""
+#     def open(self) -> Future[None]:
+#         """Open communication with the target"""
 
-    def close(self) -> Future[None]:
-        """Close communication with the target"""
+#     def close(self) -> Future[None]:
+#         """Close communication with the target"""
 
-    def set_timeout(self, timeout: TimeoutType) -> Future[None]:
-        """Set the timeout used by the reads that don't specify one"""
+#     def set_timeout(self, timeout: TimeoutType) -> Future[None]:
+#         """Set the timeout used by the reads that don't specify one"""
 
-    def write(self, data: DataT) -> Future[None]:
-        """Write data to the target"""
+#     def write(self, data: DataT) -> Future[None]:
+#         """Write data to the target"""
 
-    def read(
-        self,
-        timeout: TimeoutParameterType = ...,
-        scope: ReadScope = ReadScope.BUFFERED,
-        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
-    ) -> Future[ReadFrame[DataT]]:
-        """Read one frame"""
+#     def read(
+#         self,
+#         timeout: TimeoutParameterType = ...,
+#         scope: ReadScope = ReadScope.BUFFERED,
+#         stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+#     ) -> Future[ReadFrame[DataT]]:
+#         """Read one frame"""
 
-    def clear_buffer(self) -> Future[None]:
-        """Drop the buffered frames and the frame being assembled"""
+#     def clear_buffer(self) -> Future[None]:
+#         """Drop the buffered frames and the frame being assembled"""
 
-    def register_event_callback(self, callback: Callable[[AdapterEvent], None]) -> Future[None]:
-        """Register an event callback"""
+#     def register_event_callback(self, callback: Callable[[AdapterEvent], None]) -> Future[None]:
+#         """Register an event callback"""
 
-    def clear_event_callbacks(self) -> Future[None]:
-        """Remove every event callback"""
+#     def clear_event_callbacks(self) -> Future[None]:
+#         """Remove every event callback"""
 
+
+#EngineT = TypeVar("EngineT", bound=Engine)
 
 class Endpoint(Generic[DataT]):
     """
@@ -87,7 +89,7 @@ class Endpoint(Generic[DataT]):
         Open the engine before returning
     """
 
-    def __init__(self, engine: EndpointEngine[DataT], *, auto_open: bool) -> None:
+    def __init__(self, engine: Engine[Any, DataT], *, auto_open: bool) -> None:
         self._engine = engine
         # Keeps the write and the read of a query together when threads share the endpoint
         self._lock = threading.Lock()
@@ -218,7 +220,7 @@ class AsyncEndpoint(Generic[DataT]):
         later operation, and if it failed the operations that need it raise its error
     """
 
-    def __init__(self, engine: EndpointEngine[DataT], *, auto_open: bool) -> None:
+    def __init__(self, engine: Engine[Any, DataT], *, auto_open: bool) -> None:
         self._engine = engine
         # Keeps the write and the read of a query together when tasks share the endpoint
         self._lock = asyncio.Lock()
