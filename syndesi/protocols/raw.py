@@ -1,72 +1,69 @@
-# NOT YET PORTED to the backend/framer/engine/reactor architecture.
-# This module still targets the removed Component/Adapter classes. It is kept
-# as a reference while it gets ported, and excluded from the checkers until then
-# mypy: ignore-errors
-# pylint: skip-file
-# ruff: noqa
 # File : raw.py
 # Author : Sébastien Deriaz
 # License : GPL
 """
-Raw protocol layer, data is returned as bytes "as-is"
+Raw protocol, the frames of the adapter are returned as bytes as-is
 """
 
-from syndesi.adapters.utils import TimeoutParameterType
+from __future__ import annotations
 
-from ..adapters.bytesadapter import BytesAdapter
-from ..component import ReadFrame
-from .protocol import AsyncProtocol, Protocol, ProtocolReadFrame
+from typing import Any
+
+from ..adapters.adapter import Adapter, AsyncAdapter
+from ..adapters.framer import AdapterReadFrame
+from ..adapters.utils import TimeoutParameterType, TimeoutType
+from .protocol import AsyncProtocol, BackendOutput, Protocol, ProtocolBackend
 
 
-class Raw(Protocol[bytes]):
+class RawBackend(ProtocolBackend[bytes, bytes]):
     """
-    Raw device, no presentation and application layers, data is returned as bytes directly
+    No encoding and no assembly, one adapter frame is one payload
+
+    Leaves the adapter stop-conditions alone : with Raw, the framing the user gave the
+    adapter is the whole point
+    """
+
+    def encode(self, payload: bytes) -> list[bytes]:
+        return [payload]
+
+    def push(self, frame: AdapterReadFrame[bytes]) -> BackendOutput[bytes, bytes]:
+        return BackendOutput(payloads=[frame.data])
+
+    @property
+    def default_timeout(self) -> TimeoutType:
+        return 2.0
+
+
+class Raw(Protocol[RawBackend, bytes, bytes]):
+    """
+    Raw protocol, no presentation and no application layer
 
     Parameters
     ----------
     adapter : Adapter
-    timeout : float | int | None | ...
+    timeout : float, None or ...
+        Time to wait for a frame, 2 s by default
+    alias : str
     """
 
     def __init__(
-        self, adapter: BytesAdapter, timeout: TimeoutParameterType = ...
+        self,
+        adapter: Adapter[Any, bytes],
+        timeout: TimeoutParameterType = ...,
+        alias: str = "",
     ) -> None:
-        super().__init__(adapter, timeout)
-
-    @property
-    def default_timeout(self) -> float | None:
-        """Default timeout"""
-        return 2.0
-
-    def __str__(self) -> str:
-        return f"Raw({self.adapter})"
-
-    def _adapter_to_protocol(
-        self, adapter_frame: ReadFrame[bytes]
-    ) -> ProtocolReadFrame[bytes]:
-        payload = adapter_frame.data
-
-        return ProtocolReadFrame(
-            data=payload,
-            id=adapter_frame.id,
-            stop_timestamp=adapter_frame.stop_timestamp,
-            stop_condition=adapter_frame.stop_condition,
-            previous_read_buffer_used=adapter_frame.previous_read_buffer_used,
-            response_delay=adapter_frame.response_delay,
-        )
-
-    def _protocol_to_adapter(self, protocol_payload: bytes) -> bytes:
-        return protocol_payload
+        super().__init__(adapter, RawBackend(), timeout, alias)
 
 
-class AsyncRaw(AsyncProtocol[bytes]):
+class AsyncRaw(AsyncProtocol[RawBackend, bytes, bytes]):
     """
-    Raw device, no presentation and application layers, data is returned as bytes directly
-
-    Parameters
-    ----------
-    adapter : Adapter
-    timeout : float | int | None | ...
+    Async raw protocol, same parameters as Raw
     """
 
-    ...
+    def __init__(
+        self,
+        adapter: AsyncAdapter[Any, bytes],
+        timeout: TimeoutParameterType = ...,
+        alias: str = "",
+    ) -> None:
+        super().__init__(adapter, RawBackend(), timeout, alias)

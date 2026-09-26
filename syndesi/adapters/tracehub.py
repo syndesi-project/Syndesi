@@ -195,17 +195,33 @@ class _TraceHub:
         """
         Emit a fragment trace event
         """
-        match fragment.data:
-            case bytes():
-                self._emit_event(
-                    FragmentEvent(
-                        descriptor,
-                        fragment.timestamp,
-                        self._format_bytes(fragment.data),
-                        len(fragment.data),
-                        write_delta=write_delta,
-                    )
-                )
+        if isinstance(fragment.data, bytes):
+            message = self._format_bytes(fragment.data)
+        else:
+            message = self._format_generic(str(fragment.data))
+
+        self._emit_event(
+            FragmentEvent(
+                descriptor,
+                fragment.timestamp,
+                message,
+                self._data_length(fragment.data),
+                write_delta=write_delta,
+            )
+        )
+
+    @staticmethod
+    def _data_length(data: Any) -> int:
+        """
+        Length of a frame's data, 1 for a data type that has none
+
+        An adapter is generic : IPServer frames hold a Client, not bytes, and asking it
+        for a len() is a TypeError on the reactor thread
+        """
+        try:
+            return len(data)
+        except TypeError:
+            return 1
 
     def emit_read_frame(self, descriptor: str, frame: AdapterReadFrame[Any]) -> None:
         """
@@ -226,7 +242,7 @@ class _TraceHub:
                 descriptor=descriptor,
                 timestamp=frame.stop_timestamp,
                 message=message,
-                length=len(frame.data),
+                length=self._data_length(frame.data),
                 stop_condition_indicator=sc_indicator,
                 write_delta=frame.response_delay,
             )
@@ -244,7 +260,7 @@ class _TraceHub:
                 descriptor=descriptor,
                 timestamp=time.time(),
                 message=message,
-                length=len(frame.data),
+                length=self._data_length(frame.data),
             )
         )
 

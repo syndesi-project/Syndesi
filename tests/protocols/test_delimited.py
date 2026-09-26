@@ -11,7 +11,7 @@ import pytest
 
 from syndesi import IP, AsyncDelimited, AsyncIP, Delimited
 from syndesi.adapters.stop_conditions import Continuation, Termination
-from syndesi.protocols.delimited import DelimitedCodec
+from syndesi.protocols.delimited import DelimitedBackend
 from syndesi.tools.errors import AdapterOpenError, ProtocolReadError
 
 HOST = "127.0.0.1"
@@ -41,25 +41,25 @@ def _closed_port() -> int:
         return s.getsockname()[1]
 
 
-# Codec, no I/O
+# Backend, no I/O
 
 
-def test_codec():
-    codec = DelimitedCodec("\n", "\r\n", "utf-8", format_response=True)
-    assert codec.encode("*IDN?") == b"*IDN?\n"
-    assert codec.decode(b"ABC\r\n") == "ABC"
-    assert codec.decode(b"ABC") == "ABC"
+def test_backend():
+    backend = DelimitedBackend("\n", "\r\n", "utf-8", format_response=True)
+    assert backend.encode("*IDN?") == [b"*IDN?\n"]
+    assert backend.decode(b"ABC\r\n") == "ABC"
+    assert backend.decode(b"ABC") == "ABC"
 
 
-def test_codec_keep_termination():
-    codec = DelimitedCodec("\n", "\n", "utf-8", format_response=False)
-    assert codec.decode(b"ABC\n") == "ABC\n"
+def test_backend_keep_termination():
+    backend = DelimitedBackend("\n", "\n", "utf-8", format_response=False)
+    assert backend.decode(b"ABC\n") == "ABC\n"
 
 
 # A new Termination on every call, a stop-condition holds the state of a read
-def test_codec_stop_conditions():
-    codec = DelimitedCodec("\n", "\r\n", "utf-8", format_response=True)
-    (first,), (second,) = codec.stop_conditions, codec.stop_conditions
+def test_backend_stop_conditions():
+    backend = DelimitedBackend("\n", "\r\n", "utf-8", format_response=True)
+    (first,), (second,) = backend.stop_conditions, backend.stop_conditions
     assert isinstance(first, Termination) and first.sequence == b"\r\n"
     assert first is not second
 

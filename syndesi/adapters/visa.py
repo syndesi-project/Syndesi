@@ -1,58 +1,49 @@
-# NOT YET PORTED to the backend/framer/engine/reactor architecture.
-# This module still targets the removed Component/Adapter classes. It is kept
-# as a reference while it gets ported, and excluded from the checkers until then
-# mypy: ignore-errors
-# pylint: skip-file
-# ruff: noqa
 # File : visa.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+VISA adapter, uses a VISA backend like pyvisa-py or NI to talk to instruments
 
+pyvisa is blocking and exposes no file descriptor, so this backend reads in a thread and
+makes itself selectable through a socketpair, see reader_thread
 """
-VISA adatper, uses a VISA backend like pyvisa-py or NI to communicate with instruments
-"""
+
 from __future__ import annotations
 
-import queue
 import re
-import socket
-import threading
-import time
 from dataclasses import dataclass
 from enum import Enum
 from types import EllipsisType
 from typing import TYPE_CHECKING, cast
 
+from ..tools.errors import (
+    AdapterDisconnectedError,
+    AdapterOpenError,
+    AdapterWriteError,
+)
+from .adapter import Adapter, AsyncAdapter
+from .engine import AdapterBackend, Descriptor
+from .framer import BytesFramer
+from .reader_thread import ThreadedReader
+from .stop_conditions import Continuation, StopCondition
+from .utils import Fragment, HasFileno, TimeoutParameterType, TimeoutType
+
 try:
     import pyvisa
-except ImportError:
+except ImportError:  # pragma: no cover - optional dependency
     pyvisa = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:
     from pyvisa.resources import MessageBasedResource
 
-from syndesi.adapters.bytesadapter import BytesAdapter
-from syndesi.adapters.stop_conditions import BytesFragment, Continuation, StopCondition
-from syndesi.adapters.utils import Fragment, HasFileno
-from syndesi.component import Descriptor
-from syndesi.tools.errors import AdapterReadError
-
-from .utils import TimeoutParameterType
+_MISSING_PYVISA = (
+    "Missing optional dependency 'pyvisa'. Install with:\n  python -m pip install pyvisa"
+)
 
 
-class QueueEvent:
-    """VISA adapter queue event"""
-
-
-class DisconnectedEvent(QueueEvent):
-    """VISA queue disconnected event"""
-
-
-@dataclass
-class FragmentEvent(QueueEvent):
-    """VISA queue new fragment event"""
-
-    fragment: BytesFragment
+def _require_pyvisa() -> None:
+    if pyvisa is None:
+        raise ImportError(_MISSING_PYVISA)
 
 
 @dataclass
@@ -60,8 +51,8 @@ class VisaDescriptor(Descriptor):
     """
     VISA descriptor
 
-    ## Examples
-
+    Examples
+    --------
     - GPIB (IEEE-488) ``GPIB0::14::INSTR``
     - Serial (RS-232 or USB-Serial)
         - Windows COM1 : ``ASRL1::INSTR``
@@ -96,12 +87,8 @@ class VisaDescriptor(Descriptor):
 
     @staticmethod
     def from_string(string: str) -> "VisaDescriptor":
-        """
-        Create a VISA interface from a string
-        """
         if re.match(VisaDescriptor.DETECTION_PATTERN, string):
             return VisaDescriptor(descriptor=string)
-
         raise ValueError(f"Could not parse descriptor : {string}")
 
     def __str__(self) -> str:
@@ -111,183 +98,205 @@ class VisaDescriptor(Descriptor):
         return True
 
 
-# pylint: disable=too-many-instance-attributes
-class Visa(BytesAdapter):
+def default_stop_conditions() -> list[StopCondition]:
     """
-    VISA Adapter, allows for communication with VISA-compatible devices.
-    It uses pyvisa under the hood
+    Stop-conditions of a new VISA adapter
+
+    A function, not a module level list : a stop-condition holds the state of the frame
+    being assembled, so two adapters must never share the same instances
+    """
+    return [Continuation(continuation=0.1)]
+
+
+def list_devices() -> list[str]:
+    """
+    Return the VISA devices that can actually be opened
+    """
+    _require_pyvisa()
+    rm = pyvisa.ResourceManager()
+    available: list[str] = []
+    for device in rm.list_resources():
+        try:
+            handle = rm.open_resource(device)
+            handle.close()
+            available.append(device)
+        except pyvisa.VisaIOError:
+            pass  # the device exists but cannot be opened, skip it
+    return available
+
+
+class VisaBackend(AdapterBackend[VisaDescriptor, bytes]):
+    """
+    Talks to a VISA instrument through pyvisa
+
+    pyvisa gives neither a file descriptor nor a non-blocking read, so a ThreadedReader
+    polls the instrument and wakes the reactor through a socketpair. That thread is what
+    makes the timestamps usable : it stamps a fragment as soon as the bytes stop coming
+
+    Parameters
+    ----------
+    descriptor : VisaDescriptor
     """
 
-    THREAD_STOP_DELAY = 0.2
+    # How long a poll waits for the first byte of a fragment, in milliseconds
+    POLL_TIMEOUT_MS = 50
+
+    def __init__(self, descriptor: VisaDescriptor) -> None:
+        super().__init__(descriptor)
+        _require_pyvisa()
+        self._rm = pyvisa.ResourceManager()
+        self._instrument: MessageBasedResource | None = None
+        self._reader: ThreadedReader[bytes] | None = None
+
+    def selectable(self) -> HasFileno | None:
+        if self._reader is None:
+            return None
+        return self._reader.selectable()
+
+    def open(self, timeout: float | None) -> None:
+        del timeout  # pyvisa carries its own, and the reader polls
+        try:
+            instrument = cast(
+                "MessageBasedResource",
+                self._rm.open_resource(self.descriptor.descriptor),
+            )
+        except pyvisa.VisaIOError as e:
+            raise AdapterOpenError(
+                f"Failed to open adapter {self.descriptor} ({e})"
+            ) from None
+
+        # Syndesi does the framing, pyvisa must not cut anything itself
+        instrument.write_termination = ""
+        instrument.read_termination = None
+
+        self._instrument = instrument
+        self._reader = ThreadedReader(
+            self._read_blocking, name=f"syndesi-visa-{self.descriptor}"
+        )
+        self._reader.start()
+
+    def close(self) -> None:
+        # The reader first : it must stop touching the instrument before it is closed
+        if self._reader is not None:
+            self._reader.stop()
+            self._reader = None
+        if self._instrument is not None:
+            try:
+                self._instrument.close()
+            except pyvisa.Error:
+                pass
+            self._instrument = None
+
+    def read(self, fragment_timestamp: float) -> Fragment[bytes]:
+        if self._reader is None:
+            raise AdapterDisconnectedError()
+        return self._reader.read(fragment_timestamp)
+
+    def write(self, data: bytes) -> None:
+        if self._instrument is None:
+            raise AdapterWriteError(f"{self.descriptor} is not open")
+        try:
+            self._instrument.write_raw(data)
+        except pyvisa.Error as e:
+            raise AdapterWriteError(
+                f"Cannot write to {self.descriptor} ({e})"
+            ) from e
+
+    @property
+    def default_timeout(self) -> TimeoutType:
+        return 5.0
+
+    def _read_blocking(self) -> bytes | None:
+        """
+        One poll for the ThreadedReader
+
+        Waits POLL_TIMEOUT_MS for a first byte, then drains whatever follows without
+        waiting. The whole burst becomes one fragment, which is what the
+        stop-conditions expect
+        """
+        instrument = self._instrument
+        if instrument is None:
+            return None
+
+        payload = b""
+        try:
+            instrument.timeout = self.POLL_TIMEOUT_MS
+            payload += instrument.read_bytes(1)
+            instrument.timeout = 0
+            while True:
+                payload += instrument.read_bytes(1)
+        except pyvisa.VisaIOError:
+            pass  # nothing more for now, the fragment ends here
+        except (TypeError, pyvisa.InvalidSession, BrokenPipeError) as e:
+            raise AdapterDisconnectedError() from e
+
+        return payload or None
+
+
+class Visa(Adapter[VisaDescriptor, bytes]):
+    """
+    VISA adapter, reads and writes bytes
+
+    Parameters
+    ----------
+    descriptor : str
+        VISA resource name, see VisaDescriptor for the forms it takes
+    timeout : float, None or ...
+        Time to wait for the instrument to respond, 5 s by default
+    stop_conditions : StopCondition, list of StopCondition or ...
+        When a frame is complete, Continuation(0.1) by default
+    alias : str
+    auto_open : bool
+    """
 
     def __init__(
         self,
         descriptor: str,
         *,
-        alias: str = "",
-        stop_conditions: StopCondition | EllipsisType | list[StopCondition] = ...,
         timeout: TimeoutParameterType = ...,
-        # encoding: str = "utf-8",
-        auto_open: bool = False,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+        alias: str = "",
+        auto_open: bool = True,
     ) -> None:
-
-        self._descriptor = VisaDescriptor.from_string(descriptor)
-
-        if pyvisa is None:
-            raise ImportError(
-                "Missing optional dependency 'pyvisa'. Install with:\n"
-                "  python -m pip install pyvisa"
-            )
-
-        self._rm = pyvisa.ResourceManager()
-        self._inst: MessageBasedResource | None = (
-            None  # annotation only; no runtime import needed
-        )
-
-        # We need a socket pair because VISA doesn't expose a selectable fileno/socket
-        # So we create a thread to read data and push that to the socket
-        self._notify_recv, self._notify_send = socket.socketpair()
-        self._notify_recv.setblocking(False)
-        self._notify_send.setblocking(False)
-
-        self._stop_lock = threading.Lock()
-        self.stop = False
-
-        self._event_queue: queue.Queue[QueueEvent] = queue.Queue()
-
-        self._thread: threading.Thread | None = None
-
         super().__init__(
-            alias=alias,
+            VisaBackend(VisaDescriptor.from_string(descriptor)),
+            BytesFramer(default_stop_conditions()),
+            timeout,
             stop_conditions=stop_conditions,
-            timeout=timeout,
+            alias=alias,
             auto_open=auto_open,
         )
 
-    @property
-    def descriptor(self) -> VisaDescriptor:
-        return self._descriptor
+    @staticmethod
+    def list_devices() -> list[str]:
+        """Return the VISA devices that can actually be opened"""
+        return list_devices()
 
-    @property
-    def default_timeout(self) -> float | None:
-        """Default timeout"""
-        return 5.0
+
+class AsyncVisa(AsyncAdapter[VisaDescriptor, bytes]):
+    """
+    Async VISA adapter, same parameters as Visa
+    """
+
+    def __init__(
+        self,
+        descriptor: str,
+        *,
+        timeout: TimeoutParameterType = ...,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+        alias: str = "",
+        auto_open: bool = True,
+    ) -> None:
+        super().__init__(
+            VisaBackend(VisaDescriptor.from_string(descriptor)),
+            BytesFramer(default_stop_conditions()),
+            timeout,
+            stop_conditions=stop_conditions,
+            alias=alias,
+            auto_open=auto_open,
+        )
 
     @staticmethod
-    def _default_stop_conditions() -> list[StopCondition]:
-        return [Continuation(0.1)]
-
-    @classmethod
-    def list_devices(cls: type["Visa"]) -> list[str]:
-        """
-        Returns a list of available VISA devices
-        """
-        if pyvisa is None:
-            raise ImportError(
-                "Missing optional dependency 'pyvisa'. Install with:\n"
-                "  python -m pip install pyvisa"
-            )
-
-        rm = pyvisa.ResourceManager()
-        available_resources: list[str] = []
-        for device in rm.list_resources():
-            try:
-                d = rm.open_resource(device)
-                d.close()
-                available_resources.append(device)
-            except pyvisa.VisaIOError:
-                # Device cannot be opened; skip it
-                pass
-
-        return available_resources
-
-    def _worker_close(self) -> None:
-        super()._worker_close()
-        # with self._inst_lock:
-        # Stop the thread
-        if self._thread is not None:
-            with self._stop_lock:
-                self.stop = True
-                self._thread.join(timeout=self.THREAD_STOP_DELAY)
-
-        # if self._inst is not None:
-        #     self._inst.close()
-
-    def _worker_write(self, data: bytes) -> None:
-        # TODO : Add try around write
-        # TODO : We assume that the instance is thread safe because
-        # it would slow things down to have a lock because the internal thread
-        # would release it every cycle (50ms)
-
-        # with self._inst_lock:
-        if self._inst is not None:
-            self._inst.write_raw(data)
-
-    def _worker_read(self, fragment_timestamp: float) -> BytesFragment:
-        self._notify_recv.recv(1)
-        event = self._event_queue.get(block=False, timeout=None)
-
-        if isinstance(event, DisconnectedEvent):
-            # Signal that the adapter disconnected
-            return Fragment(b"", fragment_timestamp)
-        if isinstance(event, FragmentEvent):
-            return event.fragment
-
-        raise AdapterReadError("Invalid queue event")
-
-    def _worker_open(self) -> None:
-        if self._thread is not None:
-            self.close()
-
-        # if self._inst is None:
-        # NOTE: self._rm is always defined in __init__ when pyvisa is present
-
-        self._inst = cast(
-            "MessageBasedResource",
-            self._rm.open_resource(self._descriptor.descriptor),
-        )
-        self._inst.write_termination = ""
-        self._inst.read_termination = None
-
-        self._thread = threading.Thread(
-            target=self._internal_thread,
-            args=(self._inst,),
-            daemon=True,
-        )
-        self._thread.start()
-
-    def _internal_thread(self, instance: MessageBasedResource) -> None:
-        timeout = 50e-3
-        while True:
-            payload = b""
-            fragment: BytesFragment | None = None
-            try:
-                instance.timeout = timeout
-            except pyvisa.InvalidSession:
-                return
-            try:
-                while True:
-                    # Read up to an error
-                    payload += instance.read_bytes(1)  # TODO : Maybe test with read_raw
-                    instance.timeout = 0
-            except pyvisa.VisaIOError:
-                # Timeout
-                if payload:
-                    if fragment is None:
-                        fragment = Fragment(payload, time.time())
-                    else:
-                        fragment.data += payload
-                    # Tell the session that there's data (write to a virtual socket)
-                    self._event_queue.put(FragmentEvent(fragment))
-                    self._notify_send.send(b"1")
-            except (TypeError, pyvisa.InvalidSession, BrokenPipeError):
-                self._event_queue.put(DisconnectedEvent())
-                self._notify_send.send(b"1")
-
-            with self._stop_lock:
-                if self.stop:
-                    instance.close()
-                    break
-
-    def _selectable(self) -> HasFileno | None:
-        return self._notify_recv
+    def list_devices() -> list[str]:
+        """Return the VISA devices that can actually be opened"""
+        return list_devices()

@@ -1,47 +1,49 @@
-# NOT YET PORTED to the backend/framer/engine/reactor architecture.
-# This module still targets the removed Component/Adapter classes. It is kept
-# as a reference while it gets ported, and excluded from the checkers until then
-# mypy: ignore-errors
-# pylint: skip-file
-# ruff: noqa
 # File : auto.py
 # Author : Sébastien Deriaz
 # License : GPL
-
 """
-Automatic adapter function
-This function is used to automatically choose an adapter based on the user's input
-192.168.1.1 -> IP
-COM4 -> Serial
-/dev/tty* -> Serial
-etc...
-If an adapter class is supplied, it is passed through
+Automatic adapter selection
 
-Additionnaly, it is possible to do COM4:115200 so as to make the life of the user easier
-Same with /dev/ttyACM0:115200
+Turns a descriptor string into the matching adapter, so that a driver or the CLI can
+take ``'192.168.1.10:5025:TCP'`` or ``'/dev/ttyUSB0:115200'`` instead of an adapter
+
+    192.168.1.1:502:TCP   -> IP
+    COM4:115200           -> SerialPort
+    /dev/ttyACM0:9600     -> SerialPort
+    TCPIP0::1.2.3.4::INSTR -> Visa
+
+An adapter passed in is returned unchanged
 """
 
+from __future__ import annotations
 
 import re
 from typing import Any
 
-from syndesi.component import Descriptor
+from .adapter import Adapter, AsyncAdapter
+from .engine import Descriptor
+from .ip import AsyncIP, IP, IPDescriptor
+from .serialport import AsyncSerialPort, SerialPort, SerialPortDescriptor
 
-from .adapter import Adapter
-from .ip import IP, IPDescriptor
-from .serialport import SerialPort, SerialPortDescriptor
-from .visa import Visa, VisaDescriptor
+# Visa is optional, pyvisa may not be installed
+try:
+    from .visa import AsyncVisa, Visa, VisaDescriptor
 
-descriptors: list[type[Descriptor]] = [
-    SerialPortDescriptor,
-    IPDescriptor,
-    VisaDescriptor,
-]
+    _VISA_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency
+    _VISA_AVAILABLE = False
+
+
+def _descriptor_types() -> list[type[Descriptor]]:
+    types: list[type[Descriptor]] = [SerialPortDescriptor, IPDescriptor]
+    if _VISA_AVAILABLE:
+        types.append(VisaDescriptor)
+    return types
 
 
 def adapter_descriptor_by_string(string_descriptor: str) -> Descriptor:
     """
-    Return a corresponding adapter descriptor from a string
+    Return the descriptor matching a string
 
     Parameters
     ----------
@@ -51,40 +53,67 @@ def adapter_descriptor_by_string(string_descriptor: str) -> Descriptor:
     -------
     descriptor : Descriptor
     """
-    for descriptor in descriptors:
-        if re.match(descriptor.DETECTION_PATTERN, string_descriptor):
-            x = descriptor.from_string(string_descriptor)
-            return x
+    for descriptor_type in _descriptor_types():
+        if re.match(descriptor_type.DETECTION_PATTERN, string_descriptor):
+            return descriptor_type.from_string(string_descriptor)
     raise ValueError(f"Could not parse descriptor string : {string_descriptor}")
 
 
-def auto_adapter(adapter_or_string: Adapter[Any] | str) -> Adapter[Any]:
+def auto_adapter(adapter_or_string: Adapter[Any, bytes] | str) -> Adapter[Any, bytes]:
     """
-    Create an adapter from a string or an adapter
+    Return an adapter from a descriptor string, or the adapter it was given
 
-    - <int>.<int>.<int>.<int>[:<int>] -> IP
-    - x.y[:<int>] -> IP
-    - COM<int> -> SerialPort
-    - /dev/tty[ACM|USB]<int> -> SerialPort
-
+    Parameters
+    ----------
+    adapter_or_string : Adapter or str
     """
     if isinstance(adapter_or_string, Adapter):
-        # Simply return it
         return adapter_or_string
+    if not isinstance(adapter_or_string, str):
+        raise ValueError(f"Invalid adapter : {adapter_or_string!r}")
 
-    if isinstance(adapter_or_string, str):
-        descriptor = adapter_descriptor_by_string(adapter_or_string)
-        if isinstance(descriptor, IPDescriptor):
-            return IP(
-                address=descriptor.address,
-                port=descriptor.port,
-                transport=descriptor.transport.value,
-            )
-        if isinstance(descriptor, SerialPortDescriptor):
-            return SerialPort(port=descriptor.port, baudrate=descriptor.baudrate)
-        if isinstance(descriptor, VisaDescriptor):
-            return Visa(descriptor=descriptor.descriptor)
+    descriptor = adapter_descriptor_by_string(adapter_or_string)
 
-        raise RuntimeError(f"Invalid descriptor : {descriptor}")
+    if isinstance(descriptor, IPDescriptor):
+        return IP(
+            address=descriptor.address,
+            port=descriptor.port,
+            transport=descriptor.transport.value,
+        )
+    if isinstance(descriptor, SerialPortDescriptor):
+        return SerialPort(port=descriptor.port, baudrate=descriptor.baudrate)
+    if _VISA_AVAILABLE and isinstance(descriptor, VisaDescriptor):
+        return Visa(descriptor=descriptor.descriptor)  # pylint: disable=no-member
 
-    raise ValueError(f"Invalid adapter : {adapter_or_string}")
+    raise RuntimeError(f"Invalid descriptor : {descriptor}")
+
+
+def auto_async_adapter(
+    adapter_or_string: AsyncAdapter[Any, bytes] | str,
+) -> AsyncAdapter[Any, bytes]:
+    """
+    Return an async adapter from a descriptor string, or the adapter it was given
+
+    Parameters
+    ----------
+    adapter_or_string : AsyncAdapter or str
+    """
+    if isinstance(adapter_or_string, AsyncAdapter):
+        return adapter_or_string
+    if not isinstance(adapter_or_string, str):
+        raise ValueError(f"Invalid adapter : {adapter_or_string!r}")
+
+    descriptor = adapter_descriptor_by_string(adapter_or_string)
+
+    if isinstance(descriptor, IPDescriptor):
+        return AsyncIP(
+            address=descriptor.address,
+            port=descriptor.port,
+            transport=descriptor.transport.value,
+        )
+    if isinstance(descriptor, SerialPortDescriptor):
+        return AsyncSerialPort(port=descriptor.port, baudrate=descriptor.baudrate)
+    if _VISA_AVAILABLE and isinstance(descriptor, VisaDescriptor):
+        return AsyncVisa(descriptor=descriptor.descriptor)  # pylint: disable=no-member
+
+    raise RuntimeError(f"Invalid descriptor : {descriptor}")

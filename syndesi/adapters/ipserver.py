@@ -1,38 +1,31 @@
-# NOT YET PORTED to the backend/framer/engine/reactor architecture.
-# This module still targets the removed Component/Adapter classes. It is kept
-# as a reference while it gets ported, and excluded from the checkers until then
-# mypy: ignore-errors
-# pylint: skip-file
-# ruff: noqa
 # File : ipserver.py
 # Author : Sébastien Deriaz
 # License : GPL
 """
-IP Server adapter, used to manage IP clients
+IP server adapter, accepts clients and hands them out as IP adapters
+
+Its data type is Client, not bytes : one "frame" is one accepted connection. That is why
+it uses a TrivialFramer, there is nothing to assemble
 """
 
-import queue
+from __future__ import annotations
+
 import socket
-from collections.abc import Callable
 from dataclasses import dataclass
 from types import EllipsisType
 
-from syndesi.adapters.adapter import Adapter
-from syndesi.adapters.adapterworker import (
-    AdapterEvent,
-    AdapterFrameEvent,
-    AdapterWorker,
-)
-from syndesi.adapters.stop_conditions import Continuation, StopCondition
-from syndesi.tools.errors import AdapterOpenError, AdapterReadError
-
-from .ip import IP, IPDescriptor
-from .utils import Fragment, HasFileno
+from ..tools.errors import AdapterOpenError, AdapterReadError, AdapterWriteError
+from .adapter import Adapter, AsyncAdapter
+from .engine import AdapterBackend
+from .framer import TrivialFramer
+from .ip import AsyncIP, IP, IPDescriptor, default_stop_conditions
+from .stop_conditions import StopCondition
+from .utils import Fragment, HasFileno, TimeoutType
 
 
 @dataclass
 class Client:
-    """Data packet received or sent to an IPServer client"""
+    """A connection accepted by an IPServer, before it becomes an adapter"""
 
     address: str
     port: int
@@ -42,213 +35,239 @@ class Client:
         return f"Client on {self.address}:{self.port}"
 
 
-# pylint: disable=too-many-instance-attributes
-class IPServer(Adapter[Client]):
+DEFAULT_BACKLOG = 5
+
+
+class IPServerBackend(AdapterBackend[IPDescriptor, Client]):
     """
-    IP server stack adapter. The IP Adapter reads and writes bytes units (frames)
+    Listens on an address and accepts connections
+
+    Parameters
+    ----------
+    descriptor : IPDescriptor
+    backlog : int
+    """
+
+    def __init__(self, descriptor: IPDescriptor, backlog: int = DEFAULT_BACKLOG) -> None:
+        super().__init__(descriptor)
+        self._socket: socket.socket | None = None
+        self._backlog = backlog
+
+    def selectable(self) -> HasFileno | None:
+        return self._socket
+
+    def open(self, timeout: float | None) -> None:
+        del timeout  # binding and listening don't wait for a peer
+        if self.descriptor.transport == IPDescriptor.Transport.TCP:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        elif self.descriptor.transport == IPDescriptor.Transport.UDP:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        else:
+            raise AdapterOpenError("Invalid transport protocol")
+
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((self.descriptor.address, self.descriptor.port))
+            s.listen(self._backlog)
+        except (OSError, socket.gaierror) as e:
+            s.close()
+            raise AdapterOpenError(
+                f"Failed to open server {self.descriptor} ({e})"
+            ) from None
+
+        self._socket = s
+
+    def close(self) -> None:
+        if self._socket is not None:
+            try:
+                self._socket.close()
+            except OSError:
+                pass
+            self._socket = None
+
+    def read(self, fragment_timestamp: float) -> Fragment[Client]:
+        """Accept one connection, the reactor only calls this when one is pending"""
+        if self._socket is None:
+            raise AdapterReadError(f"Server {self.descriptor} is not open")
+        try:
+            sock, (address, port) = self._socket.accept()
+        except OSError as e:
+            raise AdapterReadError(f"Cannot accept on {self.descriptor} : {e}") from e
+        return Fragment(Client(address, port, sock), fragment_timestamp)
+
+    def write(self, data: Client) -> None:
+        raise AdapterWriteError(
+            "Cannot write to an IPServer, write to one of its clients instead"
+        )
+
+    @property
+    def default_timeout(self) -> TimeoutType:
+        # A server waits for clients for as long as it takes
+        return None
+
+
+class IPServer(Adapter[IPDescriptor, Client]):
+    """
+    IP server, reads accepted connections as IP adapters
 
     Parameters
     ----------
     address : str
-        IP address on which the server will listen
-    port : int or None, default : None
-        IP port on which the server will listen
+        Address to listen on
+    port : int or None
+        Port to listen on, None lets a protocol set its default
     transport : {'TCP', 'UDP'}
-        Transport layer
-    stop_conditions : list[StopCondition] or StopCondition
-        Stop coniditions are used to decide when a read data block is finished
-        and should be returned
-
-        These include
-
-        * Termination : stop on a specific sequence like ``\\n`` at the end of the data
-        * Length : stop when a specific number of bytes has been received
-        * Continuation : stop when no data has been received for a
-        specified amount of time
-        * Total : stop if the time since the first piece of data received exceeds
-        a given amount of time
-        * FragmentStopCondition : Return each piece of data individually as received
-        by the low-level communication layer
-
-        Multiple stop conditions can be used to create more complex behaviours
-    encoding : str
-        Used to convert str to bytes if the user chooses to send str
+    stop_conditions : StopCondition, list of StopCondition or ...
+        Applied to every client adapter, not to the server itself
+    backlog : int
     alias : str
-        Name of the adapter, may be removed in the future
-    event_callback : f(event : AdapterEvent)
-        Function called when an event is received by the adapter worker thread.
-        The event can be either one of :
+    auto_open : bool
 
-        * ``AdapterOpenedEvent``
-        * ``AdapterClosedEvent``
-        * ``AdapterFrameEvent``
-        * ``FirstFragmentEvent``
-    auto_open : bool, default to True
-        Automatically open the adapter after instanciation
+    Examples
+    --------
+    >>> server = IPServer('0.0.0.0', 8888)
+    >>> client = server.get_client()        # an IP adapter, already connected
+    >>> client.read()
     """
-
-    DEFAULT_BACKLOG = 5
 
     def __init__(
         self,
         address: str,
         port: int | None = None,
         transport: str = IPDescriptor.Transport.TCP.value,
-        stop_conditions: list[StopCondition] | StopCondition | EllipsisType = ...,
         *,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
         backlog: int = DEFAULT_BACKLOG,
         alias: str = "",
         auto_open: bool = True,
-    ):
-        # pylint: disable=duplicate-code
-        self._descriptor = IPDescriptor(
-            address=address,
-            port=port,
-            transport=IPDescriptor.Transport(transport.upper()),
-            server=True,
-        )
-        self._socket: socket.socket | None = None
-        self._client_adapters: dict[str, IP] = {}
-        self._backlog = backlog
-        self._on_client_callbacks: list[Callable[[IP, AdapterEvent], None]] = []
-        self._new_client_adapter_queue: queue.Queue[IP] = queue.Queue()
-        # Attributes applied to each client
-        if stop_conditions is ...:
-            self._client_stop_conditions = IP._default_stop_conditions()
-        elif isinstance(stop_conditions, StopCondition):
-            self._client_stop_conditions = [stop_conditions]
-        elif isinstance(stop_conditions, list):
-            self._client_stop_conditions = stop_conditions
-        else:
-            raise ValueError("Invalid stop-conditions")
+    ) -> None:
+        self._client_stop_conditions = stop_conditions
 
         super().__init__(
-            worker=AdapterWorker(self), timeout=None, alias=alias, auto_open=auto_open
+            IPServerBackend(
+                IPDescriptor(
+                    address,
+                    IPDescriptor.Transport(transport.upper()),
+                    port,
+                    server=True,
+                ),
+                backlog,
+            ),
+            TrivialFramer(),
+            None,
+            stop_conditions=...,
+            alias=alias,
+            auto_open=auto_open,
         )
 
-        self.register_event_callback(self._on_event)
-
     def set_default_port(self, port: int) -> None:
-        """
-        Set the default port number
-
-        Parameters
-        ----------
-        port : int
-        """
-        if self._descriptor.port is None:
-            self._descriptor.port = port
-
-    def _worker_read(self, fragment_timestamp: float) -> Fragment[Client]:
-        if self._socket is None:
-            raise AdapterReadError("Invalid socket")
-        try:
-            s, (address, port) = self._socket.accept()
-        except (ConnectionRefusedError, OSError) as e:
-            raise AdapterReadError(f"Read error : {str(e)}") from e
-
-        fragment = Fragment(Client(address, port, s), fragment_timestamp)
-
-        return fragment
-
-    def _worker_write(self, data: Client) -> None:
-        raise NotImplementedError()
-
-    # pylint: disable=duplicate-code
-    def _worker_open(self) -> None:
-        # Create the socket instance
-        if self._descriptor.transport == IPDescriptor.Transport.TCP:
-            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        elif self._descriptor.transport == IPDescriptor.Transport.UDP:
-            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        else:
-            raise AdapterOpenError("Invalid transport protocol")
-        try:
-            self._socket.settimeout(self.timeout)
-            self._socket.bind((self._descriptor.address, self._descriptor.port))
-            self._socket.listen(self._backlog)
-        except (OSError, ConnectionRefusedError, socket.gaierror) as e:
-            msg = f"Failed to open server {self._descriptor} : {e}"
-            self._logger.error(msg)
-            raise AdapterOpenError(msg) from None
-
-        self._logger.info(f"IPServer Adapter {self._descriptor} opened")
-
-    # pylint: disable=duplicate-code
-    def _worker_close(self) -> None:
-        super()._worker_close()
-        if self._socket is not None:
-            try:
-                self._socket.shutdown(socket.SHUT_RDWR)
-                self._socket.close()
-            except OSError:
-                pass
-            self._socket = None
-
-    def write(self, data: Client) -> None:
-        raise RuntimeError("Cannot write using IPServer, please use one of the clients")
-
-    def _selectable(self) -> HasFileno | None:
-        return self._socket
-
-    @staticmethod
-    def _default_stop_conditions() -> list[StopCondition]:
-        return [Continuation(continuation=0.2)]
-
-    @property
-    def default_timeout(self) -> float | None:
-        """Default timeout"""
-        return 1.0
+        """Set the port, unless one was given"""
+        if self.descriptor.port is None:
+            self.descriptor.port = port
 
     def get_client(self, timeout: float | None = None) -> IP:
         """
-        Return a new client
+        Wait for a client to connect and return it as an IP adapter
 
         Parameters
         ----------
         timeout : float or None
+            None waits forever
         """
-        try:
-            return self._new_client_adapter_queue.get(block=True, timeout=timeout)
-        except queue.Empty:
-            raise TimeoutError(
-                "No client connected before the specified timeout"
-            ) from None
+        client = self.read(timeout=timeout)
+        return _client_adapter(client, self._client_stop_conditions)
 
-    def register_client_callback(
-        self, func: Callable[[IP, AdapterEvent], None]
+    def write(self, data: Client) -> None:
+        raise AdapterWriteError(
+            "Cannot write to an IPServer, write to one of its clients instead"
+        )
+
+
+class AsyncIPServer(AsyncAdapter[IPDescriptor, Client]):
+    """
+    Async IP server, same parameters as IPServer
+
+    Examples
+    --------
+    >>> async with AsyncIPServer('0.0.0.0', 8888) as server:
+    ...     client = await server.get_client()
+    ...     await client.read()
+    """
+
+    def __init__(
+        self,
+        address: str,
+        port: int | None = None,
+        transport: str = IPDescriptor.Transport.TCP.value,
+        *,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+        backlog: int = DEFAULT_BACKLOG,
+        alias: str = "",
+        auto_open: bool = True,
     ) -> None:
-        """Register the given function as a callback
+        self._client_stop_conditions = stop_conditions
 
-        Function should have the form func(client : IP, event : AdapterEvent) -> None
+        super().__init__(
+            IPServerBackend(
+                IPDescriptor(
+                    address,
+                    IPDescriptor.Transport(transport.upper()),
+                    port,
+                    server=True,
+                ),
+                backlog,
+            ),
+            TrivialFramer(),
+            None,
+            stop_conditions=...,
+            alias=alias,
+            auto_open=auto_open,
+        )
 
-        Parameters
-        ----------
-        func : Callable[[IP, AdapterEvent], None]
-        """
-        self._on_client_callbacks.append(func)
+    def set_default_port(self, port: int) -> None:
+        """Set the port, unless one was given"""
+        if self.descriptor.port is None:
+            self.descriptor.port = port
 
-    @property
-    def descriptor(self) -> IPDescriptor:
-        return self._descriptor
+    async def get_client(self, timeout: float | None = None) -> AsyncIP:
+        """Wait for a client to connect and return it as an AsyncIP adapter"""
+        client = await self.read(timeout=timeout)
+        return _async_client_adapter(client, self._client_stop_conditions)
 
-    def _on_client_event(self, client: IP, event: AdapterEvent) -> None:
-        for callback in self._on_client_callbacks:
-            callback(client, event)
+    async def write(self, data: Client) -> None:
+        raise AdapterWriteError(
+            "Cannot write to an IPServer, write to one of its clients instead"
+        )
 
-    def _on_event(self, event: AdapterEvent) -> None:
-        if isinstance(event, AdapterFrameEvent):
-            client = event.frame.data
-            if isinstance(client, Client):
-                client_adapter = IP(
-                    address=client.address,
-                    port=client.port,
-                    transport=self._descriptor.transport,
-                    server_socket=client.socket,
-                    stop_conditions=self._client_stop_conditions,
-                )
-                client_adapter.register_event_callback(
-                    lambda event: self._on_client_event(client_adapter, event)
-                )
-                self._client_adapters[client.address] = client_adapter
-                self._new_client_adapter_queue.put(client_adapter)
+
+def _resolve(
+    stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
+) -> StopCondition | list[StopCondition]:
+    """A new set of instances per client, stop-conditions hold per-frame state"""
+    if stop_conditions is ...:
+        return default_stop_conditions()
+    return stop_conditions
+
+
+def _client_adapter(
+    client: Client,
+    stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
+) -> IP:
+    return IP(
+        client.address,
+        client.port,
+        stop_conditions=_resolve(stop_conditions),
+        _socket=client.socket,
+    )
+
+
+def _async_client_adapter(
+    client: Client,
+    stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
+) -> AsyncIP:
+    return AsyncIP(
+        client.address,
+        client.port,
+        stop_conditions=_resolve(stop_conditions),
+        _socket=client.socket,
+    )

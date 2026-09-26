@@ -91,17 +91,23 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
     Parameters
     ----------
     descriptor : IPDescriptor
+    sock : socket or None
+        An already connected socket, handed over by IPServer for an accepted client.
+        open() then has nothing to do
     """
 
-    def __init__(self, descriptor: IPDescriptor) -> None:
+    def __init__(
+        self, descriptor: IPDescriptor, sock: socket.socket | None = None
+    ) -> None:
         super().__init__(descriptor)
-
-        self._socket: socket.socket | None = None
+        self._socket = sock
 
     def selectable(self) -> HasFileno | None:
         return self._socket
 
     def open(self, timeout: float | None) -> None:
+        if self._socket is not None:
+            return  # adopted from IPServer, already connected
         # Create the socket instance
         if self.descriptor.transport == IPDescriptor.Transport.TCP:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -210,9 +216,16 @@ class IP(Adapter[IPDescriptor, bytes]):
         stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
         alias: str = "",
         auto_open: bool = True,
+        _socket: socket.socket | None = None,
     ) -> None:
         backend = IPBackend(
-            IPDescriptor(address, IPDescriptor.Transport(transport.upper()), port)
+            IPDescriptor(
+                address,
+                IPDescriptor.Transport(transport.upper()),
+                port,
+                server=_socket is not None,
+            ),
+            _socket,
         )
         super().__init__(
             backend,
@@ -248,9 +261,16 @@ class AsyncIP(AsyncAdapter[IPDescriptor, bytes]):
         stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
         alias: str = "",
         auto_open: bool = True,
+        _socket: socket.socket | None = None,
     ) -> None:
         backend = IPBackend(
-            IPDescriptor(address, IPDescriptor.Transport(transport.upper()), port),
+            IPDescriptor(
+                address,
+                IPDescriptor.Transport(transport.upper()),
+                port,
+                server=_socket is not None,
+            ),
+            _socket,
         )
         super().__init__(
             backend,

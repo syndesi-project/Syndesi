@@ -93,9 +93,9 @@ class ProtocolError(SyndesiError):
     """Protocol error"""
 
 
-# class ProtocolWriteError(SyndesiError):
-#     """Protocol error when writing"""
+class ProtocolWriteError(ProtocolError):
+    """The protocol could not encode a payload"""
 
 
-# class ProtocolReadError(SyndesiError):
-#     """Protocol error when reading"""
+class ProtocolReadError(ProtocolError):
+    """The protocol could not decode what it received"""

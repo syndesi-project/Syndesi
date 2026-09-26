@@ -24,7 +24,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 
 from ..tools.errors import (
     AdapterDisconnectedError,
@@ -185,6 +185,31 @@ class AddEventCallbackCommand(Command[None]):
         self.callback = callback
 
 
+@runtime_checkable
+class FrameSink(Protocol[DataT]):
+    """
+    The consumer of an engine's frame stream, a protocol engine in practice
+
+    Attaching one takes ownership of the stream : frames go to the sink instead of the
+    buffer, and the adapter's own read() is refused. Observers use the events instead,
+    which is what tells them apart. Both methods run on the reactor thread
+    """
+
+    def on_frame(self, frame: AdapterReadFrame[DataT]) -> None:
+        """A frame has been assembled"""
+
+    def on_fragment_timeout(self) -> None:
+        """The deadline armed with arm_fragment_deadline passed with nothing received"""
+
+
+class SetFrameSinkCommand(Generic[DataT], Command[None]):
+    """Attach or detach the consumer of the frame stream"""
+
+    def __init__(self, sink: "FrameSink[DataT] | None") -> None:
+        super().__init__()
+        self.sink = sink
+
+
 class ReadCommand(Generic[DataT], Command[AdapterReadFrame[DataT]]):
     """
     Read one frame
@@ -313,7 +338,6 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         *,
         timeout: TimeoutParameterType,
         alias: str,
-        auto_open: bool,
         # reactor: Reactor | None = None,
     ) -> None:
         self._backend = backend
@@ -339,6 +363,10 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
             maxlen=self._FRAME_BUFFER_MAX
         )
         self._frame_id = 0
+        self._frame_sink: FrameSink[DataT] | None = None
+        # Deadline for the first fragment of the next frame, armed by whoever consumes
+        # the stream. A read carries its own, a sink has to ask for one
+        self._fragment_deadline: float | None = None
         self._pending_read: PendingRead[DataT] | None = None
         self._last_write_timestamp: float | None = None
         self._is_open = False
@@ -348,14 +376,6 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         self._reactor = default_reactor()  # if reactor is None else reactor
         self._reactor.attach(self)
 
-        # Submitted, not waited for : the sync facade waits on it in its __init__, the
-        # async one lets it run behind the first operation. Skipped while the descriptor
-        # is incomplete, a protocol may still have to set a default (port, baudrate, ...)
-        # self._auto_open: OpenCommand | None = None
-        if auto_open and backend.descriptor.is_initialized():
-            self.open().result()
-        # if auto_open and backend.descriptor.is_initialized():
-        #     self._auto_open = self.open()
 
     # def __str__(self) -> str:
     #     return f"Engine({self._backend.descriptor})"
@@ -370,10 +390,6 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         return self._backend.descriptor
 
     # @property
-    # def auto_open_command(self) -> OpenCommand | None:
-    #     """The open submitted at construction, None if there was none to submit"""
-    #     return self._auto_open
-
     @property
     def is_open(self) -> bool:
         """True if the backend is open"""
@@ -441,6 +457,12 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         """Remove every event callback"""
         return self._submit(ClearEventCallbacksCommand())
 
+    def set_frame_sink(
+        self, sink: FrameSink[DataT] | None
+    ) -> SetFrameSinkCommand[DataT]:
+        """Attach or detach the consumer of the frame stream, see FrameSink"""
+        return self._submit(SetFrameSinkCommand(sink))
+
     def stop(self) -> StopCommand:
         """Close the backend and detach the engine from the reactor"""
         return self._submit(StopCommand())
@@ -458,12 +480,23 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
     # │ Reactor interface │
     # └───────────────────┘
 
+    def arm_fragment_deadline(self, deadline: float | None) -> None:
+        """
+        Set the deadline for the first fragment of the next frame, None disarms
+
+        Reactor side : called by the frame sink, which runs on the same thread. It is
+        the sink's equivalent of the response deadline a pending read carries
+        """
+        self._fragment_deadline = deadline
+
     def next_deadline(self) -> float | None:
         """Earliest timestamp at which on_deadline must be called"""
         deadline = self._framer.next_deadline()
         pending = self._pending_read
         if pending is not None and self._response_deadline_applies(deadline):
             deadline = nmin(deadline, pending.response_deadline)
+        if self._fragment_deadline is not None and not self._framer.in_progress:
+            deadline = nmin(deadline, self._fragment_deadline)
         return deadline
 
     def _response_deadline_applies(self, framer_deadline: float | None) -> bool:
@@ -519,6 +552,15 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
             and now >= pending.response_deadline
         ):
             self._fail_read_timeout(pending)
+
+        if (
+            self._fragment_deadline is not None
+            and not self._framer.in_progress
+            and now >= self._fragment_deadline
+        ):
+            self._fragment_deadline = None
+            if self._frame_sink is not None:
+                self._frame_sink.on_fragment_timeout()
 
         for frame in self._framer.on_deadline(now):
             self._deliver(frame)
@@ -579,6 +621,11 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
                 command.set_result(None)
             case ClearEventCallbacksCommand():
                 self._callbacks.clear()
+                command.set_result(None)
+            case SetFrameSinkCommand():
+                self._frame_sink = command.sink
+                if command.sink is None:
+                    self._fragment_deadline = None
                 command.set_result(None)
             case StopCommand():
                 self._close_command(clear_buffer=True)
@@ -652,6 +699,15 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         now = time.time()
 
         if command.cancelled():
+            return
+
+        if self._frame_sink is not None:
+            self._fail(
+                command,
+                AdapterReadError(
+                    "The frame stream is owned by a protocol, read from it instead"
+                ),
+            )
             return
 
         if self._pending_read is not None:
@@ -729,6 +785,13 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
     def _deliver(self, frame: AssembledFrame[DataT]) -> None:
         read_frame = self._build_read_frame(frame)
         tracehub.emit_read_frame(str(self._backend.descriptor), read_frame)
+
+        if self._frame_sink is not None:
+            # Owned stream : nothing is buffered here, the sink decides what to keep
+            self._fragment_deadline = None
+            self._emit(AdapterFrameEvent(read_frame, False))
+            self._frame_sink.on_frame(read_frame)
+            return
 
         pending = self._pending_read
         if pending is not None and pending.command.cancelled():
