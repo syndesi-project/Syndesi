@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 from typing import Any, TypeVar, overload
 
-import dearpygui.dearpygui as dpg  #type: ignore
+import dearpygui.dearpygui as dpg  # type: ignore
 
 from syndesi.adapters.adapterworker import (
     AdapterBufferEvent,
@@ -54,7 +54,7 @@ from .adapter import BytesAdapterBlock, IPBlock
 from .dearpygui_async import DearPyGuiAsync
 from .tools import ComponentBlock, _hsv_to_rgb
 
-CLASS_NAME_SEPARATOR = ':'
+CLASS_NAME_SEPARATOR = ":"
 
 dpg_async = DearPyGuiAsync()
 
@@ -69,20 +69,25 @@ AdapterT = TypeVar("AdapterT", bound=BytesAdapter)
 
 t = TypeVar("t", bound=Component[Any])
 
+
 def default_ip() -> IP:
     return IP(address="", port=0, auto_open=False)
+
 
 def default_serialport() -> SerialPort:
     return SerialPort(port="", baudrate=9600)
 
-def default_delimited(adapter : BytesAdapter) -> Delimited:
-    return Delimited(adapter, termination='\n')
+
+def default_delimited(adapter: BytesAdapter) -> Delimited:
+    return Delimited(adapter, termination="\n")
+
 
 class EntrySource(StrEnum):
     ADAPTER = "A"
     PROTOCOL = "P"
     DRIVER = "D"
     UNKNOWN = "x"
+
 
 class TestingEntryType(IntEnum):
     # Meta
@@ -107,60 +112,59 @@ class TestingEntryType(IntEnum):
             TestingEntryType.FIRST_FRAGMENT_EVENT,
             TestingEntryType.WRITE_EVENT,
             TestingEntryType.READ_EVENT,
-            ]
+        ]
+
 
 ENTRY_PREFIX = {
-    TestingEntryType.UNKNOWN_EVENT : "Invalid event",
-    TestingEntryType.TOPLEVEL_READ : "←  read",
-    TestingEntryType.TOPLEVEL_READ_FAIL : "←  read",
-    TestingEntryType.TOPLEVEL_WRITE : "→ write",
-    TestingEntryType.OPEN_EVENT : "● opened",
-    TestingEntryType.CLOSE_EVENT : "● closed",
-    TestingEntryType.WRITE_EVENT : "→ write",
-    TestingEntryType.FRAME_EVENT : "↓ frame",
-    TestingEntryType.READ_EVENT : "←  read",
-    TestingEntryType.FRAGMENT_EVENT : "↓ frag",
-    TestingEntryType.FIRST_FRAGMENT_EVENT : "↓ frag*",
+    TestingEntryType.UNKNOWN_EVENT: "Invalid event",
+    TestingEntryType.TOPLEVEL_READ: "←  read",
+    TestingEntryType.TOPLEVEL_READ_FAIL: "←  read",
+    TestingEntryType.TOPLEVEL_WRITE: "→ write",
+    TestingEntryType.OPEN_EVENT: "● opened",
+    TestingEntryType.CLOSE_EVENT: "● closed",
+    TestingEntryType.WRITE_EVENT: "→ write",
+    TestingEntryType.FRAME_EVENT: "↓ frame",
+    TestingEntryType.READ_EVENT: "←  read",
+    TestingEntryType.FRAGMENT_EVENT: "↓ frag",
+    TestingEntryType.FIRST_FRAGMENT_EVENT: "↓ frag*",
 }
 
 ENTRY_COLOR = {
-    TestingEntryType.UNKNOWN_EVENT : (255, 0, 0),
-    TestingEntryType.TOPLEVEL_READ : (197, 213, 235),
-    TestingEntryType.TOPLEVEL_READ_FAIL : (255, 170, 180),
-    TestingEntryType.TOPLEVEL_WRITE : (212, 235, 197),
-    TestingEntryType.OPEN_EVENT : (30, 199, 38),
-    TestingEntryType.CLOSE_EVENT : (207, 19, 19),
-    TestingEntryType.WRITE_EVENT : (127, 127, 127),
-    TestingEntryType.FRAME_EVENT : (127, 127, 127),
-    TestingEntryType.READ_EVENT : (127, 127, 127),
-    TestingEntryType.FRAGMENT_EVENT : (127, 127, 127),
-    TestingEntryType.FIRST_FRAGMENT_EVENT : (127, 127, 127),
-
+    TestingEntryType.UNKNOWN_EVENT: (255, 0, 0),
+    TestingEntryType.TOPLEVEL_READ: (197, 213, 235),
+    TestingEntryType.TOPLEVEL_READ_FAIL: (255, 170, 180),
+    TestingEntryType.TOPLEVEL_WRITE: (212, 235, 197),
+    TestingEntryType.OPEN_EVENT: (30, 199, 38),
+    TestingEntryType.CLOSE_EVENT: (207, 19, 19),
+    TestingEntryType.WRITE_EVENT: (127, 127, 127),
+    TestingEntryType.FRAME_EVENT: (127, 127, 127),
+    TestingEntryType.READ_EVENT: (127, 127, 127),
+    TestingEntryType.FRAGMENT_EVENT: (127, 127, 127),
+    TestingEntryType.FIRST_FRAGMENT_EVENT: (127, 127, 127),
 }
+
 
 @dataclass
 class TestingEntry:
-    time_delta : float
-    entry_type : TestingEntryType
-    group_tag : int | str
+    time_delta: float
+    entry_type: TestingEntryType
+    group_tag: int | str
+
 
 class UIBase:
     """Main UI window"""
-    def __init__(
-            self,
-            width : int = 1000,
-            height : int = 600
-        ) -> None:
+
+    def __init__(self, width: int = 1000, height: int = 600) -> None:
         self._width = width
         self._height = height
-        self._tab_bar : int | str = -1
-        self.toplevel_component : ComponentBlock | None = None
-        self._tabs : list[tuple[ComponentBlock, int | str]] = []
-        self._entry_queue : asyncio.Queue[TestingEntry] = asyncio.Queue()
+        self._tab_bar: int | str = -1
+        self.toplevel_component: ComponentBlock | None = None
+        self._tabs: list[tuple[ComponentBlock, int | str]] = []
+        self._entry_queue: asyncio.Queue[TestingEntry] = asyncio.Queue()
         self._start_timestamp = time.time()
-        self._testing_bottom_group : int | str = -1
-        self._entries : list[TestingEntry] = []
-        self._testing_subwindow : int | str = -1
+        self._testing_bottom_group: int | str = -1
+        self._entries: list[TestingEntry] = []
+        self._testing_subwindow: int | str = -1
         self._show_events = False
 
         self._build()
@@ -178,12 +182,16 @@ class UIBase:
         dpg.destroy_context()
 
     @overload
-    def adapter_block(self, adapter: IP, is_top_level : bool) -> IPBlock: ...
+    def adapter_block(self, adapter: IP, is_top_level: bool) -> IPBlock: ...
 
     @overload
-    def adapter_block(self, adapter: BytesAdapter, is_top_level : bool) -> BytesAdapterBlock[Any]: ...
+    def adapter_block(
+        self, adapter: BytesAdapter, is_top_level: bool
+    ) -> BytesAdapterBlock[Any]: ...
 
-    def adapter_block(self, adapter : BytesAdapter, is_top_level : bool) -> BytesAdapterBlock[Any]:
+    def adapter_block(
+        self, adapter: BytesAdapter, is_top_level: bool
+    ) -> BytesAdapterBlock[Any]:
         if isinstance(adapter, IP):
             return IPBlock(
                 adapter,
@@ -191,17 +199,23 @@ class UIBase:
                 self._adapter_read_callback,
                 self._adapter_read_fail_callback,
                 self._event_callback,
-                is_top_level
+                is_top_level,
             )
 
         raise RuntimeError(f"Invalid adapter : {adapter}")
 
     @overload
-    def protocol_block(self, protocol : Delimited, is_top_level : bool) -> DelimitedBlock: ...
+    def protocol_block(
+        self, protocol: Delimited, is_top_level: bool
+    ) -> DelimitedBlock: ...
     @overload
-    def protocol_block(self, protocol : Protocol[Any, Any], is_top_level : bool) -> ProtocolBlock[Any]: ...
+    def protocol_block(
+        self, protocol: Protocol[Any, Any], is_top_level: bool
+    ) -> ProtocolBlock[Any]: ...
 
-    def protocol_block(self, protocol : Protocol[Any, Any], is_top_level : bool) -> ProtocolBlock[Any]:
+    def protocol_block(
+        self, protocol: Protocol[Any, Any], is_top_level: bool
+    ) -> ProtocolBlock[Any]:
         if isinstance(protocol, Delimited):
             return DelimitedBlock(
                 protocol,
@@ -209,7 +223,7 @@ class UIBase:
                 self._protocol_read_callback,
                 self._protocol_read_fail_callback,
                 self._event_callback,
-                is_top_level
+                is_top_level,
             )
         raise RuntimeError(f"Invalid protocol : {protocol}")
 
@@ -223,10 +237,7 @@ class UIBase:
         )
 
         with dpg.window(
-            width=self._width,
-            height=self._height,
-            no_resize=True,
-            no_title_bar=True
+            width=self._width, height=self._height, no_resize=True, no_title_bar=True
         ) as self._window:
 
             with dpg.group(horizontal=True):
@@ -240,25 +251,39 @@ class UIBase:
                     with dpg.group(horizontal=True):
                         with dpg.theme() as red_button_theme:
                             with dpg.theme_component(dpg.mvButton):
-                                dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0, 0.6, 0.6))
-                                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _hsv_to_rgb(0, 0.8, 0.8))
-                                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _hsv_to_rgb(0, 0.7, 0.7))
-
-                        with dpg.theme() as green_button_theme:
-                            with dpg.theme_component(dpg.mvButton):
-                                dpg.add_theme_color(dpg.mvThemeCol_Button, _hsv_to_rgb(0.40, 0.6, 0.6))
+                                dpg.add_theme_color(
+                                    dpg.mvThemeCol_Button, _hsv_to_rgb(0, 0.6, 0.6)
+                                )
                                 dpg.add_theme_color(
                                     dpg.mvThemeCol_ButtonActive,
-                                    _hsv_to_rgb(0.40, 0.8, 0.8)
+                                    _hsv_to_rgb(0, 0.8, 0.8),
                                 )
                                 dpg.add_theme_color(
                                     dpg.mvThemeCol_ButtonHovered,
-                                    _hsv_to_rgb(0.40, 0.7, 0.7)
+                                    _hsv_to_rgb(0, 0.7, 0.7),
                                 )
 
-                        self._open_button = dpg.add_button(label="Open", callback=self.open, width=100)
+                        with dpg.theme() as green_button_theme:
+                            with dpg.theme_component(dpg.mvButton):
+                                dpg.add_theme_color(
+                                    dpg.mvThemeCol_Button, _hsv_to_rgb(0.40, 0.6, 0.6)
+                                )
+                                dpg.add_theme_color(
+                                    dpg.mvThemeCol_ButtonActive,
+                                    _hsv_to_rgb(0.40, 0.8, 0.8),
+                                )
+                                dpg.add_theme_color(
+                                    dpg.mvThemeCol_ButtonHovered,
+                                    _hsv_to_rgb(0.40, 0.7, 0.7),
+                                )
+
+                        self._open_button = dpg.add_button(
+                            label="Open", callback=self.open, width=100
+                        )
                         dpg.bind_item_theme(dpg.last_item(), green_button_theme)
-                        self._close_button = dpg.add_button(label="Close", callback=self.close, width=100)
+                        self._close_button = dpg.add_button(
+                            label="Close", callback=self.close, width=100
+                        )
                         dpg.bind_item_theme(dpg.last_item(), red_button_theme)
 
                     self._tab_bar = dpg.add_tab_bar()
@@ -266,19 +291,36 @@ class UIBase:
                 # Right panel (testing)
                 with dpg.child_window(width=-1, height=-1) as self._testing_window:
 
-                    with dpg.group(horizontal=False, parent=self._testing_window) as self._testing_top_group:
+                    with dpg.group(
+                        horizontal=False, parent=self._testing_window
+                    ) as self._testing_top_group:
 
                         with dpg.group(horizontal=True):
-                            dpg.add_checkbox(label="Show events", callback=self._show_events_callback, default_value=self._show_events)
+                            dpg.add_checkbox(
+                                label="Show events",
+                                callback=self._show_events_callback,
+                                default_value=self._show_events,
+                            )
                             dpg.add_spacer(width=200)
-                            dpg.add_button(label="Clear", callback=self._clear_events_callback)
+                            dpg.add_button(
+                                label="Clear", callback=self._clear_events_callback
+                            )
 
-                    with dpg.child_window(parent=self._testing_window) as self._testing_subwindow:
+                    with dpg.child_window(
+                        parent=self._testing_window
+                    ) as self._testing_subwindow:
                         with dpg.theme() as compact_theme:
                             with dpg.theme_component(dpg.mvAll):
-                                dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 4, 0, category=dpg.mvThemeCat_Core)
+                                dpg.add_theme_style(
+                                    dpg.mvStyleVar_CellPadding,
+                                    4,
+                                    0,
+                                    category=dpg.mvThemeCat_Core,
+                                )
 
-                        with dpg.table(policy=dpg.mvTable_SizingFixedFit) as self._testing_table:
+                        with dpg.table(
+                            policy=dpg.mvTable_SizingFixedFit
+                        ) as self._testing_table:
                             dpg.add_table_column(label="Timestamp")
                             dpg.add_table_column(label="Type")
                             dpg.add_table_column(label="Event")
@@ -288,7 +330,9 @@ class UIBase:
 
                 with dpg.item_handler_registry() as self._testing_window_resize_handler:
                     dpg.add_item_resize_handler(callback=self._testing_window_resize)
-                    dpg.bind_item_handler_registry(self._testing_window, self._testing_window_resize_handler)
+                    dpg.bind_item_handler_registry(
+                        self._testing_window, self._testing_window_resize_handler
+                    )
 
         self._testing_window_resize()
 
@@ -303,7 +347,13 @@ class UIBase:
             dpg.delete_item(entry.group_tag)
         self._entries.clear()
 
-    def _add_testing_entry(self, entry_source : EntrySource, entry_type : TestingEntryType, time_delta : float, text : str = "") -> None:
+    def _add_testing_entry(
+        self,
+        entry_source: EntrySource,
+        entry_type: TestingEntryType,
+        time_delta: float,
+        text: str = "",
+    ) -> None:
         show = self._show_events or not entry_type.is_event()
 
         with dpg.table_row(parent=self._testing_table, show=show) as row_tag:
@@ -313,17 +363,19 @@ class UIBase:
             dpg.add_text(text, color=ENTRY_COLOR[entry_type])
 
         new_entry = TestingEntry(
-            time_delta=time_delta,
-            entry_type=entry_type,
-            group_tag=row_tag
+            time_delta=time_delta, entry_type=entry_type, group_tag=row_tag
         )
 
         previous_entry = None
         for i, entry in enumerate(self._entries[::-1]):
             if entry.time_delta <= time_delta:
-                self._entries.insert(len(self._entries)-i, new_entry)
+                self._entries.insert(len(self._entries) - i, new_entry)
                 if previous_entry is not None:
-                    dpg.move_item(new_entry.group_tag, parent=self._testing_table, before=previous_entry.group_tag)
+                    dpg.move_item(
+                        new_entry.group_tag,
+                        parent=self._testing_table,
+                        before=previous_entry.group_tag,
+                    )
                 break
             previous_entry = entry
         else:
@@ -341,10 +393,10 @@ class UIBase:
 
         padding = 20
 
-        b_h = max(total_h - a_h - c_h - 2*padding - 10, 50)
+        b_h = max(total_h - a_h - c_h - 2 * padding - 10, 50)
         dpg.configure_item(self._testing_subwindow, height=b_h)
 
-    def _show_events_callback(self, sender : int | str, value : bool) -> None:
+    def _show_events_callback(self, sender: int | str, value: bool) -> None:
         self._show_events = value
         for entry in self._entries:
             if entry.entry_type.is_event():
@@ -353,25 +405,26 @@ class UIBase:
                 else:
                     dpg.hide_item(entry.group_tag)
 
-
-    def _add_adapter(self, block : BytesAdapterBlock[Any]) -> None:
+    def _add_adapter(self, block: BytesAdapterBlock[Any]) -> None:
         adapter_tab = dpg.add_tab(label=block.title, parent=self._tab_bar)
         self._tabs.append((block, adapter_tab))
         block.build_configuration_tab(adapter_tab)
 
-    def load_adapter(self, adapter : BytesAdapter) -> None:
+    def load_adapter(self, adapter: BytesAdapter) -> None:
         block = self.adapter_block(adapter, True)
         self._add_adapter(block)
         self._testing_bottom_group = block.build_testing_group(self._testing_window)
         self.toplevel_component = block
-        dpg.bind_item_handler_registry(self._testing_bottom_group, self._testing_window_resize_handler)
+        dpg.bind_item_handler_registry(
+            self._testing_bottom_group, self._testing_window_resize_handler
+        )
 
-    def _add_protocol(self, block : ProtocolBlock[Any]) -> None:
+    def _add_protocol(self, block: ProtocolBlock[Any]) -> None:
         protocol_tab = dpg.add_tab(label=block.title, parent=self._tab_bar)
         self._tabs.append((block, protocol_tab))
         block.build_configuration_tab(protocol_tab)
 
-    def load_protocol(self, protocol : Protocol[Any, Any]) -> None:
+    def load_protocol(self, protocol: Protocol[Any, Any]) -> None:
         if not isinstance(protocol.adapter, BytesAdapter):
             raise RuntimeError("Non-bytes adapter are not yet supported")
         block = self.protocol_block(protocol, True)
@@ -380,11 +433,9 @@ class UIBase:
         self.toplevel_component = block
         self._testing_bottom_group = block.build_testing_group(self._testing_window)
 
-    def load_driver(self, driver : Driver) -> None:
-        ...
+    def load_driver(self, driver: Driver) -> None: ...
 
-    def _add_driver(self, driver : Driver) -> None:
-        ...
+    def _add_driver(self, driver: Driver) -> None: ...
 
     def open(self) -> None:
         """Open the top-level component (driver, protocol or adapter)"""
@@ -407,12 +458,12 @@ class UIBase:
         self.toplevel_component.close()
         self._status(False)
 
-    def _status(self, opened : bool, text : str = "") -> None:
+    def _status(self, opened: bool, text: str = "") -> None:
         if opened:
             dpg.disable_item(self._open_button)
             dpg.enable_item(self._close_button)
             dpg.set_value(self._status_text, "Opened")
-            dpg.configure_item(self._status_text, color=(0,255,0))
+            dpg.configure_item(self._status_text, color=(0, 255, 0))
         else:
             dpg.enable_item(self._open_button)
             dpg.disable_item(self._close_button)
@@ -421,9 +472,9 @@ class UIBase:
             else:
                 dpg.set_value(self._status_text, "Closed")
 
-            dpg.configure_item(self._status_text, color=(255,0,0))
+            dpg.configure_item(self._status_text, color=(255, 0, 0))
 
-    def _event_callback(self, event : AdapterEvent | ProtocolEvent) -> None:
+    def _event_callback(self, event: AdapterEvent | ProtocolEvent) -> None:
         delta = event.timestamp - self._start_timestamp
         # Only adapter events are received and displayed
         # Use adapter close and open events to show open and close
@@ -432,7 +483,7 @@ class UIBase:
                 self._add_testing_entry,
                 EntrySource.ADAPTER,
                 TestingEntryType.CLOSE_EVENT,
-                delta
+                delta,
             )
             self._status(False)
         elif isinstance(event, AdapterOpenedEvent):
@@ -440,7 +491,7 @@ class UIBase:
                 self._add_testing_entry,
                 EntrySource.ADAPTER,
                 TestingEntryType.OPEN_EVENT,
-                delta
+                delta,
             )
             self._status(True)
         elif isinstance(event, AdapterFrameEvent):
@@ -453,57 +504,66 @@ class UIBase:
                 EntrySource.ADAPTER,
                 TestingEntryType.FRAME_EVENT,
                 delta,
-                f"{event.frame.data!r} ({sc_data})"
-                )
+                f"{event.frame.data!r} ({sc_data})",
+            )
         elif isinstance(event, AdapterFragmentEvent):
             loop.call_soon_threadsafe(
                 self._add_testing_entry,
                 EntrySource.ADAPTER,
-                TestingEntryType.FIRST_FRAGMENT_EVENT if event.first else \
-                    TestingEntryType.FRAGMENT_EVENT,
+                (
+                    TestingEntryType.FIRST_FRAGMENT_EVENT
+                    if event.first
+                    else TestingEntryType.FRAGMENT_EVENT
+                ),
                 delta,
-                str(event.fragment.data))
+                str(event.fragment.data),
+            )
         elif isinstance(event, AdapterReadEvent):
             loop.call_soon_threadsafe(
                 self._add_testing_entry,
                 EntrySource.ADAPTER,
                 TestingEntryType.READ_EVENT,
-                delta, f"{event.frame.data}" + (" (buffer)" if event.from_buffer else "")
+                delta,
+                f"{event.frame.data}" + (" (buffer)" if event.from_buffer else ""),
             )
         elif isinstance(event, AdapterWriteEvent):
             loop.call_soon_threadsafe(
                 self._add_testing_entry,
                 EntrySource.ADAPTER,
                 TestingEntryType.WRITE_EVENT,
-                delta, f"{event.frame.data!r}"
+                delta,
+                f"{event.frame.data!r}",
             )
-        elif isinstance(event,
-                        (AdapterBufferEvent,
-                            AdapterTimeoutUpdatedEvent,
-                            AdapterStopConditionsUpdatedEvent,
-                            ProtocolBufferEvent,
-                            ProtocolFrameEvent,
-                            ProtocolDisconnectedEvent)
-                        ):
+        elif isinstance(
+            event,
+            (
+                AdapterBufferEvent,
+                AdapterTimeoutUpdatedEvent,
+                AdapterStopConditionsUpdatedEvent,
+                ProtocolBufferEvent,
+                ProtocolFrameEvent,
+                ProtocolDisconnectedEvent,
+            ),
+        ):
             ...
         else:
             loop.call_soon_threadsafe(
                 self._add_testing_entry,
                 EntrySource.UNKNOWN,
                 TestingEntryType.UNKNOWN_EVENT,
-                delta
+                delta,
             )
 
-    def _adapter_write_callback(self, data : str) -> None:
+    def _adapter_write_callback(self, data: str) -> None:
         self._write_callback(EntrySource.ADAPTER, data)
 
-    def _protocol_write_callback(self, data : str) -> None:
+    def _protocol_write_callback(self, data: str) -> None:
         self._write_callback(EntrySource.PROTOCOL, data)
 
-    def _driver_write_callback(self, data : str) -> None:
+    def _driver_write_callback(self, data: str) -> None:
         self._write_callback(EntrySource.DRIVER, data)
 
-    def _write_callback(self, entry_source : EntrySource, data : str) -> None:
+    def _write_callback(self, entry_source: EntrySource, data: str) -> None:
         t = time.time()
         delta = t - self._start_timestamp
         loop.call_soon_threadsafe(
@@ -511,19 +571,19 @@ class UIBase:
             entry_source,
             TestingEntryType.TOPLEVEL_WRITE,
             delta,
-            data
+            data,
         )
 
-    async def _adapter_read_callback(self, data : str) -> None:
+    async def _adapter_read_callback(self, data: str) -> None:
         await self._read_callback(EntrySource.ADAPTER, data)
 
-    async def _protocol_read_callback(self, data : str) -> None:
+    async def _protocol_read_callback(self, data: str) -> None:
         await self._read_callback(EntrySource.PROTOCOL, data)
 
-    async def _driver_read_callback(self, data : str) -> None:
+    async def _driver_read_callback(self, data: str) -> None:
         await self._read_callback(EntrySource.DRIVER, data)
 
-    async def _read_callback(self, entry_source : EntrySource, data : str) -> None:
+    async def _read_callback(self, entry_source: EntrySource, data: str) -> None:
         t = time.time()
         delta = t - self._start_timestamp
         loop.call_soon_threadsafe(
@@ -531,19 +591,21 @@ class UIBase:
             entry_source,
             TestingEntryType.TOPLEVEL_READ,
             delta,
-            data
+            data,
         )
 
-    async def _adapter_read_fail_callback(self, message : str) -> None:
+    async def _adapter_read_fail_callback(self, message: str) -> None:
         await self._read_fail_callback(EntrySource.ADAPTER, message)
 
-    async def _protocol_read_fail_callback(self, message : str) -> None:
+    async def _protocol_read_fail_callback(self, message: str) -> None:
         await self._read_fail_callback(EntrySource.PROTOCOL, message)
 
-    async def _driver_read_fail_callback(self, message : str) -> None:
+    async def _driver_read_fail_callback(self, message: str) -> None:
         await self._read_fail_callback(EntrySource.DRIVER, message)
 
-    async def _read_fail_callback(self, entry_source : EntrySource, message : str) -> None:
+    async def _read_fail_callback(
+        self, entry_source: EntrySource, message: str
+    ) -> None:
         t = time.time()
         delta = t - self._start_timestamp
         loop.call_soon_threadsafe(
@@ -551,18 +613,21 @@ class UIBase:
             entry_source,
             TestingEntryType.TOPLEVEL_READ_FAIL,
             delta,
-            message
+            message,
         )
+
 
 class Command(StrEnum):
     """Syndesi ui CLI mode"""
-    DRIVER_MODULE = 'module'
-    DRIVER_PATH = 'path'
-    IP = 'ip'
-    SERIAL = 'serial'
-    VISA = 'visa'
-    MODBUS = 'modbus'
-    DELIMITED = 'delimited'
+
+    DRIVER_MODULE = "module"
+    DRIVER_PATH = "path"
+    IP = "ip"
+    SERIAL = "serial"
+    VISA = "visa"
+    MODBUS = "modbus"
+    DELIMITED = "delimited"
+
 
 COMMAND_HELP = """The type of UI to open. Choose between :
 
@@ -575,11 +640,12 @@ COMMAND_HELP = """The type of UI to open. Choose between :
 - 'delimited' : Open a Delimited protocol
 """
 
-def main(args : list[str] | None = None) -> None:
+
+def main(args: list[str] | None = None) -> None:
     """Main Syndesi UI entry-point"""
     parser = argparse.ArgumentParser()
 
-    #parser.add_argument(
+    # parser.add_argument(
     # "--verbose",
     # "-v",
     # action="count",
@@ -587,17 +653,19 @@ def main(args : list[str] | None = None) -> None:
     # help="-v = INFO,
     # -vv = DEBUG"
     # )
-    #debug_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
-    #parser.add_argument('command', choices=list(Command), type=str)
-    subparsers = parser.add_subparsers(dest='command')
+    # debug_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
+    # parser.add_argument('command', choices=list(Command), type=str)
+    subparsers = parser.add_subparsers(dest="command")
 
     # Driver module
-    driver_module_parser = subparsers.add_parser(Command.DRIVER_MODULE, help=COMMAND_HELP)
-    driver_module_parser.add_argument('module', help="Module location")
+    driver_module_parser = subparsers.add_parser(
+        Command.DRIVER_MODULE, help=COMMAND_HELP
+    )
+    driver_module_parser.add_argument("module", help="Module location")
 
     # Driver path
     driver_path_parser = subparsers.add_parser(Command.DRIVER_PATH)
-    driver_path_parser.add_argument('path', help="Driver path")
+    driver_path_parser.add_argument("path", help="Driver path")
 
     # IP
     ip_parser = subparsers.add_parser(Command.IP)
@@ -609,11 +677,11 @@ def main(args : list[str] | None = None) -> None:
     # serial_parser.add_argument("port", help="Serial port")
     # serial_parser.add_argument("")
 
-    #parser.add_argument('argument', type=str, help="The mode argument, see the mode help")
+    # parser.add_argument('argument', type=str, help="The mode argument, see the mode help")
 
     # Delimited
     delimited_parser = subparsers.add_parser(Command.DELIMITED)
-    delimited_parser.add_argument('adapter', choices=[Command.IP, Command.SERIAL])
+    delimited_parser.add_argument("adapter", choices=[Command.IP, Command.SERIAL])
 
     arguments = parser.parse_args(args=args)
 
@@ -624,7 +692,6 @@ def main(args : list[str] | None = None) -> None:
     # is_driver = command in [Command.DRIVER_MODULE, Command.DRIVER_PATH]
     # if not is_adapter and not is_protocol and not is_driver:
     #     raise RuntimeError(f"Unclassified command : {command}")
-
 
     ui = UIBase()
     # if command == Command.DRIVER_MODULE:
@@ -647,8 +714,8 @@ def main(args : list[str] | None = None) -> None:
         elif adapter == Command.SERIAL:
             ui.load_protocol(default_delimited(default_serialport()))
 
-
     ui.start()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

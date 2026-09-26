@@ -13,10 +13,10 @@ Raw protocol layer, data is returned as bytes "as-is"
 
 from syndesi.adapters.utils import TimeoutParameterType
 
-from .protocol import AsyncProtocol, Protocol
 from ..adapters.bytesadapter import BytesAdapter
 from ..component import ReadFrame
-from .protocol import ProtocolReadFrame
+from .protocol import AsyncProtocol, Protocol, ProtocolReadFrame
+
 
 class Raw(Protocol[bytes]):
     """
@@ -29,9 +29,7 @@ class Raw(Protocol[bytes]):
     """
 
     def __init__(
-        self,
-        adapter: BytesAdapter,
-        timeout: TimeoutParameterType = ...
+        self, adapter: BytesAdapter, timeout: TimeoutParameterType = ...
     ) -> None:
         super().__init__(adapter, timeout)
 
@@ -43,7 +41,9 @@ class Raw(Protocol[bytes]):
     def __str__(self) -> str:
         return f"Raw({self.adapter})"
 
-    def _adapter_to_protocol(self, adapter_frame: ReadFrame[bytes]) -> ProtocolReadFrame[bytes]:
+    def _adapter_to_protocol(
+        self, adapter_frame: ReadFrame[bytes]
+    ) -> ProtocolReadFrame[bytes]:
         payload = adapter_frame.data
 
         return ProtocolReadFrame(
@@ -58,6 +58,7 @@ class Raw(Protocol[bytes]):
     def _protocol_to_adapter(self, protocol_payload: bytes) -> bytes:
         return protocol_payload
 
+
 class AsyncRaw(AsyncProtocol[bytes]):
     """
     Raw device, no presentation and application layers, data is returned as bytes directly
@@ -67,4 +68,5 @@ class AsyncRaw(AsyncProtocol[bytes]):
     adapter : Adapter
     timeout : float | int | None | ...
     """
+
     ...

@@ -62,10 +62,10 @@ from syndesi.adapters.tracehub import (
 )
 
 if os.name == "posix":
-    import termios  #pylint: disable=import-error
-    import tty  #pylint: disable=import-error
+    import termios  # pylint: disable=import-error
+    import tty  # pylint: disable=import-error
 elif os.name == "nt":
-    import msvcrt  #pylint: disable=import-error
+    import msvcrt  # pylint: disable=import-error
 
 if TYPE_CHECKING:
     from rich.align import Align
@@ -73,6 +73,7 @@ if TYPE_CHECKING:
     from rich.live import Live
     from rich.panel import Panel
     from rich.text import Text
+
     rich_available = True
 else:
     try:
@@ -81,6 +82,7 @@ else:
         from rich.live import Live
         from rich.panel import Panel
         from rich.text import Text
+
         rich_available = True
     except ImportError:
         rich_available = False
@@ -318,7 +320,10 @@ class FlatTrace(Trace):
             columns[self.CSVColumn.DATA] = event.message
             columns[self.CSVColumn.SIZE] = str(event.length)
 
-            if isinstance(event, ReadEvent) and event.stop_condition_indicator is not None:
+            if (
+                isinstance(event, ReadEvent)
+                and event.stop_condition_indicator is not None
+            ):
                 columns[self.CSVColumn.STOP_CONDITION] = event.stop_condition_indicator
         return ",".join(columns.values()) + "\n"
 
@@ -517,8 +522,10 @@ class _TerminalRawMode:
             return self
         try:
             fd = sys.stdin.fileno()
-            self._old = termios.tcgetattr(fd) #pylint: disable=possibly-used-before-assignment
-            tty.setcbreak(fd) #pylint: disable=possibly-used-before-assignment
+            self._old = termios.tcgetattr(
+                fd
+            )  # pylint: disable=possibly-used-before-assignment
+            tty.setcbreak(fd)  # pylint: disable=possibly-used-before-assignment
             self._enabled = True
         except OSError:
             self._enabled = False
@@ -539,7 +546,8 @@ class _TerminalRawMode:
         except OSError:
             pass
 
-#pylint: disable=too-many-branches
+
+# pylint: disable=too-many-branches
 def _read_keys_nonblocking() -> list[str]:
     """
     Read available keys without blocking.
@@ -551,13 +559,13 @@ def _read_keys_nonblocking() -> list[str]:
         # msvcrt is only available on Windows; mypy's stubs may not include
         # the attributes we use. Cast to Any so attribute access is allowed.
 
-        #pylint: disable-next=possibly-used-before-assignment, used-before-assignment
-        while msvcrt.kbhit(): # type: ignore
-            #pylint: disable-next=possibly-used-before-assignment, used-before-assignment
-            ch = msvcrt.getwch() # type: ignore
+        # pylint: disable-next=possibly-used-before-assignment, used-before-assignment
+        while msvcrt.kbhit():  # type: ignore
+            # pylint: disable-next=possibly-used-before-assignment, used-before-assignment
+            ch = msvcrt.getwch()  # type: ignore
             if ch in ("\x00", "\xe0"):  # special key prefix
-                #pylint: disable-next=possibly-used-before-assignment, used-before-assignment
-                ch2 = msvcrt.getwch() # type: ignore
+                # pylint: disable-next=possibly-used-before-assignment, used-before-assignment
+                ch2 = msvcrt.getwch()  # type: ignore
                 if ch2 == "K":
                     keys.append("LEFT")
                 elif ch2 == "M":

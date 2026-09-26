@@ -112,7 +112,7 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                     stop_condition.initiate_read(initiate_timestamp)
 
             stop = False
-            frame_stop_condition : StopCondition | None = None
+            frame_stop_condition: StopCondition | None = None
 
             for stop_condition in self._stop_conditions:
                 (
@@ -138,13 +138,15 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
                 fragment=kept,
                 write_delta=write_delta,
             )
-            #pylint: disable=protected-access
-            self._interface._worker_emit_event(AdapterFragmentEvent(
-                next_timeout_timestamp=self._next_stop_condition_timeout_timestamp,
-                fragment=kept,
-                first=first_flag,
-                timestamp=kept.timestamp
-            ))
+            # pylint: disable=protected-access
+            self._interface._worker_emit_event(
+                AdapterFragmentEvent(
+                    next_timeout_timestamp=self._next_stop_condition_timeout_timestamp,
+                    fragment=kept,
+                    first=first_flag,
+                    timestamp=kept.timestamp,
+                )
+            )
 
             # If there's no stop, break here
             if frame_stop_condition is None:
@@ -178,7 +180,11 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
             self._worker_logger.debug(
                 "Frame %s (%s)",
                 "+".join(repr(f.data) for f in self._fragments),
-                frame_stop_condition.type.value if frame_stop_condition.type is not None else "---",
+                (
+                    frame_stop_condition.type.value
+                    if frame_stop_condition.type is not None
+                    else "---"
+                ),
             )
             self._worker_deliver_frame(frame)
 
@@ -218,7 +224,10 @@ class BytesAdapterWorker(AdapterWorker[bytes]):
         self._worker_reset_read()
 
     def _worker_on_pending_read_cleared(self, pending_read: PendingRead[bytes]) -> None:
-        if pending_read.stop_override_applied and pending_read.prev_stop_conditions is not None:
+        if (
+            pending_read.stop_override_applied
+            and pending_read.prev_stop_conditions is not None
+        ):
             self._stop_conditions = pending_read.prev_stop_conditions
 
     def _worker_reset_read(self) -> None:
@@ -384,6 +393,7 @@ class BytesAdapter(Adapter[bytes]):
     @abstractmethod
     def _default_stop_conditions() -> list[StopCondition]: ...
 
+
 class AsyncBytesAdapter(AsyncAdapter[bytes]):
     """
     Async bytes adapter with stop-conditions
@@ -396,23 +406,23 @@ class AsyncBytesAdapter(AsyncAdapter[bytes]):
     alias : str
     auto_open : bool
     """
+
     def __init__(
-            self,
-            timeout: EllipsisType | float | int | None,
-            stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
-            *,
-            alias: str,
-            auto_open: bool = False
-        ) -> None:
+        self,
+        timeout: EllipsisType | float | int | None,
+        stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
+        *,
+        alias: str,
+        auto_open: bool = False,
+    ) -> None:
         super().__init__(
             worker=BytesAdapterWorker(self),
             timeout=timeout,
             alias=alias,
-            auto_open=auto_open
+            auto_open=auto_open,
         )
         # Default stop conditions
 
-    
         self._initial_stop_conditions: list[StopCondition]
         if stop_conditions is ...:
             self._is_default_stop_condition = True

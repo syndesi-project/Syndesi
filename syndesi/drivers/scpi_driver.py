@@ -27,7 +27,8 @@ class SCPIDriver(Driver):
     termination : str
         '\\n' by default
     """
-    def __init__(self, adapter : BytesAdapter, termination : str = '\n') -> None:
+
+    def __init__(self, adapter: BytesAdapter, termination: str = "\n") -> None:
         super().__init__()
 
         self._prot = SCPI(adapter, termination=termination)
@@ -41,7 +42,7 @@ class SCPIDriver(Driver):
         -------
         identification : str
         """
-        return self._prot.query('*IDN?')
+        return self._prot.query("*IDN?")
 
     def get_system_error(self) -> str:
         """
@@ -51,7 +52,7 @@ class SCPIDriver(Driver):
         -------
         error : str
         """
-        return self._prot.query('SYST:ERR?')
+        return self._prot.query("SYST:ERR?")
 
     def get_system_version(self) -> str:
         """
@@ -61,25 +62,25 @@ class SCPIDriver(Driver):
         -------
         version : str
         """
-        return self._prot.query('SYST:VERS?')
+        return self._prot.query("SYST:VERS?")
 
     def clear_status_registers(self) -> None:
         """
         Clear event registers as well as error queue
         """
-        self._prot.write('*CLS')
+        self._prot.write("*CLS")
 
     def trigger(self) -> None:
         """
         Trigger
         """
-        self._prot.write('*TRG')
+        self._prot.write("*TRG")
 
     def reset(self) -> None:
         """
         Reset the instrument to factory state
         """
-        self._prot.write('*RST')
+        self._prot.write("*RST")
 
     @abstractmethod
     def open(self) -> None:

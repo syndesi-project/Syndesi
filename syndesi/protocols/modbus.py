@@ -1373,6 +1373,7 @@ class ModbusFrame(ProtocolReadFrame[ModbusSDU]):
     def __str__(self) -> str:
         return f"ModbusFrame({self.payload})"
 
+
 class ModbusCommon(ProtocolCommon[ModbusSDU]):
 
     def _make_multi_register_value(
@@ -2161,7 +2162,7 @@ class Modbus(Protocol[ModbusSDU], ModbusCommon):
 
         output = cast(DiagnosticsSDU.Response, self.query(payload))
 
-        return int(struct.unpack(ENDIAN + "H", output.data)[0])        
+        return int(struct.unpack(ENDIAN + "H", output.data)[0])
 
     def diagnostics_clear_overrun_counter_and_flag(self) -> None:
         """
@@ -2190,8 +2191,6 @@ class Modbus(Protocol[ModbusSDU], ModbusCommon):
         output = cast(GetCommEventCounterSDU.Response, self.query(payload))
 
         return output.status, output.event_count
-
-
 
     # Get Comm Event Log - 0x0C
     def get_comm_event_log(self) -> tuple[int, int, int, bytes]:
@@ -2283,7 +2282,7 @@ class Modbus(Protocol[ModbusSDU], ModbusCommon):
 
         output = cast(ReportServerIdSDU.Response, self.query(payload))
 
-        return output.server_id, output.run_indicator_status, output.additional_data    
+        return output.server_id, output.run_indicator_status, output.additional_data
 
     # Read File Record - 0x14
     def read_file_record(self, records: list[tuple[int, int, int]]) -> list[bytes]:
@@ -2343,7 +2342,7 @@ class Modbus(Protocol[ModbusSDU], ModbusCommon):
         combination of AND and OR masks applied to the current contents of the register.
 
         The algorithm is :
-        
+
         New value = (old value & and_mask) | (or_mask & (~and_mask))
 
         Parameters
@@ -2410,7 +2409,7 @@ class Modbus(Protocol[ModbusSDU], ModbusCommon):
         registers : list
         """
         payload = ReadFifoQueueSDU(fifo_address=fifo_address)
-        
+
         output = cast(ReadFifoQueueSDU.Response, self.query(payload))
         return output.values
 
@@ -2443,6 +2442,7 @@ class Modbus(Protocol[ModbusSDU], ModbusCommon):
         output = cast(EncapsulatedInterfaceTransportSDU.Response, self.query(payload))
 
         return output.data
+
 
 class AsyncModbus(AsyncProtocol[ModbusSDU], ModbusCommon):
 
@@ -2537,7 +2537,7 @@ class AsyncModbus(AsyncProtocol[ModbusSDU], ModbusCommon):
         output = cast(ReadHoldingRegisters.Response, await self.query(payload))
 
         return output.registers
-    
+
     async def read_multi_register_value(
         self,
         address: int,
@@ -3027,7 +3027,7 @@ class AsyncModbus(AsyncProtocol[ModbusSDU], ModbusCommon):
         output = cast(GetCommEventLogSDU.Response, await self.query(payload))
 
         return output.status, output.event_count, output.message_count, output.events
-    
+
     # Write Multiple Coils - 0x0F
     async def write_multiple_coils(
         self, start_address: int, values: list[bool]
@@ -3085,7 +3085,7 @@ class AsyncModbus(AsyncProtocol[ModbusSDU], ModbusCommon):
         output = cast(ReportServerIdSDU.Response, await self.query(payload))
 
         return output.server_id, output.run_indicator_status, output.additional_data
-    
+
     # Read File Record - 0x14
     async def read_file_record(
         self, records: list[tuple[int, int, int]]
@@ -3175,7 +3175,7 @@ class AsyncModbus(AsyncProtocol[ModbusSDU], ModbusCommon):
         number_of_read_registers: int,
         write_starting_address: int,
         write_values: list[int],
-        ) -> list[int]:
+    ) -> list[int]:
         """
         Asynchronously do a write, then a read operation, each on a specific set of registers.
         """
@@ -3186,12 +3186,10 @@ class AsyncModbus(AsyncProtocol[ModbusSDU], ModbusCommon):
             write_values=write_values,
         )
 
-        output = cast(
-            ReadWriteMultipleRegistersSDU.Response, await self.query(payload)
-        )
+        output = cast(ReadWriteMultipleRegistersSDU.Response, await self.query(payload))
 
         return output.read_values
-    
+
     # Read FIFO Queue - 0x18
     async def aread_fifo_queue(self, fifo_address: int) -> list[int]:
         """

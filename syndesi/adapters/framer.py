@@ -17,6 +17,7 @@ from .utils import Fragment
 
 DataT = TypeVar("DataT")
 
+
 # Every frame is keyword-only : AssembledFrame has defaulted fields and ReadFrame
 # adds required ones, which a positional dataclass chain would refuse
 @dataclass(kw_only=True)
@@ -24,7 +25,9 @@ class Frame(Generic[DataT]):
     """
     A complete frame of data
     """
+
     data: DataT
+
 
 @dataclass(kw_only=True)
 class WriteFrame(Generic[DataT], Frame[DataT]):
@@ -32,6 +35,7 @@ class WriteFrame(Generic[DataT], Frame[DataT]):
 
     def __str__(self) -> str:
         return f"WriteFrame({self.data})"
+
 
 @dataclass(kw_only=True)
 class AssembledFrame(Generic[DataT], Frame[DataT]):
@@ -41,14 +45,17 @@ class AssembledFrame(Generic[DataT], Frame[DataT]):
     Holds what only the framer knows : when the assembly started and stopped, and
     which stop-condition ended it. The engine turns it into a ReadFrame
     """
+
     stop_timestamp: float
-    stop_condition : StopCondition | None = None
+    stop_condition: StopCondition | None = None
     first_fragment_timestamp: float = float("nan")
 
+
 @dataclass(kw_only=True)
-class ReadFrame(Generic[DataT], AssembledFrame[DataT]):
+class AdapterReadFrame(Generic[DataT], AssembledFrame[DataT]):
     """A data unit received from a device, as returned to the user"""
-    id : int
+
+    id: int
     response_delay: float
 
     def __str__(self) -> str:
@@ -113,6 +120,7 @@ class Framer(Generic[DataT], ABC):
         Discard the frame currently being assembled
         """
 
+
 @runtime_checkable
 class SupportsStopConditions(Protocol):
     """
@@ -122,6 +130,9 @@ class SupportsStopConditions(Protocol):
     """
 
     stop_conditions: list[StopCondition]
+
+    def set_stop_conditions(self, stop_conditions: list[StopCondition]) -> None:
+        """Replace the stop-conditions, safe to call while a frame is in progress"""
 
 
 class TrivialFramer(Framer[DataT]):
@@ -153,6 +164,7 @@ class TrivialFramer(Framer[DataT]):
     def reset(self) -> None:
         pass
 
+
 class BytesFramer(Framer[bytes]):
     """
     Framer assembling bytes fragments into frames using stop-conditions
@@ -173,6 +185,20 @@ class BytesFramer(Framer[bytes]):
         self._first_fragment = True
         self._first_fragment_timestamp: float | None = None
         self._last_fragment_timestamp: float | None = None
+
+    def set_stop_conditions(self, stop_conditions: list[StopCondition]) -> None:
+        """
+        Replace the stop-conditions
+
+        Assigning the attribute directly is only safe on a frame boundary : conditions
+        dropped in mid-frame never got their initiate_read, and Total raises outright
+        without it. Initiating them on the frame already being assembled is what makes
+        a swap safe at any moment
+        """
+        self.stop_conditions = stop_conditions
+        if self._first_fragment_timestamp is not None:
+            for stop_condition in stop_conditions:
+                stop_condition.initiate_read(self._first_fragment_timestamp)
 
     # ┌───────────────────┐
     # │ Frame assembly    │
@@ -251,7 +277,9 @@ class BytesFramer(Framer[bytes]):
             candidate: float | None = None
             if isinstance(stop_condition, Continuation):
                 if self._last_fragment_timestamp is not None:
-                    candidate = self._last_fragment_timestamp + stop_condition.continuation
+                    candidate = (
+                        self._last_fragment_timestamp + stop_condition.continuation
+                    )
             elif isinstance(stop_condition, Total):
                 if self._first_fragment_timestamp is not None:
                     candidate = self._first_fragment_timestamp + stop_condition.total

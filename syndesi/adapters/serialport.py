@@ -91,22 +91,23 @@ class SerialPortDescriptor(Descriptor):
     def is_initialized(self) -> bool:
         return self.baudrate is not None
 
+
 class _SerialPortCommon:
     _open_ports: set[str] = set()
-    #_open_ports_lock = threading.Lock()
-    
+    # _open_ports_lock = threading.Lock()
+
     def __init__(
-            self,
-            *,
-            port: str,
-            baudrate: int | None = None,
-            bytesize: int = 8,
-            stopbits: int = 1,
-            parity: str = Parity.NONE.value,
-            rts_cts: bool = False,
-            xon_xoff: bool = False,
-            dsr_dtr: bool = False
-            ) -> None:
+        self,
+        *,
+        port: str,
+        baudrate: int | None = None,
+        bytesize: int = 8,
+        stopbits: int = 1,
+        parity: str = Parity.NONE.value,
+        rts_cts: bool = False,
+        xon_xoff: bool = False,
+        dsr_dtr: bool = False,
+    ) -> None:
 
         self._port: serial.Serial | None = None
         self._descriptor = SerialPortDescriptor(
@@ -120,7 +121,6 @@ class _SerialPortCommon:
             xon_xoff=xon_xoff,
         )
 
-
     @staticmethod
     def list_ports() -> list[str]:
         """
@@ -130,7 +130,7 @@ class _SerialPortCommon:
         if sys.platform in ["linux", "linux2", "darwin"]:
             # linux
             # Return all ports except ttyn, ttySn, etc...
-            return [p.device for p in comports() if not re.match(r'ttyS?(\d+)', p.name)]
+            return [p.device for p in comports() if not re.match(r"ttyS?(\d+)", p.name)]
 
         if sys.platform == "win32":
             # Windows
@@ -182,19 +182,19 @@ class _SerialPortCommon:
             raise AdapterOpenError(f"SerialPort open error : {str(e)}") from None
 
         if not self._port.isOpen():  # type: ignore
-            #self._logger.info(f"Adapter {self._descriptor} opened")
-        #else:
+            # self._logger.info(f"Adapter {self._descriptor} opened")
+            # else:
             # with self._open_ports_lock:
             #    self._open_ports.discard(self._descriptor.port)
             raise AdapterOpenError("Unknown error")
 
     def _worker_close(self) -> None:
-        #super()._worker_close()
+        # super()._worker_close()
         if self._port is not None:
             self._port.close()
-            #self._logger.info(f"Adapter {self._descriptor} closed")
+            # self._logger.info(f"Adapter {self._descriptor} closed")
             self._port = None
-            #with self._open_ports_lock:
+            # with self._open_ports_lock:
             self._open_ports.discard(self._descriptor.port)
 
     def set_default_baudrate(self, baudrate: int) -> None:
@@ -235,6 +235,7 @@ class _SerialPortCommon:
     def _selectable(self) -> HasFileno | None:
         return self._port
 
+
 class SerialPort(_SerialPortCommon, BytesAdapter):
     """
     Serial communication adapter
@@ -272,14 +273,14 @@ class SerialPort(_SerialPortCommon, BytesAdapter):
             parity=parity,
             rts_cts=rts_cts,
             xon_xoff=xon_xoff,
-            dsr_dtr=dsr_dtr
+            dsr_dtr=dsr_dtr,
         )
         BytesAdapter.__init__(
             self,
             timeout=timeout,
             stop_conditions=stop_conditions,
             alias=alias,
-            auto_open=auto_open
+            auto_open=auto_open,
         )
 
         self._logger.info(
@@ -291,6 +292,7 @@ class SerialPort(_SerialPortCommon, BytesAdapter):
         super().clear_read_buffer()
         if self._port is not None:
             self._port.flush()
+
 
 class AsyncSerialPort(_SerialPortCommon, AsyncBytesAdapter):
     """
@@ -322,14 +324,14 @@ class AsyncSerialPort(_SerialPortCommon, AsyncBytesAdapter):
             parity=parity,
             rts_cts=rts_cts,
             xon_xoff=xon_xoff,
-            dsr_dtr=dsr_dtr
+            dsr_dtr=dsr_dtr,
         )
         AsyncBytesAdapter.__init__(
             self,
             timeout=timeout,
             stop_conditions=stop_conditions,
             alias=alias,
-            auto_open=auto_open
+            auto_open=auto_open,
         )
 
         self._logger.info(

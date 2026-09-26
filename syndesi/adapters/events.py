@@ -7,15 +7,26 @@ Adapter events
 Events are emitted by the engine on the reactor thread. Callbacks must not block
 """
 
+import math
+import time
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from syndesi.adapters.backend import SyndesiEvent
-
-from .framer import ReadFrame, WriteFrame
+from .framer import AdapterReadFrame, WriteFrame
 from .utils import Fragment
 
 DataT = TypeVar("DataT")
+
+
+@dataclass(kw_only=True)
+class SyndesiEvent:
+    """Generic event, used to move information asynchronously from the adapter worker thread"""
+
+    timestamp: float = float("nan")
+
+    def __post_init__(self) -> None:
+        if math.isnan(self.timestamp):
+            self.timestamp = time.time()
 
 
 class AdapterEvent(SyndesiEvent):
@@ -58,7 +69,7 @@ class AdapterFragmentEvent(Generic[DataT], AdapterEvent):
 class AdapterFrameEvent(Generic[DataT], AdapterEvent):
     """The framer completed a frame. buffered is True if no read was waiting for it"""
 
-    frame: ReadFrame[DataT]
+    frame: AdapterReadFrame[DataT]
     buffered: bool
 
 
@@ -66,7 +77,7 @@ class AdapterFrameEvent(Generic[DataT], AdapterEvent):
 class AdapterReadEvent(Generic[DataT], AdapterEvent):
     """A frame has been handed to a read call"""
 
-    frame: ReadFrame[DataT]
+    frame: AdapterReadFrame[DataT]
     from_buffer: bool
 
 

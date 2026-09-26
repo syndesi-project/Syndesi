@@ -9,93 +9,41 @@ adapter where every method returns a future. What a protocol does to the data is
 once, in a Codec, and the ProtocolEngine applies it to the futures of the adapter
 engine. Protocol and AsyncProtocol only wait for those futures, like Adapter and
 AsyncAdapter
-
-    Delimited ──contains──▶ ProtocolEngine ──uses──▶ Engine ◀──contains── IP
-                              └ DelimitedCodec
 """
 
 from __future__ import annotations
 
 import asyncio
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from collections.abc import Callable
 from concurrent.futures import Future
-from types import EllipsisType
-from typing import Any, Generic, TypeVar, cast
+from dataclasses import dataclass
+from types import TracebackType
+from typing import Any, Generic, Self, TypeVar
 
-from ..adapters.adapter import Adapter, AsyncAdapter
-from ..adapters.engine import Engine, ReadScope
+from syndesi.tools.errors import ProtocolError
+
+from ..adapters.engine import AdapterEngine
 from ..adapters.events import AdapterEvent
-from ..adapters.framer import ReadFrame
-from ..adapters.stop_conditions import StopCondition
+from ..adapters.framer import AdapterReadFrame, Frame
 from ..adapters.utils import TimeoutParameterType, TimeoutType
-from ..endpoint import AsyncEndpoint, Endpoint
-from ..tools.errors import ProtocolReadError, ProtocolWriteError
 
-WireT = TypeVar("WireT")
-PayloadT = TypeVar("PayloadT")
-SourceT = TypeVar("SourceT")
-
-# class Codec(ABC, Generic[WireT, PayloadT]):
-#     """
-#     Translation between the data of an adapter and the payloads of a protocol, no I/O
-
-#     A codec is immutable : changing it means handing a new one to the protocol, so a
-#     decode running on the reactor thread always sees a consistent codec
-#     """
-
-#     @property
-#     @abstractmethod
-#     def default_timeout(self) -> TimeoutType:
-#         """Timeout used when neither the protocol nor the adapter was given one"""
-
-#     @property
-#     @abstractmethod
-#     def stop_conditions(self) -> list[StopCondition] | None:
-#         """Stop-conditions given to the adapter, None to keep the adapter ones"""
-
-#     @abstractmethod
-#     def encode(self, payload: PayloadT) -> WireT:
-#         """Turn a payload into the data written to the adapter"""
-
-#     @abstractmethod
-#     def decode(self, data: WireT) -> PayloadT:
-#         """Turn the data of a frame read from the adapter into a payload"""
+ProtocolT = TypeVar("ProtocolT")
+AdapterT = TypeVar("AdapterT")
 
 
-# def _chain(source: Future[SourceT], convert: Callable[[SourceT], ResultT]) -> Future[ResultT]:
-#     """
-#     Return a future completed with convert() applied to the result of source
+@dataclass(kw_only=True)
+class ProtocolReadFrame(Generic[ProtocolT], Frame[ProtocolT]):
+    """A data unit received from a device, as returned to the user"""
 
-#     convert runs on the thread completing source, the reactor. Cancelling the returned
-#     future cancels source, so the engine frees its read slot
-#     """
-#     output: Future[ResultT] = Future()
+    id: int
+    response_delay: float
 
-#     def on_output_done(future: Future[ResultT]) -> None:
-#         if future.cancelled():
-#             source.cancel()
+    def __str__(self) -> str:
+        return f"ReadFrame({self.data})"
 
-#     def on_source_done(future: Future[SourceT]) -> None:
-#         if future.cancelled():
-#             output.cancel()
-#             return
-#         if not output.set_running_or_notify_cancel():
-#             return
-#         error = future.exception()
-#         if error is not None:
-#             output.set_exception(error)
-#             return
-#         try:
-#             output.set_result(convert(future.result()))
-#         except Exception as e:  # pylint: disable=broad-exception-caught
-#             output.set_exception(e)
 
-#     output.add_done_callback(on_output_done)
-#     source.add_done_callback(on_source_done)
-#     return output
-
-class ProtocolEngine(Generic[WireT, PayloadT]):
+class ProtocolEngine(Generic[AdapterT, ProtocolT]):
     """
     Engine of a protocol : the futures of an adapter engine, carrying payloads
 
@@ -110,13 +58,8 @@ class ProtocolEngine(Generic[WireT, PayloadT]):
     codec : Codec
     """
 
-    def __init__(self, adapter_engine: Engine[Any, Any]) -> None:
+    def __init__(self, adapter_engine: AdapterEngine[Any, AdapterT]) -> None:
         self._adapter_engine = adapter_engine
-
-    # @property
-    # def codec(self) -> Codec[WireT, PayloadT]:
-    #     """Codec of the protocol"""
-    #     return self._codec
 
     @property
     def is_open(self) -> bool:
@@ -144,7 +87,9 @@ class ProtocolEngine(Generic[WireT, PayloadT]):
         """Drop the frames buffered by the adapter"""
         return self._adapter_engine.clear_buffer()
 
-    def register_event_callback(self, callback: Callable[[AdapterEvent], None]) -> Future[None]:
+    def register_event_callback(
+        self, callback: Callable[[AdapterEvent], None]
+    ) -> Future[None]:
         """Register an adapter event callback"""
         return self._adapter_engine.register_event_callback(callback)
 
@@ -152,39 +97,39 @@ class ProtocolEngine(Generic[WireT, PayloadT]):
         """Remove every adapter event callback"""
         return self._adapter_engine.clear_event_callbacks()
 
-    def write(self, data: PayloadT) -> Future[None]:
+    def write(self, data: ProtocolT) -> Future[None]:
         """Encode a payload and write it"""
         try:
             encoded = self.encode(data)
         except ValueError as e:  # UnicodeError included
-            raise ProtocolWriteError(f"Cannot encode {data!r} : {e}") from e
+            raise ProtocolError(f"Cannot encode {data!r} : {e}") from e
         return self._adapter_engine.write(encoded)
 
     @abstractmethod
-    def encode(self, payload: PayloadT) -> WireT:
+    def encode(self, payload: ProtocolT) -> AdapterT:
         """Turn a payload into the data written to the adapter"""
 
     @abstractmethod
-    def decode(self, data: WireT) -> PayloadT:
+    def decode(self, data: AdapterT) -> ProtocolT:
         """Turn the data of a frame read from the adapter into a payload"""
 
-    def read(
+    def read_detailed(
         self,
         timeout: TimeoutParameterType = ...,
-        scope: ReadScope = ReadScope.BUFFERED,
-        stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
-    ) -> Future[ReadFrame[PayloadT]]:
+        # scope: ReadScope = ReadScope.BUFFERED,
+        # stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...,
+    ) -> Future[ProtocolReadFrame[ProtocolT]]:
         """Read one frame and decode it"""
 
-        source = self._adapter_engine.read(timeout, scope, stop_conditions)
+        source = self._adapter_engine.read(timeout)  # , scope, stop_conditions)
 
-        output: Future[PayloadT] = Future()
+        output: Future[ProtocolReadFrame[ProtocolT]] = Future()
 
-        def on_output_done(future: Future[PayloadT]) -> None:
+        def on_output_done(future: Future[ProtocolReadFrame[ProtocolT]]) -> None:
             if future.cancelled():
                 source.cancel()
 
-        def on_source_done(future: Future[SourceT]) -> None:
+        def on_source_done(future: Future[AdapterReadFrame[AdapterT]]) -> None:
             if future.cancelled():
                 output.cancel()
                 return
@@ -195,7 +140,13 @@ class ProtocolEngine(Generic[WireT, PayloadT]):
                 output.set_exception(error)
                 return
             try:
-                output.set_result(self.decode(future.result()))
+                adapter_frame = future.result()
+                protocol_frame = ProtocolReadFrame(
+                    data=self.decode(adapter_frame.data),
+                    id=adapter_frame.id,
+                    response_delay=adapter_frame.response_delay,
+                )
+                output.set_result(protocol_frame)
             except Exception as e:  # pylint: disable=broad-exception-caught
                 output.set_exception(e)
 
@@ -203,62 +154,19 @@ class ProtocolEngine(Generic[WireT, PayloadT]):
         source.add_done_callback(on_source_done)
         return output
 
-    # def set_codec(self, codec: Codec[WireT, PayloadT]) -> Future[None]:
-    #     """Use another codec, its stop-conditions go to the adapter"""
-    #     self._codec = codec
-    #     stop_conditions = codec.stop_conditions
-    #     if stop_conditions is None:
-    #         done: Future[None] = Future()
-    #         done.set_result(None)
-    #         return done
-    #     return self._engine.set_stop_conditions(stop_conditions)
+ProtocolEngineT = TypeVar("ProtocolEngineT", bound=ProtocolEngine[Any, Any])
 
-    #@abstractmethod
-    #def _decode(self, frame: ReadFrame[WireT]) -> ReadFrame[PayloadT]:
-        ...
-        # try:
-        #     data = self._codec.decode(frame.data)
-        # except ValueError as e:  # UnicodeError included
-        #     raise ProtocolReadError(f"Cannot decode {frame.data!r} : {e}") from e
-        # return ReadFrame(
-        #     data=data,
-        #     id=frame.id,
-        #     stop_timestamp=frame.stop_timestamp,
-        #     stop_condition=frame.stop_condition,
-        #     first_fragment_timestamp=frame.first_fragment_timestamp,
-        #     response_delay=frame.response_delay,
-        # )
-
-
-def _build_engine(
-    adapter: Adapter[Any, WireT] | AsyncAdapter[Any, WireT],
-    #codec: Codec[WireT, PayloadT],
-    timeout: TimeoutParameterType,
-) -> tuple[ProtocolEngine[WireT, PayloadT], list[Future[None]]]:
+class ProtocolCommon(Generic[ProtocolEngineT]):
     """
-    Build the engine of a protocol and configure its adapter
-
-    The codec stop-conditions replace the adapter ones. ``...`` keeps the adapter
-    timeout if it was given one, and uses the codec one otherwise
-
-    The configuration is submitted to the adapter engine and returned without waiting :
-    the engine runs commands in order, so it applies before any later operation
+    Common class for Protocol and AsyncProtocol
     """
-    engine = adapter.engine
-    configuration: list[Future[None]] = []
 
-    stop_conditions = codec.stop_conditions
-    if stop_conditions is not None:
-        configuration.append(engine.set_stop_conditions(stop_conditions))
+    def __init__(self, engine: ProtocolEngineT) -> None:
+        self._engine = engine
 
-    if timeout is not ...:
-        configuration.append(engine.set_timeout(timeout))
-    elif adapter.has_default_timeout:
-        configuration.append(engine.set_timeout(codec.default_timeout))
-
-    return ProtocolEngine(engine, codec), configuration
-
-class Protocol(Endpoint[PayloadT], Generic[WireT, PayloadT]):
+class Protocol(
+    Generic[ProtocolEngineT, AdapterT, ProtocolT], ProtocolCommon[ProtocolEngineT]
+):
     """
     Sync protocol
 
@@ -269,50 +177,59 @@ class Protocol(Endpoint[PayloadT], Generic[WireT, PayloadT]):
     timeout : float, None or ...
         ``...`` keeps the adapter timeout if it was given one, the codec one otherwise
     """
-    def __init__(
-        self,
-        engine : ProtocolEngine,
-        #*,
-        #timeout: TimeoutParameterType = ...,
-    ) -> None:
-        # Public, the UI uses it
-        #self.adapter = adapter
 
-        #self.engine = 
-        super().__init__(
-            engine,
-            # ProtocolEngine(
-            #     self.adapter.engine
-            # ),
-            auto_open=False
-        )
-        #self._engine.set_stop_conditions()
-        
-        #engine, configuration = _build_engine(adapter, codec, timeout)
-        # Waited for, so that the adapter attributes (timeout, ...) are up to date
-        # for future in configuration:
-        #     future.result()
-
-    # def __str__(self) -> str:
-    #     return f"{type(self).__name__}({self.adapter},{self.codec})"
+    def __str__(self) -> str:
+        return f"{type(self).__name__}()"
 
     def __repr__(self) -> str:
         return self.__str__()
 
-    # @property
-    # def codec(self) -> Codec[WireT, PayloadT]:
-    #     """Codec of the protocol"""
-    #     return self._protocol_engine.codec
+    def open(self) -> None:
+        """Open communication with the target"""
+        self._engine.open().result()
 
-    # def _set_codec(self, codec: Codec[WireT, PayloadT]) -> None:
-    #     self._protocol_engine.set_codec(codec).result()
+    def close(self) -> None:
+        """Close communication with the target"""
+        self._engine.close().result()
 
-    @property
-    def _protocol_engine(self) -> ProtocolEngine[WireT, PayloadT]:
-        return cast("ProtocolEngine[WireT, PayloadT]", self._engine)
+    def write(self, data: ProtocolT) -> None:
+        """Write data to the target"""
+        self._engine.write(data).result()
 
+    def read_detailed(
+        self, timeout: TimeoutParameterType = ...
+    ) -> ProtocolReadFrame[ProtocolT]:
+        """Read one frame"""
+        return self._engine.read_detailed(timeout=timeout).result()
 
-class AsyncProtocol(AsyncEndpoint[PayloadT], Generic[WireT, PayloadT]):
+    def read(self, timeout: TimeoutParameterType = ...) -> ProtocolT:
+        """Read one frame and return its data"""
+        return self.read_detailed(timeout=timeout).data
+
+    def query_detailed(
+        self, payload: ProtocolT, timeout: TimeoutParameterType = ...
+    ) -> ProtocolReadFrame[ProtocolT]:
+        self.write(payload)
+        return self.read_detailed(timeout=timeout)
+
+    def query(self, payload: ProtocolT, timeout: TimeoutParameterType) -> ProtocolT:
+        return self.query_detailed(payload=payload, timeout=timeout).data
+
+    def __enter__(self) -> Self:
+        self.open()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
+class AsyncProtocol(
+    Generic[ProtocolEngineT, AdapterT, ProtocolT], ProtocolCommon[ProtocolEngineT]
+):
     """
     Async protocol, same parameters as Protocol
 
@@ -320,34 +237,53 @@ class AsyncProtocol(AsyncEndpoint[PayloadT], Generic[WireT, PayloadT]):
     later operation
     """
 
-    def __init__(
-        self,
-        engine : ProtocolEngine,
-        # adapter: AsyncAdapter[Any, WireT],
-        # codec: Codec[WireT, PayloadT],
-        # *,
-        # timeout: TimeoutParameterType = ...,
-    ) -> None:
-        # Public, the UI uses it
-        #self.adapter = adapter
-        #engine, _ = _build_engine(adapter, codec, timeout)
-        #super().__init__(engine, auto_open=False)
-        super().__init__(engine)
-
     def __str__(self) -> str:
-        return f"{type(self).__name__}({self.adapter},{self.codec})"
+        return f"{type(self).__name__}()"
 
     def __repr__(self) -> str:
         return self.__str__()
 
-    @property
-    def codec(self) -> Codec[WireT, PayloadT]:
-        """Codec of the protocol"""
-        return self._protocol_engine.codec
+    async def open(self) -> None:
+        """Open communication with the target"""
+        await asyncio.wrap_future(self._engine.open())
 
-    async def _set_codec(self, codec: Codec[WireT, PayloadT]) -> None:
-        await asyncio.wrap_future(self._protocol_engine.set_codec(codec))
+    async def close(self) -> None:
+        """Close communication with the target"""
+        await asyncio.wrap_future(self._engine.close())
 
-    @property
-    def _protocol_engine(self) -> ProtocolEngine[WireT, PayloadT]:
-        return cast("ProtocolEngine[WireT, PayloadT]", self._engine)
+    async def write(self, data: ProtocolT) -> None:
+        await asyncio.wrap_future(self._engine.write(data))
+
+    async def read_detailed(
+        self, timeout: TimeoutParameterType = ...
+    ) -> ProtocolReadFrame[ProtocolT]:
+        return await asyncio.wrap_future(self._engine.read_detailed(timeout=timeout))
+
+    async def read(self, timeout: TimeoutParameterType = ...) -> ProtocolT:
+        """Read one frame and return its data"""
+        frame = await self.read_detailed(timeout=timeout)
+        return frame.data
+
+    async def query_detailed(
+        self, payload: ProtocolT, timeout: TimeoutParameterType = ...
+    ) -> ProtocolReadFrame[ProtocolT]:
+        await self.write(payload)
+        return await self.read_detailed(timeout=timeout)
+
+    async def query(
+        self, payload: ProtocolT, timeout: TimeoutParameterType
+    ) -> ProtocolT:
+        frame = await self.query_detailed(payload=payload, timeout=timeout)
+        return frame.data
+
+    async def __aenter__(self) -> Self:
+        await self.open()
+        return self
+
+    async def __aexit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            traceback: TracebackType | None,
+    ) -> None:
+        await self.close()

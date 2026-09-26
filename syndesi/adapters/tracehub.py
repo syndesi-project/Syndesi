@@ -20,7 +20,7 @@ from typing import Any
 from syndesi.adapters.stop_conditions import StopConditionType
 from syndesi.adapters.utils import Fragment
 
-from .framer import ReadFrame, WriteFrame
+from .framer import AdapterReadFrame, WriteFrame
 
 STOP_CONDITION_INDICATOR = {
     StopConditionType.CONTINUATION: "Cont",
@@ -31,65 +31,78 @@ STOP_CONDITION_INDICATOR = {
     StopConditionType.TIMEOUT: "Time",
 }
 
+
 @dataclass(frozen=True)
 class TraceEvent:
     """
     Base trace event
     """
+
     descriptor: str
     timestamp: float
     t: str = field(default="", init=False)
+
 
 @dataclass(frozen=True)
 class OpenEvent(TraceEvent):
     """
     Adapter open trace event
     """
+
     t: str = field(default="open", init=False)
+
 
 @dataclass(frozen=True)
 class FragmentEvent(TraceEvent):
     """
     Fragment received trace event
     """
+
     message: str
     length: int
     write_delta: float
     t: str = field(default="fragment", init=False)
+
 
 @dataclass(frozen=True)
 class CloseEvent(TraceEvent):
     """
     Adapter close trace event
     """
+
     t: str = field(default="close", init=False)
+
 
 @dataclass(frozen=True)
 class ReadEvent(TraceEvent):
     """
     Adapter read trace event
     """
+
     message: str
     length: int
     stop_condition_indicator: str | None
     write_delta: float
     t: str = field(default="read_bytes", init=False)
 
+
 @dataclass(frozen=True)
 class WriteEvent(TraceEvent):
     """
     Adapter write trace event
     """
+
     message: str
     length: int
     t: str = field(default="write_bytes", init=False)
+
 
 EVENTS: list[type[TraceEvent]] = [
     FragmentEvent,
     OpenEvent,
     CloseEvent,
     ReadEvent,
-    WriteEvent
+    WriteEvent,
 ]
 
 EVENTS_MAP: dict[str, type[TraceEvent]] = {e.t: e for e in EVENTS}
@@ -168,14 +181,13 @@ class _TraceHub:
 
         return self._format_generic(str_data)
 
-    def _format_generic(self, str_data : str) -> str:
+    def _format_generic(self, str_data: str) -> str:
         if len(str_data) > self.TRUNCATE_LENGTH:
             return (
-                str_data[: self.TRUNCATE_LENGTH-len(self.TRUNCATION_TERMINATION)]
+                str_data[: self.TRUNCATE_LENGTH - len(self.TRUNCATION_TERMINATION)]
                 + self.TRUNCATION_TERMINATION
             )
         return str_data
-
 
     def emit_fragment(
         self, descriptor: str, fragment: Fragment[Any], write_delta: float
@@ -195,7 +207,7 @@ class _TraceHub:
                     )
                 )
 
-    def emit_read_frame(self, descriptor: str, frame: ReadFrame[Any]) -> None:
+    def emit_read_frame(self, descriptor: str, frame: AdapterReadFrame[Any]) -> None:
         """
         Emit a read frame event
         """
@@ -220,7 +232,7 @@ class _TraceHub:
             )
         )
 
-    def emit_write_frame(self, descriptor : str, frame: WriteFrame[Any]) -> None:
+    def emit_write_frame(self, descriptor: str, frame: WriteFrame[Any]) -> None:
         """Send a write frame to clients"""
         if isinstance(frame.data, bytes):
             message = self._format_bytes(frame.data)
@@ -232,7 +244,7 @@ class _TraceHub:
                 descriptor=descriptor,
                 timestamp=time.time(),
                 message=message,
-                length=len(frame.data)
+                length=len(frame.data),
             )
         )
 

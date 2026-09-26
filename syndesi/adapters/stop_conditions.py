@@ -31,6 +31,7 @@ class StopConditionType(Enum):
     FRAGMENT = "fragment"
     TIMEOUT = "timeout"
 
+
 class StopCondition:
     """
     Stop-condition base class, cannot be used on its own
@@ -176,6 +177,7 @@ class Length(StopCondition):
         self._counter += len(kept_fragment.data)
         remaining_bytes = self.n - self._counter
         return remaining_bytes == 0, kept_fragment, deferred_fragment, None
+
 
 class Continuation(StopCondition):
     """

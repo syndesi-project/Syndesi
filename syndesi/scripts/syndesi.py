@@ -16,7 +16,6 @@ import logging
 from enum import Enum
 
 from ..cli.shell import AdapterShell, AdapterType
-
 from ..version import __version__
 
 
@@ -24,11 +23,13 @@ class SyndesiCommands(Enum):
     """
     Syndesi script commands enum
     """
+
     SERIAL = "serial"
     IP = "ip"
     MODBUS = "modbus"
     VISA = "visa"
     UI = "ui"
+
 
 def main() -> None:
     """
@@ -39,7 +40,9 @@ def main() -> None:
     )
 
     parser.add_argument("--version", action="version", version=f"Syndesi {__version__}")
-    parser.add_argument("-v", "--verbose", action="count", default=0, help="-v = INFO, -vv = DEBUG")
+    parser.add_argument(
+        "-v", "--verbose", action="count", default=0, help="-v = INFO, -vv = DEBUG"
+    )
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument(
         "command",
@@ -54,7 +57,7 @@ def main() -> None:
         debug_level = logging.CRITICAL
     else:
         debug_levels = [logging.WARNING, logging.INFO, logging.DEBUG]
-        debug_level = debug_levels[min(args.verbose, len(debug_levels)-1)]
+        debug_level = debug_levels[min(args.verbose, len(debug_levels) - 1)]
 
     logging.basicConfig(level=debug_level)
 

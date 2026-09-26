@@ -118,8 +118,12 @@ class Reactor:
 
     def _iterate(self) -> None:
         clients = self._snapshot()
-        watched, deadline = self._watched(clients)
-        timeout = None if deadline is None else max(0.0, deadline - time.time())
+        watched, deadlines = self._watched(clients)
+
+        earliest: float | None = None
+        for _, client_deadline in deadlines:
+            earliest = nmin(earliest, client_deadline)
+        timeout = None if earliest is None else max(0.0, earliest - time.time())
 
         readable, _, _ = select([self._wakeup_r, *watched], [], [], timeout)
         now = time.time()
@@ -134,13 +138,17 @@ class Reactor:
             # Opening or closing changes the selectables, rebuild them before waiting
             return
 
-        if readable:
-            for selectable in readable:
-                self._safe(watched[selectable].on_readable, now)
-            return
+        for selectable in readable:
+            self._safe(watched[selectable].on_readable, now)
 
-        for client in clients:
-            self._safe(client.on_deadline, now)
+        # Due deadlines are served on every iteration, not only when select() expired :
+        # a single client that is always readable would otherwise starve the framing
+        # deadlines and the read timeouts of every other one. A client whose state just
+        # changed in on_readable is harmless here, on_deadline re-checks its own
+        # deadline before doing anything
+        for client, client_deadline in deadlines:
+            if now >= client_deadline:
+                self._safe(client.on_deadline, now)
 
     def _snapshot(self) -> list[ReactorClient]:
         with self._lock:
@@ -148,20 +156,22 @@ class Reactor:
 
     def _watched(
         self, clients: list[ReactorClient]
-    ) -> tuple[dict[HasFileno, ReactorClient], float | None]:
+    ) -> tuple[dict[HasFileno, ReactorClient], list[tuple[ReactorClient, float]]]:
         """
-        Return the selectables to watch and the earliest deadline among the clients
+        Return the selectables to watch and the deadline of each client that has one
         """
         watched: dict[HasFileno, ReactorClient] = {}
-        deadline: float | None = None
+        deadlines: list[tuple[ReactorClient, float]] = []
 
         for client in clients:
             selectable = client.selectable()
             if selectable is not None and _usable(selectable):
                 watched[selectable] = client
-            deadline = nmin(deadline, client.next_deadline())
+            deadline = client.next_deadline()
+            if deadline is not None:
+                deadlines.append((client, deadline))
 
-        return watched, deadline
+        return watched, deadlines
 
     def _drain_wakeup(self) -> None:
         while True:

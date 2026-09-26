@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import queue
 import time
+from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Callable
 from concurrent.futures import Future
@@ -26,7 +27,7 @@ from types import EllipsisType
 from typing import Any, Generic, TypeVar
 
 from ..tools.errors import (
-    AdapterDisconnected,
+    AdapterDisconnectedError,
     AdapterError,
     AdapterOpenError,
     AdapterReadError,
@@ -35,15 +36,6 @@ from ..tools.errors import (
     WorkerThreadError,
 )
 from ..tools.log_settings import LoggerAlias
-from .backend import (
-    AdapterBackend,
-    BackendDisconnectedError,
-    BackendError,
-    BackendOpenError,
-    BackendReadError,
-    BackendWriteError,
-    Descriptor,
-)
 from .events import (
     AdapterBufferEvent,
     AdapterClosedEvent,
@@ -57,28 +49,46 @@ from .events import (
     AdapterWriteEvent,
 )
 from .framer import (
+    AdapterReadFrame,
     AssembledFrame,
     Framer,
-    ReadFrame,
     SupportsStopConditions,
     WriteFrame,
 )
-from .reactor import Reactor, default_reactor
+from .reactor import default_reactor
 from .stop_conditions import StopCondition
 from .tracehub import tracehub
 from .utils import Fragment, HasFileno, TimeoutParameterType, TimeoutType, nmin
+
+
+class Descriptor(ABC):
+    """
+    Descriptor base class. A descriptor is a string to define the main parameters
+    of an adapter (ip address, port, baudrate, etc...)
+    """
+
+    DETECTION_PATTERN = ""
+
+    def __init__(self) -> None:
+        return None
+
+    @staticmethod
+    @abstractmethod
+    def from_string(string: str) -> Descriptor:
+        """
+        Create a Descriptor class from a string
+        """
+
+    @abstractmethod
+    def is_initialized(self) -> bool:
+        """Return True if the descriptor is initialized"""
+
 
 DataT = TypeVar("DataT")
 ResultT = TypeVar("ResultT")
 CommandT = TypeVar("CommandT", bound="Command[Any]")
 DescriptorT = TypeVar("DescriptorT", bound=Descriptor)
 
-_BACKEND_ERRORS: dict[type[BackendError], type[AdapterError]] = {
-    BackendOpenError: AdapterOpenError,
-    BackendDisconnectedError: AdapterDisconnected,
-    BackendReadError: AdapterReadError,
-    BackendWriteError: AdapterWriteError,
-}
 
 class ReadScope(StrEnum):
     """
@@ -92,13 +102,6 @@ class ReadScope(StrEnum):
     NEXT = "next"
     BUFFERED = "buffered"
     LAST_WRITE = "last_write"
-
-
-def adapter_error(error: BackendError) -> AdapterError:
-    """
-    Translate a backend error into the adapter error the user sees
-    """
-    return _BACKEND_ERRORS.get(type(error), AdapterError)(str(error))
 
 
 # ┌──────────┐
@@ -182,7 +185,7 @@ class AddEventCallbackCommand(Command[None]):
         self.callback = callback
 
 
-class ReadCommand(Generic[DataT], Command["ReadFrame[DataT]"]):
+class ReadCommand(Generic[DataT], Command[AdapterReadFrame[DataT]]):
     """
     Read one frame
 
@@ -229,8 +232,65 @@ class PendingRead(Generic[DataT]):
 # └────────┘
 
 
+class AdapterBackend(Generic[DescriptorT, DataT], ABC):
+    """
+    The hardware dialogue of one transport, and nothing else
+
+    A backend is blocking and bare : it holds no thread, no queue and no state about
+    reads in flight. Every method below is called on the reactor thread, and only
+    while the engine knows the backend is in the matching state
+
+    Parameters
+    ----------
+    descriptor : Descriptor
+    """
+
+    def __init__(self, descriptor: DescriptorT) -> None:
+        super().__init__()
+        self.descriptor = descriptor
+
+    @abstractmethod
+    def selectable(self) -> HasFileno | None:
+        """
+        Object the reactor watches for incoming data, None while there is nothing
+        to watch. A transport without a usable fileno (Visa, serial on Windows) runs
+        its own reader thread and returns one end of a socketpair here
+        """
+
+    @abstractmethod
+    def write(self, data: DataT) -> None:
+        """Write data to the target, entirely. Raises an AdapterError on failure"""
+
+    @abstractmethod
+    def read(self, fragment_timestamp: float) -> Fragment[DataT]:
+        """
+        Read one fragment, called only when selectable() reported data available
+
+        fragment_timestamp is the time the reactor saw the data, it is what the
+        stop-conditions work with, so it is taken once and passed down rather than
+        read again here
+        """
+
+    @abstractmethod
+    def open(self, timeout: float | None) -> None:
+        """Open the communication, raising AdapterOpenError if it cannot"""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Close the communication. Called even when it is already closed"""
+
+    @property
+    @abstractmethod
+    def default_timeout(self) -> TimeoutType:
+        """Timeout of an adapter built on this backend without an explicit one"""
+
+    # @property
+    # @abstractmethod
+    # def default_stop_conditions(self) -> list[StopCondition]: ...
+
+
 # pylint: disable=too-many-instance-attributes
-class Engine(Generic[DescriptorT, DataT]):
+class AdapterEngine(Generic[DescriptorT, DataT]):
     """
     Drives one backend on the reactor thread and exposes it as futures
 
@@ -251,15 +311,22 @@ class Engine(Generic[DescriptorT, DataT]):
         backend: AdapterBackend[DescriptorT, DataT],
         framer: Framer[DataT],
         *,
-        timeout: TimeoutType,
-        alias: str = "",
-        reactor: Reactor | None = None,
+        timeout: TimeoutParameterType,
+        alias: str,
+        auto_open: bool,
+        # reactor: Reactor | None = None,
     ) -> None:
         self._backend = backend
         self._framer = framer
-        self._timeout = timeout
+
+        if timeout is ...:
+            self._timeout = backend.default_timeout
+        else:
+            self._timeout = timeout
+
         self.alias = alias
 
+        # self._descriptor = backend.
         self._logger = logging.getLogger(LoggerAlias.ENGINE.value)
 
         # SimpleQueue because its put() is reentrant : stop() is called by the finalizer
@@ -268,7 +335,9 @@ class Engine(Generic[DescriptorT, DataT]):
         self._commands: queue.SimpleQueue[Command[Any]] = queue.SimpleQueue()
         self._callbacks: list[Callable[[AdapterEvent], None]] = []
 
-        self.frame_buffer: deque[ReadFrame[DataT]] = deque(maxlen=self._FRAME_BUFFER_MAX)
+        self.frame_buffer: deque[AdapterReadFrame[DataT]] = deque(
+            maxlen=self._FRAME_BUFFER_MAX
+        )
         self._frame_id = 0
         self._pending_read: PendingRead[DataT] | None = None
         self._last_write_timestamp: float | None = None
@@ -276,11 +345,20 @@ class Engine(Generic[DescriptorT, DataT]):
         # Why the last open failed, raised by the operations that need the target open
         self._open_error: str | None = None
 
-        self._reactor = default_reactor() if reactor is None else reactor
+        self._reactor = default_reactor()  # if reactor is None else reactor
         self._reactor.attach(self)
 
-    def __str__(self) -> str:
-        return f"Engine({self._backend.descriptor})"
+        # Submitted, not waited for : the sync facade waits on it in its __init__, the
+        # async one lets it run behind the first operation. Skipped while the descriptor
+        # is incomplete, a protocol may still have to set a default (port, baudrate, ...)
+        # self._auto_open: OpenCommand | None = None
+        if auto_open and backend.descriptor.is_initialized():
+            self.open().result()
+        # if auto_open and backend.descriptor.is_initialized():
+        #     self._auto_open = self.open()
+
+    # def __str__(self) -> str:
+    #     return f"Engine({self._backend.descriptor})"
 
     # ┌────────────────────────────────┐
     # │ User interface, returns futures │
@@ -290,6 +368,11 @@ class Engine(Generic[DescriptorT, DataT]):
     def descriptor(self) -> DescriptorT:
         """Backend descriptor"""
         return self._backend.descriptor
+
+    # @property
+    # def auto_open_command(self) -> OpenCommand | None:
+    #     """The open submitted at construction, None if there was none to submit"""
+    #     return self._auto_open
 
     @property
     def is_open(self) -> bool:
@@ -318,7 +401,8 @@ class Engine(Generic[DescriptorT, DataT]):
 
     def write(self, data: DataT) -> WriteCommand[DataT]:
         """Write data to the target"""
-        return self._submit(WriteCommand(WriteFrame(data=data)))
+        output = self._submit(WriteCommand(WriteFrame(data=data)))
+        return output
 
     def read(
         self,
@@ -337,7 +421,9 @@ class Engine(Generic[DescriptorT, DataT]):
         """Set the engine timeout"""
         return self._submit(SetTimeoutCommand(timeout))
 
-    def set_stop_conditions(self, stop_conditions: list[StopCondition]) -> SetStopConditionsCommand:
+    def set_stop_conditions(
+        self, stop_conditions: list[StopCondition]
+    ) -> SetStopConditionsCommand:
         """Set the framer stop-conditions"""
         return self._submit(SetStopConditionsCommand(stop_conditions))
 
@@ -364,21 +450,31 @@ class Engine(Generic[DescriptorT, DataT]):
         self._reactor.wakeup()
         return command
 
+    def selectable(self) -> HasFileno | None:
+        """Object the reactor watches for this engine, see AdapterBackend"""
+        return self._backend.selectable()
+
     # ┌───────────────────┐
     # │ Reactor interface │
     # └───────────────────┘
-
-    def selectable(self) -> HasFileno | None:
-        """Object to watch for incoming data, None if there is nothing to watch"""
-        return self._backend.selectable()
 
     def next_deadline(self) -> float | None:
         """Earliest timestamp at which on_deadline must be called"""
         deadline = self._framer.next_deadline()
         pending = self._pending_read
-        if pending is not None and not self._framer.in_progress:
+        if pending is not None and self._response_deadline_applies(deadline):
             deadline = nmin(deadline, pending.response_deadline)
         return deadline
+
+    def _response_deadline_applies(self, framer_deadline: float | None) -> bool:
+        """
+        True if the response timeout of the pending read still counts
+
+        It stops counting once data starts arriving : the stop-conditions take over and
+        decide when the frame ends. But if none of them is time based (Termination,
+        Length) there would be no deadline left at all, and the read would hang forever
+        """
+        return not self._framer.in_progress or framer_deadline is None
 
     def drain_commands(self) -> None:
         """Run every queued command"""
@@ -402,8 +498,8 @@ class Engine(Generic[DescriptorT, DataT]):
         """The backend has data available"""
         try:
             fragment = self._backend.read(now)
-        except BackendError as e:
-            self._fail_and_close(adapter_error(e))
+        except AdapterError as e:
+            self._fail_and_close(e)
             return
 
         first = not self._framer.in_progress
@@ -418,7 +514,7 @@ class Engine(Generic[DescriptorT, DataT]):
         pending = self._pending_read
         if (
             pending is not None
-            and not self._framer.in_progress
+            and self._response_deadline_applies(self._framer.next_deadline())
             and pending.response_deadline is not None
             and now >= pending.response_deadline
         ):
@@ -455,9 +551,9 @@ class Engine(Generic[DescriptorT, DataT]):
     def _execute(self, command: Command[Any]) -> None:
         match command:
             case OpenCommand():
-                self._open_backend(command)
+                self._open_command(command)
             case CloseCommand():
-                self._close_backend(clear_buffer=True)
+                self._close_command(clear_buffer=True)
                 command.set_result(None)
             case WriteCommand():
                 self._write(command)
@@ -473,7 +569,7 @@ class Engine(Generic[DescriptorT, DataT]):
                 self._emit(AdapterTimeoutUpdatedEvent())
             case SetStopConditionsCommand():
                 if isinstance(self._framer, SupportsStopConditions):
-                    self._framer.stop_conditions = command.stop_conditions
+                    self._framer.set_stop_conditions(command.stop_conditions)
                 command.set_result(None)
                 self._emit(AdapterStopConditionsUpdatedEvent())
             case GetStopConditionsCommand():
@@ -485,13 +581,13 @@ class Engine(Generic[DescriptorT, DataT]):
                 self._callbacks.clear()
                 command.set_result(None)
             case StopCommand():
-                self._close_backend(clear_buffer=True)
+                self._close_command(clear_buffer=True)
                 self._reactor.detach(self)
                 command.set_result(None)
             case _:
                 command.set_exception(WorkerThreadError(f"Unknown command {command!r}"))
 
-    def _open_backend(self, command: OpenCommand) -> None:
+    def _open_command(self, command: OpenCommand) -> None:
         if self._is_open:
             command.set_result(None)
             return
@@ -500,12 +596,11 @@ class Engine(Generic[DescriptorT, DataT]):
             return
         try:
             self._backend.open(self._timeout)
-        except BackendError as e:
+        except AdapterError as e:
             self._logger.error(str(e))
             self._open_error = str(e)
-            command.set_exception(adapter_error(e))
+            command.set_exception(e)
             return
-
         self._is_open = True
         self._open_error = None
         tracehub.emit_open(str(self._backend.descriptor))
@@ -513,7 +608,7 @@ class Engine(Generic[DescriptorT, DataT]):
         command.set_result(None)
         self._emit(AdapterOpenedEvent())
 
-    def _close_backend(self, clear_buffer: bool) -> None:
+    def _close_command(self, clear_buffer: bool) -> None:
         self._open_error = None
         if self._is_open:
             self._backend.close()
@@ -529,19 +624,21 @@ class Engine(Generic[DescriptorT, DataT]):
         pending = self._pending_read
         if pending is not None:
             self._clear_pending_read(pending)
-            self._fail(pending.command, AdapterDisconnected())
+            self._fail(pending.command, AdapterDisconnectedError())
 
         self._emit(AdapterClosedEvent())
 
     def _write(self, command: WriteCommand[DataT]) -> None:
         if not self._is_open:
-            command.set_exception(self._not_open_error(AdapterWriteError("Adapter is not opened")))
+            command.set_exception(
+                self._not_open_error(AdapterWriteError("Adapter is not opened"))
+            )
             return
         self._last_write_timestamp = time.time()
         try:
             self._backend.write(command.frame.data)
-        except BackendError as e:
-            command.set_exception(adapter_error(e))
+        except AdapterError as e:
+            command.set_exception(e)
             return
         tracehub.emit_write_frame(str(self._backend.descriptor), command.frame)
         command.set_result(None)
@@ -564,21 +661,29 @@ class Engine(Generic[DescriptorT, DataT]):
         if command.scope == ReadScope.LAST_WRITE and self._last_write_timestamp is None:
             self._fail(
                 command,
-                AdapterReadError("Cannot read with scope=LAST_WRITE without a previous write"),
+                AdapterReadError(
+                    "Cannot read with scope=LAST_WRITE without a previous write"
+                ),
             )
             return
 
-        if self._has_buffered(command.scope):
+        buffered_index = self._buffered_index(command.scope)
+        if buffered_index is not None:
             if self._claim(command):
-                frame = self.frame_buffer.popleft()
+                frame = self.frame_buffer[buffered_index]
+                del self.frame_buffer[buffered_index]
                 command.set_result(frame)
-                self._emit(AdapterBufferEvent(added_frame_ids=[], removed_frame_ids=[frame.id]))
+                self._emit(
+                    AdapterBufferEvent(added_frame_ids=[], removed_frame_ids=[frame.id])
+                )
                 self._emit(AdapterReadEvent(frame, from_buffer=True))
             return
 
         # A closed engine receives nothing, fail now instead of at the timeout
         if not self._is_open:
-            self._fail(command, self._not_open_error(AdapterReadError("Adapter is not opened")))
+            self._fail(
+                command, self._not_open_error(AdapterReadError("Adapter is not opened"))
+            )
             return
 
         timeout = self._resolve_timeout(command.timeout)
@@ -594,26 +699,32 @@ class Engine(Generic[DescriptorT, DataT]):
             self._framer, SupportsStopConditions
         ):
             pending.previous_stop_conditions = self._framer.stop_conditions
-            self._framer.stop_conditions = (
+            self._framer.set_stop_conditions(
                 [command.stop_conditions]
                 if isinstance(command.stop_conditions, StopCondition)
-                else command.stop_conditions
+                else list(command.stop_conditions)
             )
 
         self._pending_read = pending
         # A cancel() must free the read slot without waiting for a frame or a deadline
         command.add_done_callback(self._wakeup_if_cancelled)
 
-    def _has_buffered(self, scope: ReadScope) -> bool:
-        if len(self.frame_buffer) == 0:
-            return False
+    def _buffered_index(self, scope: ReadScope) -> int | None:
+        """
+        Index of the first buffered frame this read can take, None if there is none
+
+        The whole buffer is scanned : with LAST_WRITE a frame older than the write can
+        sit at the head, and it must not hide the answer that came after it
+        """
         if scope == ReadScope.NEXT:
-            return False
-        if scope == ReadScope.LAST_WRITE:
-            assert self._last_write_timestamp is not None
-            if self.frame_buffer[0].first_fragment_timestamp < self._last_write_timestamp:
-                return False
-        return True
+            return None
+        for index, frame in enumerate(self.frame_buffer):
+            if scope == ReadScope.LAST_WRITE:
+                assert self._last_write_timestamp is not None
+                if frame.first_fragment_timestamp < self._last_write_timestamp:
+                    continue
+            return index
+        return None
 
     def _deliver(self, frame: AssembledFrame[DataT]) -> None:
         read_frame = self._build_read_frame(frame)
@@ -637,7 +748,11 @@ class Engine(Generic[DescriptorT, DataT]):
         else:
             self._emit(AdapterFrameEvent(read_frame, True))
             self.frame_buffer.append(read_frame)
-            self._emit(AdapterBufferEvent(added_frame_ids=[read_frame.id], removed_frame_ids=[]))
+            self._emit(
+                AdapterBufferEvent(
+                    added_frame_ids=[read_frame.id], removed_frame_ids=[]
+                )
+            )
 
     def _drop_cancelled_read(self) -> None:
         """
@@ -659,19 +774,25 @@ class Engine(Generic[DescriptorT, DataT]):
         if command.cancelled():
             self._reactor.wakeup()
 
-    def _matches(self, frame: ReadFrame[DataT], pending: PendingRead[DataT]) -> bool:
+    def _matches(
+        self, frame: AdapterReadFrame[DataT], pending: PendingRead[DataT]
+    ) -> bool:
         if pending.scope == ReadScope.BUFFERED:
             return True
+        # first_fragment_timestamp, not stop_timestamp : a frame that started before
+        # the read (or before the write) doesn't become recent by ending after it
         if pending.scope == ReadScope.NEXT:
-            return frame.stop_timestamp > pending.start_time
+            return frame.first_fragment_timestamp > pending.start_time
         if pending.scope == ReadScope.LAST_WRITE:
             return (
                 self._last_write_timestamp is not None
-                and frame.stop_timestamp > self._last_write_timestamp
+                and frame.first_fragment_timestamp > self._last_write_timestamp
             )
         return False
 
-    def _build_read_frame(self, frame: AssembledFrame[DataT]) -> ReadFrame[DataT]:
+    def _build_read_frame(
+        self, frame: AssembledFrame[DataT]
+    ) -> AdapterReadFrame[DataT]:
         """
         Add what the framer cannot know : the frame id and the response delay
 
@@ -684,7 +805,7 @@ class Engine(Generic[DescriptorT, DataT]):
         else:
             response_delay = frame.first_fragment_timestamp - self._last_write_timestamp
 
-        return ReadFrame(
+        return AdapterReadFrame(
             data=frame.data,
             id=self._next_frame_id(),
             stop_timestamp=frame.stop_timestamp,
@@ -697,7 +818,9 @@ class Engine(Generic[DescriptorT, DataT]):
         self._clear_pending_read(pending)
         self._fail(
             pending.command,
-            AdapterTimeoutError(float("nan") if pending.timeout is None else pending.timeout),
+            AdapterTimeoutError(
+                float("nan") if pending.timeout is None else pending.timeout
+            ),
         )
 
     def _fail_and_close(self, error: AdapterError) -> None:
@@ -705,14 +828,18 @@ class Engine(Generic[DescriptorT, DataT]):
         if pending is not None:
             self._clear_pending_read(pending)
             self._fail(pending.command, error)
-        self._close_backend(clear_buffer=False)
+        # Through the close path, so that is_open, the framer and the events stay
+        # consistent. The buffer is kept : frames received before the target went away
+        # are still valid. The pending read is already cleared, _close_command won't
+        # fail it a second time
+        self._close_command(clear_buffer=False)
 
     def _clear_pending_read(self, pending: PendingRead[DataT]) -> None:
         self._pending_read = None
         if pending.previous_stop_conditions is not None and isinstance(
             self._framer, SupportsStopConditions
         ):
-            self._framer.stop_conditions = pending.previous_stop_conditions
+            self._framer.set_stop_conditions(pending.previous_stop_conditions)
             pending.previous_stop_conditions = None
 
     # ┌────────┐

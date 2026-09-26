@@ -37,10 +37,12 @@ from .console import Shell
 
 HISTORY_FILE_NAME = "syndesi"
 
+
 class Format(Enum):
     """
     Display format
     """
+
     TEXT = "text"
     HEX = "hex"
     BYTES = "bytes"
@@ -52,6 +54,7 @@ FORMAT_DESCRIPTION = {
     Format.BYTES: "Use Python bytes display syntax",
 }
 
+
 class AdapterType(Enum):
     """
     Adapter type enum
@@ -60,6 +63,7 @@ class AdapterType(Enum):
     IP = "ip"
     SERIAL = "serial"
     VISA = "visa"
+
 
 class SpecialLineEnding(Enum):
     """
@@ -70,11 +74,13 @@ class SpecialLineEnding(Enum):
     LF = "lf"
     CRLF = "crlf"
 
+
 LINE_ENDING_CHARS = {
     SpecialLineEnding.CR: "\r",
     SpecialLineEnding.LF: "\n",
     SpecialLineEnding.CRLF: "\r\n",
 }
+
 
 def hex2array(raw: str) -> bytes:
     """
@@ -91,6 +97,7 @@ def hex2array(raw: str) -> bytes:
     except ValueError as err:
         raise ValueError(f"Cannot parse hex string : {raw}") from err
     return array
+
 
 def array2hex(array: bytes) -> str:
     """
@@ -113,8 +120,10 @@ def parse_end_argument(arg: str | None) -> str | None:
     # Otherwise parse "\\n" -> "\n"
     return arg.replace("\\n", "\n").replace("\\r", "\r")
 
+
 class ListSerialPortsAction(argparse.Action):
     """List serial ports action"""
+
     nargs = 0
     const = True
     default = False
@@ -136,16 +145,18 @@ class ListSerialPortsAction(argparse.Action):
     #         help=help,
     #     )
 
-    def __call__(self,
-                 parser : argparse.ArgumentParser,
-                 namespace : argparse.Namespace,
-                 values : str | Sequence[str] | None,
-                 option_string : str | None = None
-        ) -> None:
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[str] | None,
+        option_string: str | None = None,
+    ) -> None:
         ports = SerialPort.list_ports()
         for port in ports:
             print(f"{port}")
         parser.exit()
+
 
 class AdapterShell:
     """
@@ -154,7 +165,7 @@ class AdapterShell:
 
     DEFAULT_TERMINATION = "\n"
 
-    #pylint: disable=too-many-statements too-many-branches
+    # pylint: disable=too-many-statements too-many-branches
     def __init__(self, kind: AdapterType, input_arguments: list[str]) -> None:
         logging.basicConfig(level=logging.CRITICAL + 1)
         self._parser = argparse.ArgumentParser()
@@ -208,10 +219,10 @@ class AdapterShell:
                 "--rtscts", action="store_true", default=False, help="Enable RTS/CTS"
             )
             self._parser.add_argument(
-                '--list',
+                "--list",
                 action=ListSerialPortsAction,
                 default=False,
-                help="List available serial ports"
+                help="List available serial ports",
             )
 
         elif kind == AdapterType.VISA:

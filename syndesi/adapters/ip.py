@@ -10,15 +10,15 @@ from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
 
-from .adapter import Adapter, AsyncAdapter
-from .backend import (
-    AdapterBackend,
-    BackendDisconnectedError,
-    BackendOpenError,
-    BackendReadError,
-    BackendWriteError,
-    Descriptor,
+from syndesi.tools.errors import (
+    AdapterDisconnectedError,
+    AdapterOpenError,
+    AdapterReadError,
+    AdapterWriteError,
 )
+
+from .adapter import Adapter, AsyncAdapter
+from .engine import AdapterBackend, Descriptor
 from .framer import BytesFramer
 from .stop_conditions import Continuation, StopCondition
 from .utils import Fragment, HasFileno, TimeoutParameterType
@@ -80,44 +80,40 @@ class IPDescriptor(Descriptor):
 
         return self.port is not None and self.transport is not None
 
+
 BUFFER_SIZE = 65535
+
 
 class IPBackend(AdapterBackend[IPDescriptor, bytes]):
     """
-    Backend talking to an IP target through the socket module
+    Talks to an IP target through the socket module
 
     Parameters
     ----------
     descriptor : IPDescriptor
-    server_socket : socket or None
-        An already connected socket, used by IPServer for accepted clients
     """
 
-    def __init__(self,
-                 descriptor : IPDescriptor,
-                 server_socket: socket.socket | None = None,) -> None:
+    def __init__(self, descriptor: IPDescriptor) -> None:
         super().__init__(descriptor)
 
         self._socket: socket.socket | None = None
 
-        self.descriptor.server = server_socket is not None
-        if self.descriptor.server:
-            self._socket = server_socket
-
     def selectable(self) -> HasFileno | None:
         return self._socket
 
-    def open(self, timeout : float | None) -> None:
+    def open(self, timeout: float | None) -> None:
         # Create the socket instance
         if self.descriptor.transport == IPDescriptor.Transport.TCP:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         elif self.descriptor.transport == IPDescriptor.Transport.UDP:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         else:
-            raise BackendOpenError("Invalid transport protocol")
+            raise AdapterOpenError("Invalid transport protocol")
         try:
             # TODO : Simulate a very long connect time (bad network) and manage timeout
             # error accordingly
+            # if timeout is ...:
+            #     raise BackendOpenError("Invalid timeout")
             if timeout is None:
                 s.settimeout(None)
             else:
@@ -125,12 +121,12 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
             s.connect((self.descriptor.address, self.descriptor.port))
         except (OSError, ConnectionRefusedError, socket.gaierror) as e:
             msg = f"Failed to open adapter {self.descriptor} ({e})"
-            raise BackendOpenError(msg) from None
+            raise AdapterOpenError(msg) from None
 
         # We only set the socket on success to prevent the worker thread
         # from sending events before the adapter is opened
         self._socket = s
-        #self._logger.info(f"IP Adapter {self.descriptor} opened")
+        # self._logger.info(f"IP Adapter {self.descriptor} opened")
 
     def close(self) -> None:
         if self._socket is not None:
@@ -143,33 +139,46 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
 
     def read(self, fragment_timestamp: float) -> Fragment[bytes]:
         if self._socket is None:
-            raise BackendDisconnectedError()
+            raise AdapterDisconnectedError()
         try:
             data = self._socket.recv(BUFFER_SIZE)
         except (ConnectionRefusedError, OSError) as e:
-            raise BackendReadError() from e
+            raise AdapterReadError() from e
 
         if data == b"":
-            raise BackendDisconnectedError()
+            raise AdapterDisconnectedError()
 
         return Fragment(data, fragment_timestamp)
 
     def write(self, data: bytes) -> None:
-        if self._socket is not None:
-            if self._socket.send(data) != len(data):
-                raise BackendWriteError(
-                    f"Adapter {self.descriptor} couldn't write"
-                    " all of the data to the socket"
-                )
-
-    @property
-    def default_stop_conditions(self) -> list[StopCondition]:
-        return [Continuation(continuation=0.2)]
+        if self._socket is None:
+            raise AdapterWriteError(f"Adapter {self.descriptor} is not connected")
+        try:
+            # sendall, not send : a single send is free to write only part of the data
+            self._socket.sendall(data)
+        except OSError as e:
+            raise AdapterWriteError(
+                f"Adapter {self.descriptor} couldn't write to the socket ({e})"
+            ) from e
 
     @property
     def default_timeout(self) -> float | None:
         """Default timeout"""
         return 1.0
+
+    # @property
+    # def default_stop_conditions(self) -> list[StopCondition]:
+    #     return
+
+
+def default_stop_conditions() -> list[StopCondition]:
+    """
+    Stop-conditions of a new IP adapter
+
+    A function, not a module level list : a stop-condition holds the state of the frame
+    being assembled, so two adapters must never share the same instances
+    """
+    return [Continuation(continuation=0.2)]
 
 
 class IP(Adapter[IPDescriptor, bytes]):
@@ -207,8 +216,8 @@ class IP(Adapter[IPDescriptor, bytes]):
         )
         super().__init__(
             backend,
-            BytesFramer(backend.default_stop_conditions),
-            timeout=timeout,
+            BytesFramer(default_stop_conditions()),
+            timeout,
             stop_conditions=stop_conditions,
             alias=alias,
             auto_open=auto_open,
@@ -241,11 +250,11 @@ class AsyncIP(AsyncAdapter[IPDescriptor, bytes]):
         auto_open: bool = True,
     ) -> None:
         backend = IPBackend(
-            IPDescriptor(address, IPDescriptor.Transport(transport.upper()), port)
+            IPDescriptor(address, IPDescriptor.Transport(transport.upper()), port),
         )
         super().__init__(
             backend,
-            BytesFramer(backend.default_stop_conditions),
+            BytesFramer(default_stop_conditions()),
             timeout=timeout,
             stop_conditions=stop_conditions,
             alias=alias,

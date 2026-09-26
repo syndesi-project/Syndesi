@@ -28,7 +28,9 @@ class SubDriver:
     A subdriver can be a single channel of an instrument, it doesn't need open/close/test but
     it is still a driver
     """
-    CHANGELOG : ClassVar[dict[str, str]] = {}
+
+    CHANGELOG: ClassVar[dict[str, str]] = {}
+
 
 class Driver(SubDriver):
     """

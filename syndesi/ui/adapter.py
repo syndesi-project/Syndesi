@@ -50,12 +50,15 @@ StopConditionT = TypeVar("StopConditionT", bound=StopCondition)
 
 loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
+
 class StopConditionBlock(Generic[StopConditionT], Block):
     """Single stop-condition block (tab)"""
-    _stop_condition : StopConditionT
-    items : list[int | str] = []
-    tab : int | str = -1
-    def __init__(self, stop_condition : StopConditionT) -> None:
+
+    _stop_condition: StopConditionT
+    items: list[int | str] = []
+    tab: int | str = -1
+
+    def __init__(self, stop_condition: StopConditionT) -> None:
         super().__init__()
         self._stop_condition = stop_condition
 
@@ -65,31 +68,33 @@ class StopConditionBlock(Generic[StopConditionT], Block):
             dpg.delete_item(item)
 
     @abstractmethod
-    def build(self, parent: int | str) -> None:
-        ...
+    def build(self, parent: int | str) -> None: ...
+
 
 class TerminationBlock(StopConditionBlock[Termination]):
     """Termination stop-condition block"""
+
     def __init__(self, stop_condition: Termination) -> None:
         super().__init__(stop_condition)
-        self._termination_input : int | str = -1
-        self._error_text : int | str = -1
-    def build(self, parent : int | str) -> None:
+        self._termination_input: int | str = -1
+        self._error_text: int | str = -1
+
+    def build(self, parent: int | str) -> None:
         with dpg.tab(label=str(self._stop_condition), parent=parent) as self.tab:
             with dpg.group(horizontal=True):
                 self._termination_input = dpg.add_input_text(
                     label="Termination",
                     width=100,
                     callback=self._termination_callback,
-                    default_value=repr(self._stop_condition.sequence)[2:-1]
+                    default_value=repr(self._stop_condition.sequence)[2:-1],
                 )
                 bytes_help()
 
-            self._error_text = dpg.add_text("", color=(255,0,0), show=False)
+            self._error_text = dpg.add_text("", color=(255, 0, 0), show=False)
 
         self.items += [self._termination_input, self._error_text, self.tab]
 
-    def _termination_callback(self, _ : int | str, app_data : str) -> None:
+    def _termination_callback(self, _: int | str, app_data: str) -> None:
         try:
             sequence_bytes = ast.literal_eval(f"b'{app_data}'")
         except ValueError:
@@ -99,39 +104,48 @@ class TerminationBlock(StopConditionBlock[Termination]):
             dpg.hide_item(self._error_text)
             self._stop_condition = Termination(sequence_bytes)
 
+
 class LengthBlock(StopConditionBlock[Length]):
     """
     Length stop-condition block
     """
+
     DEFAULT_LENGTH = 10
-    def __init__(self, stop_condition : Length) -> None:
+
+    def __init__(self, stop_condition: Length) -> None:
         length = self.DEFAULT_LENGTH if stop_condition is None else stop_condition.n
         self._stop_condition = Length(length)
-        self._length_input : int | str = -1
+        self._length_input: int | str = -1
 
-    def build(self, parent : int | str) -> None:
+    def build(self, parent: int | str) -> None:
         with dpg.tab(label=str(self._stop_condition), parent=parent) as self.tab:
             self._length_input = dpg.add_input_int(
                 label="Length",
                 width=100,
                 callback=self._length_callback,
-                default_value=self._stop_condition.n
+                default_value=self._stop_condition.n,
             )
 
         self.items += [self._length_input, self.tab]
 
-    def _length_callback(self, _ : int | str, app_data : int) -> None:
+    def _length_callback(self, _: int | str, app_data: int) -> None:
         self._stop_condition = Length(app_data)
+
 
 class ContinuationBlock(StopConditionBlock[Continuation]):
     """Continuation stop-condition block"""
-    DEFAULT_CONTINUATION = 0.2
-    def __init__(self, stop_condition : Continuation) -> None:
-        continuation = self.DEFAULT_CONTINUATION if stop_condition is None \
-            else stop_condition.continuation
-        self._stop_condition  = Continuation(continuation)
 
-    def build(self, parent : int | str) -> None:
+    DEFAULT_CONTINUATION = 0.2
+
+    def __init__(self, stop_condition: Continuation) -> None:
+        continuation = (
+            self.DEFAULT_CONTINUATION
+            if stop_condition is None
+            else stop_condition.continuation
+        )
+        self._stop_condition = Continuation(continuation)
+
+    def build(self, parent: int | str) -> None:
         with dpg.tab(label=str(self._stop_condition), parent=parent) as self.tab:
             self._continuation_input = dpg.add_input_float(
                 label="Continuation time [s]",
@@ -139,23 +153,26 @@ class ContinuationBlock(StopConditionBlock[Continuation]):
                 min_clamped=True,
                 width=100,
                 default_value=self._stop_condition.continuation,
-                callback=self._continuation_callback
+                callback=self._continuation_callback,
             )
 
         self.items += [self._continuation_input, self.tab]
 
-    def _continuation_callback(self, _ : int | str, app_data : float) -> None:
+    def _continuation_callback(self, _: int | str, app_data: float) -> None:
         self._stop_condition = Continuation(app_data)
+
 
 class TotalBlock(StopConditionBlock[Total]):
     """Total stop-condition block"""
+
     DEFAULT_TOTAL = 0.2
-    def __init__(self, stop_condition : Total) -> None:
+
+    def __init__(self, stop_condition: Total) -> None:
         total = self.DEFAULT_TOTAL if stop_condition is None else stop_condition.total
         self._stop_condition = Total(total)
-        self._total_input : int | str = -1
+        self._total_input: int | str = -1
 
-    def build(self, parent : int | str) -> None:
+    def build(self, parent: int | str) -> None:
         with dpg.tab(label=str(self._stop_condition), parent=parent) as self.tab:
             self._total_input = dpg.add_input_float(
                 label="Total time [s]",
@@ -163,83 +180,90 @@ class TotalBlock(StopConditionBlock[Total]):
                 width=100,
                 min_clamped=True,
                 default_value=self._stop_condition.total,
-                callback=self._total_callback
+                callback=self._total_callback,
             )
         self.items += [self._total_input, self.tab]
 
-    def _total_callback(self, _ : int | str, app_data : float) -> None:
+    def _total_callback(self, _: int | str, app_data: float) -> None:
         self._stop_condition = Total(app_data)
+
 
 class FragmentBlock(StopConditionBlock[FragmentSC]):
     """Fragment stop-condition block"""
-    def build(self, parent : int | str) -> None:
+
+    def build(self, parent: int | str) -> None:
         with dpg.tab(label=str(self._stop_condition), parent=parent) as self.tab:
             ...
         self.items += [self.tab]
 
+
 AdapterT = TypeVar("AdapterT", bound=AsyncBytesAdapter)
+
 
 class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
     """BytesAdapter UI block"""
-    _adapter : AdapterT
+
+    _adapter: AdapterT
     title = ""
-    #on_close : Callable[[], None] | None = None
-    #on_open : Callable[[], None] | None = None
+    # on_close : Callable[[], None] | None = None
+    # on_open : Callable[[], None] | None = None
     DEFAULT_TIMEOUT = 0
 
     STOP_CONDITIONS = [x for x in StopConditionType if x != StopConditionType.TIMEOUT]
 
-    def __init__(self,
-                 title : str,
-                 adapter : AdapterT,
-                 write_callback : Callable[[str], None],
-                 read_callback : Callable[[str], Awaitable[None]],
-                 read_fail_callback : Callable[[str], Awaitable[None]],
-                 event_callback : Callable[[AdapterEvent], None],
-                 is_top_level : bool
-                ) -> None:
-        super().__init__(is_top_level, write_callback, read_callback, read_fail_callback)
+    def __init__(
+        self,
+        title: str,
+        adapter: AdapterT,
+        write_callback: Callable[[str], None],
+        read_callback: Callable[[str], Awaitable[None]],
+        read_fail_callback: Callable[[str], Awaitable[None]],
+        event_callback: Callable[[AdapterEvent], None],
+        is_top_level: bool,
+    ) -> None:
+        super().__init__(
+            is_top_level, write_callback, read_callback, read_fail_callback
+        )
         self._adapter = adapter
         self._adapter.register_event_callback(self._event_callback)
         self._ui_adapter_event_callback = event_callback
 
-        self._testing_window : StringTestingGroup | None = None
+        self._testing_window: StringTestingGroup | None = None
 
-        self._status_text : int | str = 0
-        self._stop_conditions_cache : list[StopConditionBlock[Any]] = []
-        self._tab_bar : int | str = -1
-        self._combo : int | str = -1
-        self._timeout_input : int | str = -1
+        self._status_text: int | str = 0
+        self._stop_conditions_cache: list[StopConditionBlock[Any]] = []
+        self._tab_bar: int | str = -1
+        self._combo: int | str = -1
+        self._timeout_input: int | str = -1
         self._title = title
-        self._read_output : int | str = -1
+        self._read_output: int | str = -1
         self._read_task_running = False
-        self._header : int | str = -1
-        self._event_window : int | str = -1
-        self._events : list[int | str] = []
+        self._header: int | str = -1
+        self._event_window: int | str = -1
+        self._events: list[int | str] = []
 
-        self._add_tab : int | str = -1
-        self._right_clicked_tab : StopConditionBlock[Any] | None = None
-        self._buffer_items : dict[int, int | str] = {}
-        self._edit_stop_condition_popup : int | str = -1
-        self._add_stop_condition_popup : int | str = -1
-        self._show_fragments_checkbox : int | str = -1
-        self._buffer_window : int | str = -1
-        self._write_input : dict[int, int | str] = {}
-        self._write_group : dict[int, int | str] = {}
+        self._add_tab: int | str = -1
+        self._right_clicked_tab: StopConditionBlock[Any] | None = None
+        self._buffer_items: dict[int, int | str] = {}
+        self._edit_stop_condition_popup: int | str = -1
+        self._add_stop_condition_popup: int | str = -1
+        self._show_fragments_checkbox: int | str = -1
+        self._buffer_window: int | str = -1
+        self._write_input: dict[int, int | str] = {}
+        self._write_group: dict[int, int | str] = {}
 
     def reset(self) -> None:
         self._clear_events()
         self.sync_component_to_block()
 
-    def _event_callback_safe(self, event : AdapterEvent) -> None:
+    def _event_callback_safe(self, event: AdapterEvent) -> None:
         self._ui_adapter_event_callback(event)
         if isinstance(event, AdapterBufferEvent):
             if len(event.added_frame_ids) > 0:
                 for frame in self._adapter.frame_buffer:
                     if frame.id in event.added_frame_ids:
                         self._buffer_items[frame.id] = dpg.add_text(
-                            str(frame.data),
-                            parent=self._buffer_window
+                            str(frame.data), parent=self._buffer_window
                         )
 
             for removed_frame_id in event.removed_frame_ids:
@@ -247,30 +271,32 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
                 if tag is not None:
                     dpg.delete_item(tag)
 
-        elif isinstance(event, (AdapterStopConditionsUpdatedEvent, AdapterTimeoutUpdatedEvent)):
+        elif isinstance(
+            event, (AdapterStopConditionsUpdatedEvent, AdapterTimeoutUpdatedEvent)
+        ):
             self.sync_component_to_block()
 
-
-    def _event_callback(self, event : AdapterEvent) -> None:
+    def _event_callback(self, event: AdapterEvent) -> None:
         loop.call_soon_threadsafe(self._event_callback_safe, event)
 
     @abstractmethod
-    def _build_descriptor(self, parent : int | str) -> None:
-        ...
+    def _build_descriptor(self, parent: int | str) -> None: ...
 
     def _clear_events(self) -> None:
         for tag in self._events:
             dpg.delete_item(tag)
         self._events.clear()
 
-    def build_configuration_tab(self, parent : int | str) -> None:
+    def build_configuration_tab(self, parent: int | str) -> None:
         with dpg.group(parent=parent, horizontal=False):
 
             self._build_descriptor(dpg.last_item())
             self._timeout_input = dpg.add_input_float(
                 label="Timeout",
-                default_value=0 if self._adapter.timeout is None else self._adapter.timeout,
-                width=100
+                default_value=(
+                    0 if self._adapter.timeout is None else self._adapter.timeout
+                ),
+                width=100,
             )
 
             dpg.add_separator()
@@ -280,8 +306,12 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
                 ...
 
             with dpg.handler_registry():
-                dpg.add_mouse_click_handler(dpg.mvMouseButton_Right, callback=self._right_click)
-                dpg.add_mouse_click_handler(dpg.mvMouseButton_Left, callback=self._left_click)
+                dpg.add_mouse_click_handler(
+                    dpg.mvMouseButton_Right, callback=self._right_click
+                )
+                dpg.add_mouse_click_handler(
+                    dpg.mvMouseButton_Left, callback=self._left_click
+                )
 
             self.sync_component_to_block()
 
@@ -290,8 +320,10 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             with dpg.child_window() as self._buffer_window:
                 ...
 
-    def build_testing_group(self, testing_window : int | str) -> int | str:
-        self._testing_window = StringTestingGroup(self._write_callback, self._read_callback)
+    def build_testing_group(self, testing_window: int | str) -> int | str:
+        self._testing_window = StringTestingGroup(
+            self._write_callback, self._read_callback
+        )
         return self._testing_window.build(testing_window)
 
     def _left_click(self) -> None:
@@ -316,13 +348,13 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
 
         self._add_tab = dpg.add_tab(label="+", parent=self._tab_bar)
 
-    async def _read_callback(self, scope : ReadScope) -> None:
+    async def _read_callback(self, scope: ReadScope) -> None:
         data = await self._adapter.read(scope=scope)
         if self._is_top_level:
             await self._ui_read_callback(str(data))
 
-    async def _write_callback(self, raw_data : str) -> None:
-        data : bytes = ast.literal_eval(f"b'{raw_data}'")
+    async def _write_callback(self, raw_data: str) -> None:
+        data: bytes = ast.literal_eval(f"b'{raw_data}'")
         await self._adapter.write(data)
         if self._is_top_level:
             self._ui_write_callback(str(data))
@@ -336,12 +368,9 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self.sync_block_to_component()
 
     def _add_default_stop_condition(
-            self,
-            _ : int | str,
-            __ : Any,
-            _type : StopConditionType
-        ) -> None:
-        stop_condition : StopCondition
+        self, _: int | str, __: Any, _type: StopConditionType
+    ) -> None:
+        stop_condition: StopCondition
         if _type == StopConditionType.CONTINUATION:
             stop_condition = Continuation(0.2)
         elif _type == StopConditionType.FRAGMENT:
@@ -359,9 +388,10 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
         self._build_tabs()
         dpg.set_value(self._tab_bar, block.tab)
 
-
-    def _add_stop_condition(self, stop_condition : StopCondition) -> StopConditionBlock[Any]:
-        block : StopConditionBlock[Any]
+    def _add_stop_condition(
+        self, stop_condition: StopCondition
+    ) -> StopConditionBlock[Any]:
+        block: StopConditionBlock[Any]
         if isinstance(stop_condition, Termination):
             block = TerminationBlock(stop_condition)
         elif isinstance(stop_condition, Length):
@@ -395,24 +425,36 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
     @abstractmethod
     def open(self) -> None: ...
 
+
 class IPBlock(BytesAdapterBlock[AsyncIP]):
     """IP adapter block"""
-    title = "IP Adapter"
-    def __init__(self,
-                 adapter : AsyncIP,
-                 write_callback : Callable[[str], None],
-                 read_callback : Callable[[str], Awaitable[None]],
-                 read_fail_callback : Callable[[str], Awaitable[None]],
-                 event_callback : Callable[[AdapterEvent], None],
-                 is_top_level : bool
-                ) -> None:
-        super().__init__("IP Adapter", adapter, write_callback, read_callback, read_fail_callback, event_callback, is_top_level)
-        self._address_input : int | str = -1
-        self._port_input : int | str = -1
-        self._port_details : int | str = -1
-        self._transport_input : int | str = -1
 
-    def _build_descriptor(self, parent : int | str) -> None:
+    title = "IP Adapter"
+
+    def __init__(
+        self,
+        adapter: AsyncIP,
+        write_callback: Callable[[str], None],
+        read_callback: Callable[[str], Awaitable[None]],
+        read_fail_callback: Callable[[str], Awaitable[None]],
+        event_callback: Callable[[AdapterEvent], None],
+        is_top_level: bool,
+    ) -> None:
+        super().__init__(
+            "IP Adapter",
+            adapter,
+            write_callback,
+            read_callback,
+            read_fail_callback,
+            event_callback,
+            is_top_level,
+        )
+        self._address_input: int | str = -1
+        self._port_input: int | str = -1
+        self._port_details: int | str = -1
+        self._transport_input: int | str = -1
+
+    def _build_descriptor(self, parent: int | str) -> None:
         dpg.add_text("Descriptor", color=(70, 142, 194), parent=parent)
         self._address_input = dpg.add_input_text(
             width=150,
@@ -420,14 +462,16 @@ class IPBlock(BytesAdapterBlock[AsyncIP]):
             default_value="",
         )
         with dpg.group(horizontal=True, parent=parent):
-            self._port_input = dpg.add_input_text(width=100, label="Port", default_value="0")
+            self._port_input = dpg.add_input_text(
+                width=100, label="Port", default_value="0"
+            )
             self._port_details = dpg.add_text("")
         self._transport_input = dpg.add_combo(
             parent=parent,
             label="Transport",
             items=[x.value for x in IPDescriptor.Transport],
             default_value=IPDescriptor.Transport.TCP.value,
-            width=100
+            width=100,
         )
 
     def open(self) -> None:
@@ -458,5 +502,3 @@ class IPBlock(BytesAdapterBlock[AsyncIP]):
         dpg.set_value(self._port_input, str(self._adapter.descriptor.port))
         dpg.set_value(self._transport_input, self._adapter.descriptor.transport.value)
         dpg.set_value(self._timeout_input, self._adapter.timeout)
-
-
