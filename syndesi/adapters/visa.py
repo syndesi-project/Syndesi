@@ -40,11 +40,9 @@ _MISSING_PYVISA = (
     "Missing optional dependency 'pyvisa'. Install with:\n  python -m pip install pyvisa"
 )
 
-
 def _require_pyvisa() -> None:
     if pyvisa is None:
         raise ImportError(_MISSING_PYVISA)
-
 
 @dataclass
 class VisaDescriptor(Descriptor):

@@ -42,13 +42,15 @@ from __future__ import annotations
 import struct
 from abc import abstractmethod
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, IntEnum, StrEnum
 from math import ceil
 from typing import Any, cast
 
+from syndesi.adapters.serialport import AsyncSerialPort, SerialPort
+
 from ..adapters.adapter import Adapter, AsyncAdapter
 from ..adapters.framer import AdapterReadFrame
-from ..adapters.ip import IP, AsyncIP, IPDescriptor
+from ..adapters.ip import IP, AsyncIP
 from ..adapters.stop_conditions import (
     Continuation,
     FragmentSC,
@@ -163,21 +165,18 @@ _UNIT_ID = 0
 _ASCII_TRAILER = b"\r\n"
 
 
-class ModbusType(Enum):
+class ModbusSerialType(StrEnum):
     """
-    Modbus type
+    Modbus type over serial
 
-    - TCP : Modbus over TCP
     - RTU : Modbus over serial
     - ASCII : Modbus using text based encoding
     """
-
     RTU = "RTU"
     ASCII = "ASCII"
-    TCP = "TCP"
 
 
-class FunctionCode(Enum):
+class FunctionCode(IntEnum):
     """
     Modbus function codes enum
     """
@@ -360,79 +359,11 @@ def modbus_lrc(_bytes: bytes) -> int:
     """
     return (-sum(_bytes)) & 0xFF
 
-
-def _rtu_frame(slave_address: int, sdu: bytes) -> bytes:
-    """Slave address, SDU, then the CRC low byte first"""
-    frame = struct.pack(ENDIAN + "B", slave_address) + sdu
-    return frame + struct.pack("<H", modbus_crc(frame))
-
-
-def _parse_rtu_frame(frame: bytes, slave_address: int | None) -> bytes:
-    """Check the CRC and the slave address, return the SDU"""
-    if len(frame) < 4:  # address + at least a function code + CRC
-        raise ProtocolReadError(f"Modbus RTU frame is too short : {frame!r}")
-
-    (received,) = struct.unpack("<H", frame[-2:])
-    expected = modbus_crc(frame[:-2])
-    if received != expected:
-        raise ProtocolReadError(
-            f"Modbus RTU CRC mismatch : got {received:04X}, expected {expected:04X}"
-        )
-
-    if slave_address is not None and frame[0] != slave_address:
-        raise ProtocolReadError(
-            f"Modbus RTU answer came from slave {frame[0]}, expected {slave_address}"
-        )
-
-    return frame[1:-2]
-
-
 def _ascii_frame(slave_address: int, sdu: bytes) -> bytes:
     """``:`` then the frame and its LRC as uppercase hex, then CRLF"""
     frame = struct.pack(ENDIAN + "B", slave_address) + sdu
     body = frame + struct.pack(ENDIAN + "B", modbus_lrc(frame))
     return _ASCII_HEADER + body.hex().upper().encode("ascii") + _ASCII_TRAILER
-
-
-def _parse_ascii_frame(frame: bytes, slave_address: int | None) -> bytes:
-    """Decode the hex, check the LRC and the slave address, return the SDU"""
-    if not frame.startswith(_ASCII_HEADER) or not frame.endswith(_ASCII_TRAILER):
-        raise ProtocolReadError(f"Malformed Modbus ASCII frame : {frame!r}")
-
-    hex_body = frame[len(_ASCII_HEADER) : -len(_ASCII_TRAILER)]
-    try:
-        body = bytes.fromhex(hex_body.decode("ascii"))
-    except (ValueError, UnicodeDecodeError) as e:
-        raise ProtocolReadError(f"Modbus ASCII frame isn't hex : {hex_body!r}") from e
-
-    if len(body) < 3:  # address + at least a function code + LRC
-        raise ProtocolReadError(f"Modbus ASCII frame is too short : {frame!r}")
-
-    received = body[-1]
-    expected = modbus_lrc(body[:-1])
-    if received != expected:
-        raise ProtocolReadError(
-            f"Modbus ASCII LRC mismatch : got {received:02X}, expected {expected:02X}"
-        )
-
-    if slave_address is not None and body[0] != slave_address:
-        raise ProtocolReadError(
-            f"Modbus ASCII answer came from slave {body[0]}, expected {slave_address}"
-        )
-
-    return body[1:-1]
-
-
-def rtu_silence(baudrate: int | None) -> float:
-    """
-    Silence that ends an RTU frame, in seconds
-
-    The spec asks for 3.5 character times below 19200 baud, and a fixed 1.75 ms above,
-    where a character is 11 bits (start, 8 data, parity, stop)
-    """
-    if baudrate is None or baudrate > 19200:
-        return 1.75e-3
-    return 3.5 * 11 / baudrate
 
 
 def _raise_if_error(sdu: bytes, exceptions: dict[int, str]) -> None:
@@ -480,24 +411,24 @@ class ModbusRequestSDU(ModbusSDU):
     def function_code(self) -> FunctionCode:
         """Return the function code of this modbus request"""
 
-    @classmethod
-    def expected_length(cls, pdu_length: int, modbus_type: ModbusType) -> int:
-        """
-        Return the length of the modbus SDU based on the length of the PDU and modbus type
+    # @classmethod
+    # def expected_length(cls, pdu_length: int, modbus_type: ModbusSerialType) -> int:
+    #     """
+    #     Return the length of the modbus SDU based on the length of the PDU and modbus type
 
-        Parameters
-        ----------
-        pdu_length : int
-        modbus_type : ModbusType
-        """
-        if modbus_type == ModbusType.TCP:
-            output = pdu_length + 8
-        else:
-            output = 1 + pdu_length + 2
-            if modbus_type == ModbusType.ASCII:
-                # Add header and trailer
-                output += len(_ASCII_HEADER) + len(_ASCII_TRAILER)
-        return output
+    #     Parameters
+    #     ----------
+    #     pdu_length : int
+    #     modbus_type : ModbusType
+    #     """
+    #     if modbus_type == ModbusSerialType.TCP:
+    #         output = pdu_length + 8
+    #     else:
+    #         output = 1 + pdu_length + 2
+    #         if modbus_type == ModbusSerialType.ASCII:
+    #             # Add header and trailer
+    #             output += len(_ASCII_HEADER) + len(_ASCII_TRAILER)
+    #     return output
 
     def parse_sdu(self, sdu: bytes) -> ModbusSDU:
         raise NotImplementedError()
@@ -1460,7 +1391,6 @@ class EncapsulatedInterfaceTransportSDU(ModbusRequestSDU):
         self._check_for_error(sdu)
         return self.Response(sdu[2:])
 
-
 MBAP_LENGTH = 6  # transaction id, protocol id, length : the fixed part of the header
 
 
@@ -1486,16 +1416,7 @@ class ModbusBackend(ProtocolBackend[bytes, ModbusSDU]):
         Silence that ends an RTU frame, in seconds. See rtu_silence
     """
 
-    def __init__(
-        self,
-        modbus_type: ModbusType,
-        slave_address: int | None = None,
-        silence: float = rtu_silence(None),
-    ) -> None:
-        super().__init__()
-        self._modbus_type = modbus_type
-        self._slave_address = slave_address
-        self._silence = silence
+    def __init__(self) -> None:
         self._transaction_id = 0
         self._last_sdu: ModbusSDU | None = None
         self._buffer = b""
@@ -1504,43 +1425,43 @@ class ModbusBackend(ProtocolBackend[bytes, ModbusSDU]):
     # │ Encoding │
     # └──────────┘
 
-    def encode(self, payload: ModbusSDU) -> list[bytes]:
-        if isinstance(payload, SerialLineOnlySDU) and self._modbus_type == ModbusType.TCP:
-            raise ProtocolError("This function cannot be used with Modbus TCP")
-
-        sdu = payload.make_sdu()
-
-        if self._modbus_type == ModbusType.TCP:
-            length = len(sdu) + 1  # unit_id is included
-            output = (
-                struct.pack(
-                    ENDIAN + "HHHB",
-                    self._transaction_id,
-                    _PROTOCO_ID,
-                    length,
-                    _UNIT_ID,
-                )
-                + sdu
-            )
-        elif self._modbus_type == ModbusType.ASCII:
-            output = _ascii_frame(self._slave_address or 0, sdu)
-        else:
-            output = _rtu_frame(self._slave_address or 0, sdu)
-
-        self._transaction_id = (self._transaction_id + 1) % 0x10000
-        # Kept for parse_sdu, the answer alone doesn't say how to read itself
-        self._last_sdu = payload
-        return [output]
+    @abstractmethod
+    def encode(self, payload: ModbusSDU) -> list[bytes]: ...
 
     # ┌───────────┐
     # │ Assembly  │
     # └───────────┘
 
+    @abstractmethod
+    def push(self, frame: AdapterReadFrame[bytes]) -> BackendOutput[bytes, ModbusSDU]: ...
+
+    @abstractmethod
+    def _parse(self, pdu: bytes) -> ModbusSDU: ...
+
+    @property
+    def in_progress(self) -> bool:
+        return len(self._buffer) > 0
+
+    def reset(self) -> None:
+        self._buffer = b""
+
+    @property
+    def default_timeout(self) -> TimeoutType:
+        return 1.0
+
+class ModbusTCPBackend(ModbusBackend):
+
+    @property
+    def stop_conditions(self) -> list[StopCondition]:
+        # The MBAP header carries the length, the backend cuts the frames itself
+        return [FragmentSC()]
+    
+    def _parse(self, pdu: bytes) -> ModbusSDU:
+        if self._last_sdu is None:
+            raise ProtocolReadError("Cannot read without a prior write")
+        return self._last_sdu.parse_sdu(pdu[7:])
+
     def push(self, frame: AdapterReadFrame[bytes]) -> BackendOutput[bytes, ModbusSDU]:
-        if self._modbus_type != ModbusType.TCP:
-            # RTU and ASCII are framed by the adapter (silence, trailer), one frame is
-            # one response
-            return BackendOutput(payloads=[self._parse(frame.data)])
 
         self._buffer += frame.data
         payloads: list[ModbusSDU] = []
@@ -1554,73 +1475,148 @@ class ModbusBackend(ProtocolBackend[bytes, ModbusSDU]):
             self._buffer = self._buffer[total:]
 
         return BackendOutput(payloads=payloads)
+    
+    def encode(self, payload: ModbusSDU) -> list[bytes]:
+        if isinstance(payload, SerialLineOnlySDU):
+            raise ProtocolError("This function cannot be used with Modbus TCP")
 
+        sdu = payload.make_sdu()
+
+        length = len(sdu) + 1  # unit_id is included
+        output = (
+            struct.pack(
+                ENDIAN + "HHHB",
+                self._transaction_id,
+                _PROTOCO_ID,
+                length,
+                _UNIT_ID,
+            )
+            + sdu
+        )
+
+        self._transaction_id = (self._transaction_id + 1) % 0x10000
+        # Kept for parse_sdu, the answer alone doesn't say how to read itself
+        self._last_sdu = payload
+        return [output]
+
+
+class ModbusSerialBackend(ModbusBackend):
+
+    def __init__(
+        self,
+        slave_address: int
+    ) -> None:
+        super().__init__()
+        self._slave_address = slave_address
+
+    def push(self, frame: AdapterReadFrame[bytes]) -> BackendOutput[bytes, ModbusSDU]:
+        # RTU and ASCII are framed by the adapter (silence, trailer), one frame is
+        # one response
+        return BackendOutput(payloads=[self._parse(frame.data)])
+
+class ModbusASCIIBackend(ModbusSerialBackend):
+
+    @property
+    def stop_conditions(self) -> list[StopCondition]:
+        # Every ASCII frame ends with CRLF
+        return [Termination(_ASCII_TRAILER)]
+    
     def _parse(self, pdu: bytes) -> ModbusSDU:
-        if self._modbus_type == ModbusType.TCP:
-            data = pdu[7:]
-        elif self._modbus_type == ModbusType.ASCII:
-            data = _parse_ascii_frame(pdu, self._slave_address)
-        else:
-            data = _parse_rtu_frame(pdu, self._slave_address)
-
+        """Decode the hex, check the LRC and the slave address, return the SDU"""
         if self._last_sdu is None:
             raise ProtocolReadError("Cannot read without a prior write")
+        if not pdu.startswith(_ASCII_HEADER) or not pdu.endswith(_ASCII_TRAILER):
+            raise ProtocolReadError(f"Malformed Modbus ASCII frame : {pdu!r}")
+
+        hex_body = pdu[len(_ASCII_HEADER) : -len(_ASCII_TRAILER)]
+        try:
+            body = bytes.fromhex(hex_body.decode("ascii"))
+        except (ValueError, UnicodeDecodeError) as e:
+            raise ProtocolReadError(f"Modbus ASCII frame isn't hex : {hex_body!r}") from e
+
+        if len(body) < 3:  # address + at least a function code + LRC
+            raise ProtocolReadError(f"Modbus ASCII frame is too short : {pdu!r}")
+
+        received = body[-1]
+        expected = modbus_lrc(body[:-1])
+        if received != expected:
+            raise ProtocolReadError(
+                f"Modbus ASCII LRC mismatch : got {received:02X}, expected {expected:02X}"
+            )
+
+        if self._slave_address is not None and body[0] != self._slave_address:
+            raise ProtocolReadError(
+                f"Modbus ASCII answer came from slave {body[0]}, expected {self._slave_address}"
+            )
+
+        data = body[1:-1]
 
         return self._last_sdu.parse_sdu(data)
 
-    @property
-    def in_progress(self) -> bool:
-        return len(self._buffer) > 0
+    def encode(self, payload: ModbusSDU) -> list[bytes]:
+        sdu = payload.make_sdu()
 
-    def reset(self) -> None:
-        self._buffer = b""
+        output = _ascii_frame(self._slave_address or 0, sdu)
+
+        self._transaction_id = (self._transaction_id + 1) % 0x10000
+        # Kept for parse_sdu, the answer alone doesn't say how to read itself
+        self._last_sdu = payload
+        return [output]
+
+class ModbusRTUBackend(ModbusSerialBackend):
+
+    def __init__(
+        self,
+        slave_address: int,
+        baudrate: int# = rtu_silence(None),
+    ) -> None:
+        super().__init__(slave_address)
+
+        # Silence that ends an RTU frame, in seconds
+        # 3.5 character (11 bits) times below 19200, fixed 1.75ms above
+        self._silence = 1.75e-3 if baudrate > 19200 else (3.5 * 11 / baudrate)
 
     @property
-    def stop_conditions(self) -> list[StopCondition] | None:
-        if self._modbus_type == ModbusType.TCP:
-            # The MBAP header carries the length, the backend cuts the frames itself
-            return [FragmentSC()]
-        if self._modbus_type == ModbusType.ASCII:
-            # Every ASCII frame ends with CRLF
-            return [Termination(_ASCII_TRAILER)]
+    def stop_conditions(self) -> list[StopCondition]:
         # An RTU frame ends on a silence on the line
         return [Continuation(self._silence)]
+    
+    def _parse(self, pdu: bytes) -> ModbusSDU:
+        """Check the CRC and the slave address, return the SDU"""
+        if self._last_sdu is None:
+            raise ProtocolReadError("Cannot read without a prior write")
+        #data = _parse_rtu_frame(pdu, self._slave_address)
 
-    @property
-    def default_timeout(self) -> TimeoutType:
-        return 1.0
+        if len(pdu) < 4:  # address + at least a function code + CRC
+            raise ProtocolReadError(f"Modbus RTU frame is too short : {pdu!r}")
+
+        (received,) = struct.unpack("<H", pdu[-2:])
+        expected = modbus_crc(pdu[:-2])
+        if received != expected:
+            raise ProtocolReadError(
+                f"Modbus RTU CRC mismatch : got {received:04X}, expected {expected:04X}"
+            )
+
+        if self._slave_address is not None and pdu[0] != self._slave_address:
+            raise ProtocolReadError(
+                f"Modbus RTU answer came from slave {pdu[0]}, expected {self._slave_address}"
+            )
+
+        data = pdu[1:-2]
 
 
-def _backend(
-    adapter: Adapter[Any, bytes] | AsyncAdapter[Any, bytes],
-    serial_type: str,
-    slave_address: int | None,
-) -> ModbusBackend:
-    """
-    Build the backend that goes with this adapter
+        return self._last_sdu.parse_sdu(data)
+    
+    def encode(self, payload: ModbusSDU) -> list[bytes]:
+        sdu = payload.make_sdu()
 
-    The flavour comes from the adapter, not from a parameter : an IP adapter is Modbus
-    TCP, a serial one is RTU or ASCII. The RTU silence needs the baudrate, which only
-    the serial descriptor knows
-    """
-    descriptor = adapter.descriptor
+        frame = struct.pack(ENDIAN + "B", self._slave_address) + sdu
+        output = frame + struct.pack("<H", modbus_crc(frame))
 
-    if isinstance(descriptor, IPDescriptor):
-        if serial_type not in (ModbusType.RTU.value, ModbusType.TCP.value):
-            raise ValueError(f"Modbus {serial_type} cannot run over IP")
-        return ModbusBackend(ModbusType.TCP)
-
-    modbus_type = ModbusType(serial_type)  # raises on an unknown flavour
-    if modbus_type == ModbusType.TCP:
-        raise ValueError("Modbus TCP needs an IP adapter")
-    if slave_address is None:
-        raise ValueError("slave_address must be set for Modbus RTU and ASCII")
-    if not 1 <= slave_address <= 247:
-        raise ValueError(f"Invalid slave address : {slave_address}, expected 1 to 247")
-
-    baudrate = cast("int | None", getattr(descriptor, "baudrate", None))
-    return ModbusBackend(modbus_type, slave_address, rtu_silence(baudrate))
-
+        self._transaction_id = (self._transaction_id + 1) % 0x10000
+        # Kept for parse_sdu, the answer alone doesn't say how to read itself
+        self._last_sdu = payload
+        return [output]
 
 class ModbusCommon:
     """Value conversions shared by Modbus and AsyncModbus"""
@@ -1755,17 +1751,34 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
     def __init__(
         self,
         adapter: Adapter[Any, bytes],
+        *,
         timeout: TimeoutParameterType = ...,
-        _type: str = ModbusType.RTU.value,
+        serial_type: str = ModbusSerialType.RTU.value,
         slave_address: int | None = None,
         alias: str = "",
     ) -> None:
+        backend : ModbusBackend
         if isinstance(adapter, IP):
             adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
+            backend = ModbusTCPBackend()
+        elif isinstance(adapter, SerialPort):
+            baudrate = adapter.descriptor.baudrate
+            if slave_address is None:
+                raise ValueError("slave_address must be set for Modbus RTU and ASCII")
+            if not 1 <= slave_address <= 247:
+                raise ValueError(f"Invalid slave address : {slave_address}, expected 1 to 247")
+            if baudrate is None:
+                raise ValueError("Baudrate hasn't been defined")
+            if serial_type == ModbusSerialType.ASCII:
+                backend = ModbusASCIIBackend(slave_address)
+            else:
+                backend = ModbusRTUBackend(slave_address, baudrate)
+        else:
+            raise ValueError(f"Invalid adapter : {adapter}")
 
         super().__init__(
             adapter,
-            _backend(adapter, _type, slave_address),
+            backend,
             timeout,
             alias,
         )
@@ -2615,17 +2628,27 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
     def __init__(
         self,
         adapter: AsyncAdapter[Any, bytes],
-        timeout: TimeoutParameterType = ...,
-        _type: str = ModbusType.RTU.value,
+        *,
         slave_address: int | None = None,
+        timeout: TimeoutParameterType = ...,
+        modbus_type: str = ModbusSerialType.RTU.value,
         alias: str = "",
     ) -> None:
+        backend : ModbusBackend
         if isinstance(adapter, AsyncIP):
             adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
+            backend = ModbusTCPBackend()
+        elif isinstance(adapter, AsyncSerialPort):
+            if modbus_type == ModbusSerialType.ASCII:
+                backend = ModbusASCIIBackend(slave_address)
+            else:
+                if adapter.descriptor.baudrate is None:
+                    raise ValueError("Cannot instanciate Modbus adpater without a set baudrate value")
+                backend = ModbusRTUBackend(slave_address, adapter.descriptor.baudrate)
 
         super().__init__(
             adapter,
-            _backend(adapter, _type, slave_address),
+            backend,
             timeout,
             alias,
         )

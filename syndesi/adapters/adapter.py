@@ -211,7 +211,7 @@ class Adapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT]):
             Override the stop-conditions for this read only
         """
         with self._lock:
-            return self._engine.read(
+            return self._engine.read_detailed(
                 timeout, ReadScope(scope), stop_conditions
             ).result()
 
@@ -233,7 +233,7 @@ class Adapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT]):
         """Write payload and read the frame received after it"""
         with self._lock:
             self._engine.write(payload).result()
-            return self._engine.read(
+            return self._engine.read_detailed(
                 timeout, ReadScope.LAST_WRITE, stop_conditions
             ).result()
 
@@ -376,7 +376,7 @@ class AsyncAdapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT
         """
         async with self._lock:
             return await asyncio.wrap_future(
-                self._engine.read(timeout, ReadScope(scope), stop_conditions)
+                self._engine.read_detailed(timeout, ReadScope(scope), stop_conditions)
             )
 
     async def read(
@@ -398,7 +398,7 @@ class AsyncAdapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT
         async with self._lock:
             await asyncio.wrap_future(self._engine.write(payload))
             return await asyncio.wrap_future(
-                self._engine.read(timeout, ReadScope.LAST_WRITE, stop_conditions)
+                self._engine.read_detailed(timeout, ReadScope.LAST_WRITE, stop_conditions)
             )
 
     async def query(

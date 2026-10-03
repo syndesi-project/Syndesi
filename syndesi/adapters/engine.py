@@ -314,7 +314,7 @@ class AdapterBackend(Generic[DescriptorT, DataT], ABC):
     # def default_stop_conditions(self) -> list[StopCondition]: ...
 
 
-# pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-public-methods, too-many-instance-attributes
 class AdapterEngine(Generic[DescriptorT, DataT]):
     """
     Drives one backend on the reactor thread and exposes it as futures
@@ -376,10 +376,6 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         self._reactor = default_reactor()  # if reactor is None else reactor
         self._reactor.attach(self)
 
-
-    # def __str__(self) -> str:
-    #     return f"Engine({self._backend.descriptor})"
-
     # ┌────────────────────────────────┐
     # │ User interface, returns futures │
     # └────────────────────────────────┘
@@ -389,7 +385,6 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         """Backend descriptor"""
         return self._backend.descriptor
 
-    # @property
     @property
     def is_open(self) -> bool:
         """True if the backend is open"""
@@ -420,7 +415,7 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         output = self._submit(WriteCommand(WriteFrame(data=data)))
         return output
 
-    def read(
+    def read_detailed(
         self,
         timeout: TimeoutParameterType = ...,
         scope: ReadScope = ReadScope.BUFFERED,
