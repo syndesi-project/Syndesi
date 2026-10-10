@@ -205,7 +205,7 @@ class FrameSink(Protocol[DataT]):
 class SetFrameSinkCommand(Generic[DataT], Command[None]):
     """Attach or detach the consumer of the frame stream"""
 
-    def __init__(self, sink: "FrameSink[DataT] | None") -> None:
+    def __init__(self, sink: FrameSink[DataT] | None) -> None:
         super().__init__()
         self.sink = sink
 

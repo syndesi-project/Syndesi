@@ -79,11 +79,10 @@ MAX_DISCRETE_INPUTS = (
 ExceptionCodesType = dict[int, str]
 
 
-class Endian(StrEnum):
+class Endian(Enum):
     """
     Endian enum
     """
-
     BIG = "big"
     LITTLE = "little"
 
@@ -104,23 +103,26 @@ def _dm_to_pdu_address(dm_address: int) -> int:
     ----------
     dm_address : int
     """
+    if dm_address == 0:
+        raise ValueError("Address 0 is not valid in Modbus data model")
+
     return dm_address - 1
 
 
-# def _pdu_to_dm_address(pdu_address: int) -> int:
-#     """
-#     Convert Modbus PDU address to Modbus data model address
+def _pdu_to_dm_address(pdu_address: int) -> int:
+    """
+    Convert Modbus PDU address to Modbus data model address
 
-#     - Modbus data model starts at address 1
-#     - Modbus PDU addresses start at 0
+    - Modbus data model starts at address 1
+    - Modbus PDU addresses start at 0
 
-#     Modbus data model is the one specified in the devices datasheets
+    Modbus data model is the one specified in the devices datasheets
 
-#     Parameters
-#     ----------
-#     pdu_address : int
-#     """
-#     return pdu_address + 1
+    Parameters
+    ----------
+    pdu_address : int
+    """
+    return pdu_address + 1
 
 
 def _check_discrete_input_output_count(discrete_inputs: int) -> None:
@@ -170,7 +172,6 @@ class ModbusSerialType(StrEnum):
     - RTU : Modbus over serial
     - ASCII : Modbus using text based encoding
     """
-
     RTU = "RTU"
     ASCII = "ASCII"
 
@@ -282,6 +283,50 @@ def bytes_to_bool_list(_bytes: bytes, n: int) -> list[bool]:
     return [c == "1" for c in "".join([f"{x:08b}"[::-1] for x in _bytes])][:n]
 
 
+class TypeCast(Enum):
+    """
+    Type of cast when storing values in modbus registers
+    """
+
+    INT = "int"
+    UINT = "uint"
+    FLOAT = "float"
+    STRING = "str"
+    ARRAY = "array"
+
+    def is_number(self) -> bool:
+        """
+        Return True if the type is a number
+        """
+        return self in [TypeCast.INT, TypeCast.UINT, TypeCast.FLOAT]
+
+
+def struct_format(_type: TypeCast, length: int) -> str:
+    """
+    Convert typecast+length to python struct character
+    """
+    struct_characters = {
+        (TypeCast.INT, 1): "b",
+        (TypeCast.INT, 2): "h",
+        (TypeCast.INT, 4): "i",
+        (TypeCast.INT, 8): "q",
+        (TypeCast.UINT, 1): "B",
+        (TypeCast.UINT, 2): "H",
+        (TypeCast.UINT, 4): "I",  # or 'L'
+        (TypeCast.UINT, 8): "Q",
+        (TypeCast.FLOAT, 4): "f",
+        (TypeCast.FLOAT, 8): "d",
+    }
+
+    if _type in [TypeCast.STRING, TypeCast.ARRAY]:
+        return f"{length}s"
+    try:
+        return struct_characters[_type, length]
+    except KeyError:
+        pass
+    raise ValueError(f"Invalid type cast / length combination : {_type} / {length}")
+
+
 class ModbusError(Exception):
     """
     Generic modbus exception
@@ -313,7 +358,6 @@ def modbus_lrc(_bytes: bytes) -> int:
     Two's complement of the sum of every byte, truncated to 8 bits
     """
     return (-sum(_bytes)) & 0xFF
-
 
 def _ascii_frame(slave_address: int, sdu: bytes) -> bytes:
     """``:`` then the frame and its LRC as uppercase hex, then CRLF"""
@@ -366,6 +410,25 @@ class ModbusRequestSDU(ModbusSDU):
     @abstractmethod
     def function_code(self) -> FunctionCode:
         """Return the function code of this modbus request"""
+
+    # @classmethod
+    # def expected_length(cls, pdu_length: int, modbus_type: ModbusSerialType) -> int:
+    #     """
+    #     Return the length of the modbus SDU based on the length of the PDU and modbus type
+
+    #     Parameters
+    #     ----------
+    #     pdu_length : int
+    #     modbus_type : ModbusType
+    #     """
+    #     if modbus_type == ModbusSerialType.TCP:
+    #         output = pdu_length + 8
+    #     else:
+    #         output = 1 + pdu_length + 2
+    #         if modbus_type == ModbusSerialType.ASCII:
+    #             # Add header and trailer
+    #             output += len(_ASCII_HEADER) + len(_ASCII_TRAILER)
+    #     return output
 
     def parse_sdu(self, sdu: bytes) -> ModbusSDU:
         raise NotImplementedError()
@@ -484,7 +547,7 @@ class ReadHoldingRegisters(ModbusRequestSDU):
     """Read holding registers request."""
 
     start_address: int
-    n_registers: int
+    number_of_registers: int
 
     @dataclass
     class Response(ModbusSDU):
@@ -504,27 +567,33 @@ class ReadHoldingRegisters(ModbusRequestSDU):
         }
 
     def __post_init__(self) -> None:
-        _check_address(self.start_address, MAX_ADDRESS - self.n_registers + 1)
+        _check_address(self.start_address, MAX_ADDRESS - self.number_of_registers + 1)
 
         max_number_of_registers = (AVAILABLE_PDU_SIZE - 2) // 2
 
-        if not 1 <= self.n_registers <= max_number_of_registers:
-            raise ValueError(f"Invalid number of registers : {self.n_registers}")
+        if not 1 <= self.number_of_registers <= max_number_of_registers:
+            raise ValueError(
+                f"Invalid number of registers : {self.number_of_registers}"
+            )
 
     def make_sdu(self) -> bytes:
         sdu = struct.pack(
             ENDIAN + "BHH",
             self.function_code().value,
             _dm_to_pdu_address(self.start_address),
-            self.n_registers,
+            self.number_of_registers,
         )
         return sdu
 
     def parse_sdu(self, sdu: bytes) -> ModbusSDU:
         self._check_for_error(sdu)
 
-        _, _, registers_data = struct.unpack(ENDIAN + f"BB{self.n_registers * 2}s", sdu)
-        registers = list(struct.unpack(ENDIAN + "H" * self.n_registers, registers_data))
+        _, _, registers_data = struct.unpack(
+            ENDIAN + f"BB{self.number_of_registers * 2}s", sdu
+        )
+        registers = list(
+            struct.unpack(ENDIAN + "H" * self.number_of_registers, registers_data)
+        )
 
         return self.Response(registers)
 
@@ -577,7 +646,7 @@ class ReadInputRegistersSDU(ModbusRequestSDU):
     """Read input registers request."""
 
     start_address: int
-    n_registers: int
+    number_of_registers: int
 
     @dataclass
     class Response(ModbusSDU):
@@ -597,27 +666,33 @@ class ReadInputRegistersSDU(ModbusRequestSDU):
         }
 
     def __post_init__(self) -> None:
-        _check_address(self.start_address, MAX_ADDRESS - self.n_registers + 1)
+        _check_address(self.start_address, MAX_ADDRESS - self.number_of_registers + 1)
 
         max_number_of_registers = (AVAILABLE_PDU_SIZE - 2) // 2
 
-        if not 1 <= self.n_registers <= max_number_of_registers:
-            raise ValueError(f"Invalid number of registers : {self.n_registers}")
+        if not 1 <= self.number_of_registers <= max_number_of_registers:
+            raise ValueError(
+                f"Invalid number of registers : {self.number_of_registers}"
+            )
 
     def make_sdu(self) -> bytes:
         sdu = struct.pack(
             ENDIAN + "BHH",
             self.function_code().value,
             _dm_to_pdu_address(self.start_address),
-            self.n_registers,
+            self.number_of_registers,
         )
         return sdu
 
     def parse_sdu(self, sdu: bytes) -> ModbusSDU:
         self._check_for_error(sdu)
 
-        _, _, registers_data = struct.unpack(ENDIAN + f"BB{self.n_registers * 2}s", sdu)
-        registers = list(struct.unpack(ENDIAN + "H" * self.n_registers, registers_data))
+        _, _, registers_data = struct.unpack(
+            ENDIAN + f"BB{self.number_of_registers * 2}s", sdu
+        )
+        registers = list(
+            struct.unpack(ENDIAN + "H" * self.number_of_registers, registers_data)
+        )
 
         return self.Response(registers)
 
@@ -1316,7 +1391,6 @@ class EncapsulatedInterfaceTransportSDU(ModbusRequestSDU):
         self._check_for_error(sdu)
         return self.Response(sdu[2:])
 
-
 MBAP_LENGTH = 6  # transaction id, protocol id, length : the fixed part of the header
 
 
@@ -1359,9 +1433,7 @@ class ModbusBackend(ProtocolBackend[bytes, ModbusSDU]):
     # └───────────┘
 
     @abstractmethod
-    def push(
-        self, frame: AdapterReadFrame[bytes]
-    ) -> BackendOutput[bytes, ModbusSDU]: ...
+    def push(self, frame: AdapterReadFrame[bytes]) -> BackendOutput[bytes, ModbusSDU]: ...
 
     @abstractmethod
     def _parse(self, pdu: bytes) -> ModbusSDU: ...
@@ -1377,14 +1449,13 @@ class ModbusBackend(ProtocolBackend[bytes, ModbusSDU]):
     def default_timeout(self) -> TimeoutType:
         return 1.0
 
-
 class ModbusTCPBackend(ModbusBackend):
 
     @property
     def stop_conditions(self) -> list[StopCondition]:
         # The MBAP header carries the length, the backend cuts the frames itself
         return [FragmentSC()]
-
+    
     def _parse(self, pdu: bytes) -> ModbusSDU:
         if self._last_sdu is None:
             raise ProtocolReadError("Cannot read without a prior write")
@@ -1404,7 +1475,7 @@ class ModbusTCPBackend(ModbusBackend):
             self._buffer = self._buffer[total:]
 
         return BackendOutput(payloads=payloads)
-
+    
     def encode(self, payload: ModbusSDU) -> list[bytes]:
         if isinstance(payload, SerialLineOnlySDU):
             raise ProtocolError("This function cannot be used with Modbus TCP")
@@ -1429,203 +1500,12 @@ class ModbusTCPBackend(ModbusBackend):
         return [output]
 
 
-DEFAULT_ENCODING = "utf-8"
-DEFAULT_PADDING = "\0"
-
-
-# byte_order vs word_order
-#
-# byte_order : Order by the individual bytes inside a modbus register
-# word_order : Order of the different registers to constitute a multi-register value
-#
-# Example : Integer 0x12345678 (A=0x12 B=0x34 C=56 D=78)
-#
-# | byte_order | word_order | Result |
-# | -----------|------------|--------|
-# | 'big'      | 'big'      | ABCD   |
-# | 'little'   | 'big'      | BADC   |
-# | 'big'      | 'little'   | CDAB   |
-# | 'little'   | 'little'   | DCBA   |
-
-
-class ModbusMultiRegisterValue:
-    _buffer: bytes
-
-    # ENDIAN_SYMBOL = {Endian.BIG: ">", Endian.LITTLE: "<"}
-    # Formats based on the number of registers (half the number of bytes)
-    INT_FORMAT = {
-        1: "h",
-        2: "i",
-        4: "q",
-    }
-    UINT_FORMAT = {
-        1: "H",
-        2: "I",  # or 'L'
-        4: "Q",
-    }
-    FLOAT_FORMAT = {2: "f", 4: "d"}
+class ModbusSerialBackend(ModbusBackend):
 
     def __init__(
         self,
-        buffer: bytes,
-        *,
-        word_order: Endian | str,
-        byte_order: Endian | str,
+        slave_address: int
     ) -> None:
-        self._word_order = Endian(word_order)
-        self._byte_order = Endian(byte_order)
-
-        self._buffer = buffer
-
-    @staticmethod
-    def from_registers(
-        register_values: list[int], byte_order: Endian | str, word_order: Endian | str
-    ) -> ModbusMultiRegisterValue:
-        direction = 1 if Endian(word_order) == Endian.BIG else -1
-        buffer = b"".join(
-            [
-                x.to_bytes(2, byteorder=Endian(byte_order).value)
-                for x in register_values[::direction]
-            ]
-        )
-        return ModbusMultiRegisterValue(
-            buffer, word_order=word_order, byte_order=byte_order
-        )
-
-    def to_registers(self) -> list[int]:
-        direction = 1 if self._word_order == Endian.BIG else -1
-        registers = [
-            int.from_bytes(
-                self._buffer[2 * i : 2 * i + 2], byteorder=self._byte_order.value
-            )
-            for i in range(len(self._buffer) // 2)
-        ]
-        return registers[::direction]
-
-    def to_int(self) -> int:
-        n = len(self._buffer) // 2
-        try:
-            fmt = self.INT_FORMAT[n]
-        except KeyError as e:
-            raise ValueError(f"Buffer of size {n} cannot be converted to int") from e
-
-        output = cast(int, struct.unpack(f">{fmt}", self._buffer)[0])
-
-        return output
-
-    def to_uint(self) -> int:
-        n = len(self._buffer) // 2
-        try:
-            fmt = self.UINT_FORMAT[n]
-        except KeyError as e:
-            raise ValueError(f"Buffer of size {n} cannot be converted to uint") from e
-
-        output = cast(int, struct.unpack(f">{fmt}", self._buffer)[0])
-        return output
-
-    def to_float(self) -> float:
-        n = len(self._buffer) // 2
-        try:
-            fmt = self.FLOAT_FORMAT[n]
-        except KeyError as e:
-            raise ValueError(f"Buffer of size {n} cannot be converted to float") from e
-
-        output = cast(int, struct.unpack(f">{fmt}", self._buffer)[0])
-        return output
-
-    def to_string(
-        self, encoding: str = DEFAULT_ENCODING, padding: str = DEFAULT_PADDING
-    ) -> str:
-        data = self.to_array()
-        # Cast
-        decoded_data = data.decode(encoding)
-        return decoded_data.strip(padding)
-
-    def to_array(self) -> bytes:
-        return self._buffer
-
-    @staticmethod
-    def from_int(
-        value: int,
-        n_registers: int,
-        word_order: Endian | str = Endian.BIG,
-        byte_order: Endian | str = Endian.BIG,
-    ) -> ModbusMultiRegisterValue:
-        return ModbusMultiRegisterValue(
-            struct.pack(">" + ModbusMultiRegisterValue.INT_FORMAT[n_registers], value),
-            word_order=word_order,
-            byte_order=byte_order,
-        )
-
-    @staticmethod
-    def from_uint(
-        value: int,
-        n_registers: int,
-        word_order: Endian | str = Endian.BIG,
-        byte_order: Endian | str = Endian.BIG,
-    ) -> ModbusMultiRegisterValue:
-        return ModbusMultiRegisterValue(
-            struct.pack(">" + ModbusMultiRegisterValue.UINT_FORMAT[n_registers], value),
-            word_order=word_order,
-            byte_order=byte_order,
-        )
-
-    @staticmethod
-    def from_float(
-        value: float,
-        n_registers: int,
-        word_order: Endian | str = Endian.BIG,
-        byte_order: Endian | str = Endian.BIG,
-    ) -> ModbusMultiRegisterValue:
-        return ModbusMultiRegisterValue(
-            struct.pack(
-                ">" + ModbusMultiRegisterValue.FLOAT_FORMAT[n_registers], value
-            ),
-            word_order=word_order,
-            byte_order=byte_order,
-        )
-
-    @staticmethod
-    def from_string(
-        value: str,
-        n_registers: int,
-        padding: str = DEFAULT_PADDING,
-        encoding: str = DEFAULT_ENCODING,
-        word_order: Endian | str = Endian.BIG,
-        byte_order: Endian | str = Endian.BIG,
-    ) -> ModbusMultiRegisterValue:
-        buffer = value.encode(encoding)
-        buffer_size = n_registers * 2
-        if len(buffer) > buffer_size:
-            raise ValueError(
-                f"String '{value}' cannot fit in {n_registers} registers ({buffer_size} bytes)"
-            )
-
-        padding_bytes = padding.encode(encoding)
-        buffer += padding_bytes * (buffer_size - len(buffer))
-        return ModbusMultiRegisterValue(
-            buffer, word_order=word_order, byte_order=byte_order
-        )
-
-    @staticmethod
-    def from_array(
-        array: bytes,
-        n_registers: int,
-        word_order: Endian | str = Endian.BIG,
-        byte_order: Endian | str = Endian.BIG,
-    ) -> ModbusMultiRegisterValue:
-        if len(array) != 2 * n_registers:
-            raise ValueError(
-                f"Cannot fit '{array!r}' ({len(array)}) into {n_registers} registers ({2*n_registers})"
-            )
-        return ModbusMultiRegisterValue(
-            array, word_order=word_order, byte_order=byte_order
-        )
-
-
-class ModbusSerialBackend(ModbusBackend):
-
-    def __init__(self, slave_address: int) -> None:
         super().__init__()
         self._slave_address = slave_address
 
@@ -1634,14 +1514,13 @@ class ModbusSerialBackend(ModbusBackend):
         # one response
         return BackendOutput(payloads=[self._parse(frame.data)])
 
-
 class ModbusASCIIBackend(ModbusSerialBackend):
 
     @property
     def stop_conditions(self) -> list[StopCondition]:
         # Every ASCII frame ends with CRLF
         return [Termination(_ASCII_TRAILER)]
-
+    
     def _parse(self, pdu: bytes) -> ModbusSDU:
         """Decode the hex, check the LRC and the slave address, return the SDU"""
         if self._last_sdu is None:
@@ -1653,9 +1532,7 @@ class ModbusASCIIBackend(ModbusSerialBackend):
         try:
             body = bytes.fromhex(hex_body.decode("ascii"))
         except (ValueError, UnicodeDecodeError) as e:
-            raise ProtocolReadError(
-                f"Modbus ASCII frame isn't hex : {hex_body!r}"
-            ) from e
+            raise ProtocolReadError(f"Modbus ASCII frame isn't hex : {hex_body!r}") from e
 
         if len(body) < 3:  # address + at least a function code + LRC
             raise ProtocolReadError(f"Modbus ASCII frame is too short : {pdu!r}")
@@ -1686,11 +1563,12 @@ class ModbusASCIIBackend(ModbusSerialBackend):
         self._last_sdu = payload
         return [output]
 
-
 class ModbusRTUBackend(ModbusSerialBackend):
 
     def __init__(
-        self, slave_address: int, baudrate: int  # = rtu_silence(None),
+        self,
+        slave_address: int,
+        baudrate: int# = rtu_silence(None),
     ) -> None:
         super().__init__(slave_address)
 
@@ -1702,12 +1580,12 @@ class ModbusRTUBackend(ModbusSerialBackend):
     def stop_conditions(self) -> list[StopCondition]:
         # An RTU frame ends on a silence on the line
         return [Continuation(self._silence)]
-
+    
     def _parse(self, pdu: bytes) -> ModbusSDU:
         """Check the CRC and the slave address, return the SDU"""
         if self._last_sdu is None:
             raise ProtocolReadError("Cannot read without a prior write")
-        # data = _parse_rtu_frame(pdu, self._slave_address)
+        #data = _parse_rtu_frame(pdu, self._slave_address)
 
         if len(pdu) < 4:  # address + at least a function code + CRC
             raise ProtocolReadError(f"Modbus RTU frame is too short : {pdu!r}")
@@ -1726,8 +1604,9 @@ class ModbusRTUBackend(ModbusSerialBackend):
 
         data = pdu[1:-2]
 
-        return self._last_sdu.parse_sdu(data)
 
+        return self._last_sdu.parse_sdu(data)
+    
     def encode(self, payload: ModbusSDU) -> list[bytes]:
         sdu = payload.make_sdu()
 
@@ -1739,9 +1618,115 @@ class ModbusRTUBackend(ModbusSerialBackend):
         self._last_sdu = payload
         return [output]
 
-
 class ModbusCommon:
     """Value conversions shared by Modbus and AsyncModbus"""
+
+    def _make_multi_register_value(
+        self,
+        n_registers: int,
+        value_type: str,
+        value: str | bytes | int | float,
+        *,
+        byte_order: str = Endian.BIG.value,
+        word_order: str = Endian.BIG.value,
+        encoding: str = "utf-8",
+        padding: int = 0,
+    ) -> list[int]:
+        _type = TypeCast(value_type)
+        n_bytes = n_registers * 2
+        if _type.is_number():
+            _word_order = Endian(word_order)
+        else:
+            _word_order = Endian.BIG
+        _byte_order = Endian(byte_order)
+
+        array = b""
+        if _type in [TypeCast.INT, TypeCast.UINT, TypeCast.FLOAT]:
+            # Make one big array using word_order endian
+            array = struct.pack(
+                endian_symbol[_word_order] + struct_format(_type, n_bytes), value
+            )
+
+        elif _type == TypeCast.ARRAY:
+            if isinstance(value, bytes):
+                if len(value) > n_registers * 2:
+                    raise ValueError(
+                        f"Cannot store {len(value)} bytes array in {n_registers} registers"
+                    )
+            else:
+                raise ValueError(f"Invalid value type : {type(value)}")
+
+            array = value
+        elif _type == TypeCast.STRING:
+            if isinstance(value, str):
+                array = value.encode(encoding)
+            else:
+                raise ValueError(f"Invalid value type : {type(value)}")
+
+            if len(array) < n_bytes:
+                # Padding
+                array = array + padding.to_bytes(1, byteorder="big") * (
+                    n_bytes - len(value)
+                )
+
+        if len(array) != n_registers * 2:
+            raise ValueError(
+                f"Cannot store a {len(array)} bytes array in {n_registers} registers"
+            )
+
+        unpack_endian = Endian.BIG if _byte_order == _word_order else Endian.LITTLE
+        registers = [
+            struct.unpack(endian_symbol[unpack_endian] + "H", array[2 * i : 2 * i + 2])[
+                0
+            ]
+            for i in range(len(array) // 2)
+        ]
+
+        return registers
+
+    def _parse_multi_register_value(
+        self,
+        n_registers: int,
+        registers: list[int],
+        value_type: str,
+        *,
+        byte_order: str = Endian.BIG.value,
+        word_order: str = Endian.BIG.value,
+        encoding: str = "utf-8",
+        padding: int | None = 0,
+    ) -> str | bytes | int | float:
+
+        type_cast = TypeCast(value_type)
+        _byte_order = Endian(byte_order)
+        if type_cast.is_number():
+            _word_order = Endian(word_order)
+        else:
+            _word_order = Endian.BIG
+        # Create a buffer
+        to_bytes_endian = Endian.BIG if _byte_order == _word_order else Endian.LITTLE
+        buffer = b"".join(
+            [x.to_bytes(2, byteorder=to_bytes_endian.value) for x in registers]
+        )
+        # Use struct_format to convert to the corresponding value directly
+        # Swap the buffer accordingly
+        data: bytes | int | float = struct.unpack(
+            endian_symbol[_word_order] + struct_format(type_cast, n_registers * 2),
+            buffer,
+        )[0]
+
+        # If data is a string, do additionnal processing
+        output: bytes | int | float | str
+        if type_cast == TypeCast.STRING:
+            data = cast(bytes, data)
+            # If null termination is enabled, remove any \0
+            if padding is not None and padding in data:
+                data = data[: data.index(padding)]
+            # Cast
+            output = data.decode(encoding)
+        else:
+            output = data
+
+        return output
 
 
 # pylint: disable=too-many-public-methods
@@ -1772,7 +1757,7 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         slave_address: int | None = None,
         alias: str = "",
     ) -> None:
-        backend: ModbusBackend
+        backend : ModbusBackend
         if isinstance(adapter, IP):
             adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
             backend = ModbusTCPBackend()
@@ -1781,9 +1766,7 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
             if slave_address is None:
                 raise ValueError("slave_address must be set for Modbus RTU and ASCII")
             if not 1 <= slave_address <= 247:
-                raise ValueError(
-                    f"Invalid slave address : {slave_address}, expected 1 to 247"
-                )
+                raise ValueError(f"Invalid slave address : {slave_address}, expected 1 to 247")
             if baudrate is None:
                 raise ValueError("Baudrate hasn't been defined")
             if serial_type == ModbusSerialType.ASCII:
@@ -1870,14 +1853,16 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         return output.inputs
 
     # Read Holding Registers - 0x03
-    def read_holding_registers(self, start_address: int, n_registers: int) -> list[int]:
+    def read_holding_registers(
+        self, start_address: int, number_of_registers: int
+    ) -> list[int]:
         """
         Reads a defined number of registers starting at a set address
 
         Parameters
         ----------
         start_address : int
-        n_registers : int
+        number_of_registers : int
             1 to 125
 
         Returns
@@ -1886,7 +1871,7 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         """
 
         payload = ReadHoldingRegisters(
-            start_address=start_address, n_registers=n_registers
+            start_address=start_address, number_of_registers=number_of_registers
         )
 
         output = cast(ReadHoldingRegisters.Response, self.query(payload))
@@ -1897,10 +1882,13 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         self,
         address: int,
         n_registers: int,
+        value_type: str,
         *,
-        byte_order: Endian | str = Endian.BIG,
-        word_order: Endian | str = Endian.BIG,
-    ) -> ModbusMultiRegisterValue:
+        byte_order: str = Endian.BIG.value,
+        word_order: str = Endian.BIG.value,
+        encoding: str = "utf-8",
+        padding: int | None = 0,
+    ) -> str | bytes | int | float:
         """
         Read an integer, a float, or a string over multiple registers
 
@@ -1933,15 +1921,30 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         """
         # Read N registers
         registers = self.read_holding_registers(
-            start_address=address, n_registers=n_registers
+            start_address=address, number_of_registers=n_registers
         )
 
-        return ModbusMultiRegisterValue.from_registers(
-            registers, byte_order, word_order
+        return self._parse_multi_register_value(
+            n_registers=n_registers,
+            registers=registers,
+            value_type=value_type,
+            byte_order=byte_order,
+            word_order=word_order,
+            encoding=encoding,
+            padding=padding,
         )
 
     def write_multi_register_value(
-        self, address: int, value: ModbusMultiRegisterValue
+        self,
+        address: int,
+        n_registers: int,
+        value_type: str,
+        value: str | bytes | int | float,
+        *,
+        byte_order: str = Endian.BIG.value,
+        word_order: str = Endian.BIG.value,
+        encoding: str = "utf-8",
+        padding: int = 0,
     ) -> None:
         """
         Write an integer, a float, or a string over multiple registers
@@ -1974,18 +1977,30 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         -------
         data : any
         """
-        registers = value.to_registers()
+
+        registers = self._make_multi_register_value(
+            n_registers=n_registers,
+            value_type=value_type,
+            value=value,
+            byte_order=byte_order,
+            word_order=word_order,
+            encoding=encoding,
+            padding=padding,
+        )
+
         self.write_multiple_registers(start_address=address, values=registers)
 
     # Read Input Registers - 0x04
-    def read_input_registers(self, start_address: int, n_registers: int) -> list[int]:
+    def read_input_registers(
+        self, start_address: int, number_of_registers: int
+    ) -> list[int]:
         """
         Reads a defined number of input registers starting at a set address
 
         Parameters
         ----------
         start_address : int
-        n_registers : int
+        number_of_registers : int
             1 to 125
 
         Returns
@@ -1994,7 +2009,8 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
             List of integers
         """
         payload = ReadInputRegistersSDU(
-            start_address=start_address, n_registers=n_registers
+            start_address=start_address,
+            number_of_registers=number_of_registers,
         )
 
         output = cast(ReadInputRegistersSDU.Response, self.query(payload))
@@ -2618,20 +2634,16 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         modbus_type: str = ModbusSerialType.RTU.value,
         alias: str = "",
     ) -> None:
-        backend: ModbusBackend
+        backend : ModbusBackend
         if isinstance(adapter, AsyncIP):
             adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
             backend = ModbusTCPBackend()
         elif isinstance(adapter, AsyncSerialPort):
-            if slave_address is None:
-                raise ValueError("slave_adress must be set")
             if modbus_type == ModbusSerialType.ASCII:
                 backend = ModbusASCIIBackend(slave_address)
             else:
                 if adapter.descriptor.baudrate is None:
-                    raise ValueError(
-                        "Cannot instanciate Modbus adpater without a set baudrate value"
-                    )
+                    raise ValueError("Cannot instanciate Modbus adpater without a set baudrate value")
                 backend = ModbusRTUBackend(slave_address, adapter.descriptor.baudrate)
 
         super().__init__(
@@ -2709,7 +2721,7 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
 
     # Read Holding Registers - 0x03
     async def read_holding_registers(
-        self, start_address: int, n_registers: int
+        self, start_address: int, number_of_registers: int
     ) -> list[int]:
         """
         Asynchronously Reads a defined number of registers starting at a set address
@@ -2717,7 +2729,7 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         Parameters
         ----------
         start_address : int
-        n_registers : int
+        number_of_registers : int
             1 to 125
 
         Returns
@@ -2726,7 +2738,7 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         """
 
         payload = ReadHoldingRegisters(
-            start_address=start_address, n_registers=n_registers
+            start_address=start_address, number_of_registers=number_of_registers
         )
 
         output = cast(ReadHoldingRegisters.Response, await self.query(payload))
@@ -2737,10 +2749,13 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         self,
         address: int,
         n_registers: int,
+        value_type: str,
         *,
         byte_order: str = Endian.BIG.value,
         word_order: str = Endian.BIG.value,
-    ) -> ModbusMultiRegisterValue:
+        encoding: str = "utf-8",
+        padding: int | None = 0,
+    ) -> str | bytes | int | float:
         """
         Asynchronously read an integer, a float, or a string over multiple registers
 
@@ -2773,15 +2788,30 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         """
         # Read N registers
         registers = await self.read_holding_registers(
-            start_address=address, n_registers=n_registers
+            start_address=address, number_of_registers=n_registers
         )
 
-        return ModbusMultiRegisterValue.from_registers(
-            registers, byte_order, word_order
+        return self._parse_multi_register_value(
+            n_registers=n_registers,
+            registers=registers,
+            value_type=value_type,
+            byte_order=byte_order,
+            word_order=word_order,
+            encoding=encoding,
+            padding=padding,
         )
 
     async def write_multi_register_value(
-        self, address: int, value: ModbusMultiRegisterValue
+        self,
+        address: int,
+        n_registers: int,
+        value_type: str,
+        value: str | bytes | int | float,
+        *,
+        byte_order: str = Endian.BIG.value,
+        word_order: str = Endian.BIG.value,
+        encoding: str = "utf-8",
+        padding: int = 0,
     ) -> None:
         """
         Asynchronously write an integer, a float, or a string over multiple registers
@@ -2814,12 +2844,22 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         -------
         data : any
         """
-        registers = value.to_registers()
+
+        registers = self._make_multi_register_value(
+            n_registers=n_registers,
+            value_type=value_type,
+            value=value,
+            byte_order=byte_order,
+            word_order=word_order,
+            encoding=encoding,
+            padding=padding,
+        )
+
         await self.write_multiple_registers(start_address=address, values=registers)
 
     # Read Input Registers - 0x04
     async def read_input_registers(
-        self, start_address: int, n_registers: int
+        self, start_address: int, number_of_registers: int
     ) -> list[int]:
         """
         Asynchronously read a defined number of input registers starting at a set address
@@ -2827,7 +2867,7 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         Parameters
         ----------
         start_address : int
-        n_registers : int
+        number_of_registers : int
             1 to 125
 
         Returns
@@ -2837,7 +2877,7 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         """
         payload = ReadInputRegistersSDU(
             start_address=start_address,
-            n_registers=n_registers,
+            number_of_registers=number_of_registers,
         )
 
         output = cast(ReadInputRegistersSDU.Response, await self.query(payload))

@@ -74,9 +74,7 @@ class AdapterCommon(Generic[DescriptorT, DataT]):
                 )
             framer.set_stop_conditions(_as_list(stop_conditions))
 
-        self._engine = AdapterEngine(
-            backend, framer, timeout=timeout, alias=alias
-        )
+        self._engine = AdapterEngine(backend, framer, timeout=timeout, alias=alias)
         self._is_default_timeout = timeout is ...
         self._is_default_stop_condition = stop_conditions is ...
         self._alias = alias
@@ -249,7 +247,7 @@ class Adapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT]):
     def clear_read_buffer(self) -> None:
         """Drop the buffered frames and the frame being assembled"""
         with self._lock:
-            self._engine.clear_buffer() .result()
+            self._engine.clear_buffer().result()
 
     def register_event_callback(self, callback: Callable[[AdapterEvent], None]) -> None:
         """Register an event callback. It runs on the reactor thread and must not block"""
@@ -283,6 +281,7 @@ class Adapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT]):
         traceback: TracebackType | None,
     ) -> None:
         self.close()
+
 
 class AsyncAdapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT]):
     """
@@ -398,7 +397,9 @@ class AsyncAdapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT
         async with self._lock:
             await asyncio.wrap_future(self._engine.write(payload))
             return await asyncio.wrap_future(
-                self._engine.read_detailed(timeout, ReadScope.LAST_WRITE, stop_conditions)
+                self._engine.read_detailed(
+                    timeout, ReadScope.LAST_WRITE, stop_conditions
+                )
             )
 
     async def query(

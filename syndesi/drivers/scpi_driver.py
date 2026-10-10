@@ -10,6 +10,7 @@
 """
 Driver subclass for SCPI instruments that provides common functions like *IDN, *RST, *CLS, etc...
 """
+
 from abc import abstractmethod
 
 from ..adapters.bytesadapter import BytesAdapter

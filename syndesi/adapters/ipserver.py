@@ -18,7 +18,7 @@ from ..tools.errors import AdapterOpenError, AdapterReadError, AdapterWriteError
 from .adapter import Adapter, AsyncAdapter
 from .engine import AdapterBackend
 from .framer import TrivialFramer
-from .ip import AsyncIP, IP, IPDescriptor, default_stop_conditions
+from .ip import IP, AsyncIP, IPDescriptor, default_stop_conditions
 from .stop_conditions import StopCondition
 from .utils import Fragment, HasFileno, TimeoutType
 
@@ -48,7 +48,9 @@ class IPServerBackend(AdapterBackend[IPDescriptor, Client]):
     backlog : int
     """
 
-    def __init__(self, descriptor: IPDescriptor, backlog: int = DEFAULT_BACKLOG) -> None:
+    def __init__(
+        self, descriptor: IPDescriptor, backlog: int = DEFAULT_BACKLOG
+    ) -> None:
         super().__init__(descriptor)
         self._socket: socket.socket | None = None
         self._backlog = backlog

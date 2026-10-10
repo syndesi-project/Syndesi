@@ -43,9 +43,9 @@ from ..adapters.engine import (
     Command,
     ReadScope,
 )
-from ..adapters.reactor import default_reactor
 from ..adapters.events import AdapterEvent
 from ..adapters.framer import AdapterReadFrame
+from ..adapters.reactor import default_reactor
 from ..adapters.stop_conditions import StopCondition
 from ..adapters.utils import HasFileno, TimeoutParameterType, TimeoutType, nmin
 from ..tools.errors import (
@@ -448,7 +448,9 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
                 command = self._commands.get(block=False)
             except queue.Empty:
                 return
-            if not isinstance(command, ProtocolReadCommand) and not self._claim(command):
+            if not isinstance(command, ProtocolReadCommand) and not self._claim(
+                command
+            ):
                 continue
             try:
                 self._execute(command)
@@ -469,7 +471,9 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
         except Exception as e:  # pylint: disable=broad-exception-caught
             self._assembly_start = None
             self._backend.reset()
-            self._deliver_error(ProtocolReadError(f"Cannot decode {frame.data!r} : {e}"))
+            self._deliver_error(
+                ProtocolReadError(f"Cannot decode {frame.data!r} : {e}")
+            )
             return
 
         self._emit_output(output)
@@ -775,8 +779,10 @@ class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
         return self.__str__()
 
 
-class Protocol(Generic[BackendT, AdapterT, ProtocolT],
-               ProtocolCommon[BackendT, AdapterT, ProtocolT]):
+class Protocol(
+    Generic[BackendT, AdapterT, ProtocolT],
+    ProtocolCommon[BackendT, AdapterT, ProtocolT],
+):
     """
     Sync protocol
 
@@ -851,7 +857,9 @@ class Protocol(Generic[BackendT, AdapterT, ProtocolT],
             self._engine.write(payload).result()
             return self._engine.read(timeout, ReadScope.LAST_WRITE).result()
 
-    def query(self, payload: ProtocolT, timeout: TimeoutParameterType = ...) -> ProtocolT:
+    def query(
+        self, payload: ProtocolT, timeout: TimeoutParameterType = ...
+    ) -> ProtocolT:
         """Write a payload and return the payload received after it"""
         return self.query_detailed(payload, timeout).data
 
@@ -881,8 +889,10 @@ class Protocol(Generic[BackendT, AdapterT, ProtocolT],
         self.close()
 
 
-class AsyncProtocol(Generic[BackendT, AdapterT, ProtocolT],
-                    ProtocolCommon[BackendT, AdapterT, ProtocolT]):
+class AsyncProtocol(
+    Generic[BackendT, AdapterT, ProtocolT],
+    ProtocolCommon[BackendT, AdapterT, ProtocolT],
+):
     """
     Async protocol, same parameters as Protocol
     """
@@ -926,7 +936,9 @@ class AsyncProtocol(Generic[BackendT, AdapterT, ProtocolT],
     ) -> ProtocolFrame[ProtocolT]:
         """Read one protocol frame"""
         async with self._lock:
-            return await asyncio.wrap_future(self._engine.read(timeout, ReadScope(scope)))
+            return await asyncio.wrap_future(
+                self._engine.read(timeout, ReadScope(scope))
+            )
 
     async def read(
         self,

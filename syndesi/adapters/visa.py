@@ -29,20 +29,20 @@ from .stop_conditions import Continuation, StopCondition
 from .utils import Fragment, HasFileno, TimeoutParameterType, TimeoutType
 
 try:
-    import pyvisa
+    import pyvisa  # type: ignore
 except ImportError:  # pragma: no cover - optional dependency
-    pyvisa = None  # type: ignore[assignment]
+    pyvisa = None
 
 if TYPE_CHECKING:
-    from pyvisa.resources import MessageBasedResource
+    from pyvisa.resources import MessageBasedResource  # type: ignore
 
-_MISSING_PYVISA = (
-    "Missing optional dependency 'pyvisa'. Install with:\n  python -m pip install pyvisa"
-)
+_MISSING_PYVISA = "Missing optional dependency 'pyvisa'. Install with:\n  python -m pip install pyvisa"
+
 
 def _require_pyvisa() -> None:
     if pyvisa is None:
         raise ImportError(_MISSING_PYVISA)
+
 
 @dataclass
 class VisaDescriptor(Descriptor):
@@ -84,7 +84,7 @@ class VisaDescriptor(Descriptor):
         PXI = "PXI"
 
     @staticmethod
-    def from_string(string: str) -> "VisaDescriptor":
+    def from_string(string: str) -> VisaDescriptor:
         if re.match(VisaDescriptor.DETECTION_PATTERN, string):
             return VisaDescriptor(descriptor=string)
         raise ValueError(f"Could not parse descriptor : {string}")
@@ -196,9 +196,7 @@ class VisaBackend(AdapterBackend[VisaDescriptor, bytes]):
         try:
             self._instrument.write_raw(data)
         except pyvisa.Error as e:
-            raise AdapterWriteError(
-                f"Cannot write to {self.descriptor} ({e})"
-            ) from e
+            raise AdapterWriteError(f"Cannot write to {self.descriptor} ({e})") from e
 
     @property
     def default_timeout(self) -> TimeoutType:

@@ -14,7 +14,6 @@ This is the dearpygui-async main implementation from
 https://github.com/CasuallyCalm/dearpygui-async/blob/main/src/dearpygui_async/dearpygui_async.py
 """
 
-
 import asyncio
 import time
 from typing import Any

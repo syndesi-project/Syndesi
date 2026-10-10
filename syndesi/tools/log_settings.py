@@ -5,6 +5,7 @@
 Log utilities
 Set log level, destination, etc...
 """
+
 import logging
 from enum import StrEnum
 

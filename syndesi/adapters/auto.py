@@ -22,7 +22,7 @@ from typing import Any
 
 from .adapter import Adapter, AsyncAdapter
 from .engine import Descriptor
-from .ip import AsyncIP, IP, IPDescriptor
+from .ip import IP, AsyncIP, IPDescriptor
 from .serialport import AsyncSerialPort, SerialPort, SerialPortDescriptor
 
 # Visa is optional, pyvisa may not be installed

@@ -11,7 +11,6 @@
 Syndesi shell, used to communicate with adapters, protocols and drivers directly
 """
 
-
 import argparse
 import logging
 import math

@@ -10,7 +10,7 @@ name = "syndesi"
 dynamic = ["version"]
 description = "Syndesi"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "Sébastien Deriaz", email = "sebastien.deriaz1@gmail.com" }]
@@ -24,15 +24,35 @@ classifiers = [
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: Microsoft :: Windows",
 ]
-dependencies = ['prompt_toolkit', 'pyserial', 'rich', 'platformdirs']
+dependencies = [
+    'prompt_toolkit',
+    'pyserial',
+    'rich',
+    'platformdirs'
+]
 
 [project.optional-dependencies]
-visa = ["pyvisa"]
+visa = [
+    "pyvisa",
+]
 ui = ["dearpygui"]
 
 [project.scripts]
 syndesi = "syndesi.scripts.syndesi:main"
 syndesi-trace = "syndesi.scripts.syndesi_trace:main"
+
+[dependency-groups]
+dev = [
+    "black>=26.10.0",
+    "isort>=9.0.2",
+    "mypy>=2.4.0",
+    "pylint>=4.1.2",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
+    "pyvisa>=1.16.2",
+    "ruff>=0.16.10",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

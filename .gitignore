@@ -158,3 +158,5 @@ cython_debug/
 
 # Drawio
 \.$*.bkp
+
+.envrc

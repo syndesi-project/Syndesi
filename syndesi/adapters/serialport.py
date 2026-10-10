@@ -13,10 +13,11 @@ import sys
 from dataclasses import dataclass
 from enum import StrEnum
 from types import EllipsisType
+from typing import cast
 
-import serial
-from serial.serialutil import PortNotOpenError
-from serial.tools.list_ports import comports
+import serial  # type: ignore #pylint: disable=import-error
+from serial.serialutil import PortNotOpenError  # type: ignore #pylint: disable=import-error
+from serial.tools.list_ports import comports  # type: ignore #pylint: disable=import-error
 
 from ..tools.errors import AdapterOpenError, AdapterReadError, AdapterWriteError
 from .adapter import Adapter, AsyncAdapter
@@ -58,7 +59,7 @@ class SerialPortDescriptor(Descriptor):
     xon_xoff: bool = False
 
     @staticmethod
-    def from_string(string: str) -> "SerialPortDescriptor":
+    def from_string(string: str) -> SerialPortDescriptor:
         parts = string.split(":")
         port = parts[0]
         baudrate = int(parts[1])
@@ -218,11 +219,12 @@ class SerialPortBackend(AdapterBackend[SerialPortDescriptor, bytes]):
         if port is None:
             return None
         try:
-            first = port.read(1)
+            first = cast(bytes, port.read(1))
             if not first:
                 return None
-            rest = port.read_all()
-            return first if rest is None else first + rest
+            rest = cast(bytes, port.read_all())
+            output = first if rest is None else first + rest
+            return output
         except (OSError, PortNotOpenError) as e:
             raise AdapterReadError(f"Cannot read from {self.descriptor} : {e}") from e
 
@@ -236,7 +238,7 @@ def _is_selectable(port: serial.Serial) -> bool:
     if sys.platform == "win32":
         return False
     try:
-        return port.fileno() >= 0
+        return cast(int, port.fileno()) >= 0
     except (OSError, ValueError, AttributeError, NotImplementedError):
         return False
 

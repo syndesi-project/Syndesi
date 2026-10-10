@@ -1,12 +1,11 @@
-import os
-import signal
-import subprocess
-from random import randint, random
+import itertools
+import random
 from time import sleep
-
+from random import randint, random
 import pytest
 
 from syndesi import IP, Modbus
+from syndesi.protocols.modbus import ModbusMultiRegisterValue
 
 ## test_discrete
 # read_coils
@@ -61,59 +60,62 @@ MAX_ADDRESS = 0xFFFF
 
 
 # Initialize modbus server
-def setup_module(module):
-    global modbus_server
-    modbus_server = subprocess.Popen(
-        ["diagslave", "-m", "tcp", "-p", str(PORT)], stdout=subprocess.DEVNULL
-    )
-    sleep(0.2)
+# def setup_module(module):
+#     global modbus_server
+#     modbus_server = subprocess.Popen(
+#         ["diagslave", "-m", "tcp", "-p", str(PORT)], stdout=subprocess.DEVNULL
+#     )
+#     sleep(0.2)
 
 
-def teardown_module(module):
-    global modbus_server
-    os.kill(modbus_server.pid, signal.SIGINT)
-    pass
+# def teardown_module(module):
+#     global modbus_server
+#     os.kill(modbus_server.pid, signal.SIGINT)
+#     pass
 
+ZERO_ADDRESS_ERROR = r"Invalid address : 0, it must be in the range \[1,65535\]"
+ZERO_IO_ERROR = r"Invalid number of inputs/outputs : 0, it must be in the range \[1, 1968\]"
 
 def test_discrete():
     MIN_N = 1
     MAX_N = 0x07B0
     modbus_client = Modbus(IP(HOST, port=PORT))
 
-    N_tests = 1000
+    n_random_tests = 5
 
-    for i in range(N_tests):
-        N = randint(MIN_N - 5, MAX_N + 100)
-        address = randint(MIN_ADDRESS - 5, MAX_ADDRESS + 100)
+    n_values = [-1, 0, MIN_N, MAX_N, MAX_N+1] + [randint(MIN_N, MAX_N) for _ in range(n_random_tests)]
+    address_values = [-1, 0, MIN_ADDRESS, MAX_ADDRESS, MAX_ADDRESS+1] + [randint(MIN_ADDRESS, MAX_ADDRESS) for _ in range(n_random_tests)]
 
+
+
+    for n, address in itertools.product(n_values, address_values):
         single_value = bool(randint(0, 1))
-        new_values = [bool(randint(0, 1)) for _ in range(N)]
-        number_of_coils_error = not (MIN_N <= N <= MAX_N)
+        new_values = [bool(randint(0, 1)) for _ in range(n)]
+        number_of_coils_error = not (MIN_N <= n <= MAX_N)
         start_address_error = not (MIN_ADDRESS <= address <= MAX_ADDRESS)
-        end_address_error = address > MAX_ADDRESS - N + 1
+        end_address_error = address > MAX_ADDRESS - n + 1
 
         if number_of_coils_error or start_address_error or end_address_error:
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 modbus_client.write_multiple_coils(address, new_values)
-            with pytest.raises(AssertionError):
-                modbus_client.read_coils(address, N)
-            with pytest.raises(AssertionError):
-                modbus_client.read_discrete_inputs(address, N)
+            with pytest.raises(ValueError):
+                modbus_client.read_coils(address, n)
+            with pytest.raises(ValueError):
+                modbus_client.read_discrete_inputs(address, n)
 
         else:
             modbus_client.write_multiple_coils(address, new_values)
-            assert new_values == modbus_client.read_coils(address, N)
-            assert new_values == modbus_client.read_discrete_inputs(address, N)
+            assert new_values == modbus_client.read_coils(address, n)
+            assert new_values == modbus_client.read_discrete_inputs(address, n)
 
         if start_address_error:
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 modbus_client.write_single_coil(address, single_value)
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 modbus_client.read_single_coil(address)
         else:
             modbus_client.write_single_coil(address, single_value)
             modbus_client.read_single_coil(address)
-
 
 def test_registers():
     modbus_client = Modbus(IP(HOST, port=PORT))
@@ -142,7 +144,7 @@ def test_registers():
         # - write_multiple_registers
 
         if N < 1 or N > 123 or start_address_error or end_address_error:
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 modbus_client.write_multiple_registers(address, new_values)
         else:
             modbus_client.write_multiple_registers(address, new_values)
@@ -150,7 +152,7 @@ def test_registers():
         # Test:
         # - read_holding_registers
         if N < 1 or N > 125 or start_address_error or end_address_error:
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 modbus_client.read_holding_registers(address, N)
         else:
             # If N is bigger than 123, do not do the test because the write did not succeed
@@ -162,7 +164,7 @@ def test_registers():
         if (
             N < 1 or N > 121 or start_address_error or end_address_error
         ):  # Write limit because read and write are the same here
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 read_values = modbus_client.read_write_multiple_registers(
                     address, N, address, new_values
                 )
@@ -176,9 +178,9 @@ def test_registers():
         # - write_single_register
         # - read_single_register
         if start_address_error:
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 modbus_client.write_single_register(address, single_value)
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 modbus_client.read_single_register(address)
         else:
             modbus_client.write_single_register(address, single_value)
@@ -190,7 +192,7 @@ def test_registers():
         AND = randint(0, 0xFFFF)
         OR = randint(0, 0xFFFF)
         if start_address_error:
-            with pytest.raises(AssertionError):
+            with pytest.raises(ValueError):
                 modbus_client.mask_write_register(address, and_mask=AND, or_mask=OR)
         else:
             modbus_client.mask_write_register(address, and_mask=AND, or_mask=OR)
@@ -207,80 +209,96 @@ def test_multi_register_values():
         ("big", "little", 0x0B0A, 0x0D0C),
         ("little", "big", 0x0C0D, 0x0A0B),
         ("little", "little", 0x0D0C, 0x0B0A),
-    ]:
+    ]: 
+        address = MIN_ADDRESS
+        value = 0x0A0B0C0D
+        n_registers = 2
         modbus_client.write_multi_register_value(
-            1,
-            n_registers=2,
-            value_type="uint",
-            value=0x0A0B0C0D,
-            byte_order=byte_order,
-            word_order=word_order,
+            address,
+            ModbusMultiRegisterValue.from_uint(
+                value,
+                n_registers=n_registers,
+                byte_order=byte_order,
+                word_order=word_order
+            )            
         )
-        registers = modbus_client.read_holding_registers(1, 2)
+        registers = modbus_client.read_holding_registers(
+            address,
+            n_registers=n_registers
+            )
         assert registers == [reg_0, reg_1]
+
         read_value = modbus_client.read_multi_register_value(
-            1,
+            address,
             n_registers=2,
-            value_type="uint",
             byte_order=byte_order,
-            word_order=word_order,
-        )
-        assert read_value == 0x0A0B0C0D
+            word_order=word_order
+        ).to_uint()
+        assert read_value == value
 
         # Store a float
+        n_registers = 2
+        address = randint(MIN_ADDRESS, MAX_ADDRESS-n_registers+1)
         value = random()
         modbus_client.write_multi_register_value(
-            10,
-            2,
-            value_type="float",
-            value=value,
-            byte_order=byte_order,
-            word_order=word_order,
+            address,
+            ModbusMultiRegisterValue.from_float(
+                value,
+                n_registers=n_registers,
+                word_order=word_order,
+                byte_order=byte_order
+            )
         )
         read_value = modbus_client.read_multi_register_value(
-            10, 2, value_type="float", byte_order=byte_order, word_order=word_order
-        )
+            address,
+            n_registers,
+            byte_order=byte_order,
+            word_order=word_order
+        ).to_float()
         assert abs(value - read_value) < 1e-7
 
         # Store a string
-        my_string = "this is a test"
-        # This should fail
+        n_registers = 10
+        address = randint(MIN_ADDRESS, MAX_ADDRESS)
+        data = "this is a test"
+        # This should fail (input too long)
         with pytest.raises(ValueError):
             modbus_client.write_multi_register_value(
-                20, n_registers=2, value_type="str", value=my_string
+                address,
+                ModbusMultiRegisterValue.from_string(data*3, n_registers=n_registers)
             )
 
         modbus_client.write_multi_register_value(
-            20,
-            n_registers=10,
-            value_type="str",
-            value=my_string,
-            byte_order=byte_order,
-            word_order=word_order,
+            address,
+            ModbusMultiRegisterValue.from_string(
+                data,
+                n_registers=n_registers
+            )
         )
         read_string = modbus_client.read_multi_register_value(
-            20,
-            n_registers=10,
-            value_type="str",
-            byte_order=byte_order,
-            word_order=word_order,
-        )
-        assert read_string == my_string
+            address,
+            n_registers=n_registers
+        ).to_string()
+        assert read_string == data
 
-        my_array = b"0123456789ABCDEFGHIJ"
+        address = randint(MIN_ADDRESS, MAX_ADDRESS)
+        data = b"0123456789ABCDEFGHIJ"
+        n_registers = 10
+
+        # break
         modbus_client.write_multi_register_value(
-            20,
-            n_registers=10,
-            value_type="array",
-            value=my_array,
-            byte_order=byte_order,
-            word_order=word_order,
+            address,
+            ModbusMultiRegisterValue.from_array(
+                data,
+                n_registers=n_registers,
+                byte_order=byte_order,
+                word_order=word_order
+            )
         )
         read_array = modbus_client.read_multi_register_value(
-            20,
-            n_registers=10,
-            value_type="array",
+            address,
+            n_registers=n_registers,
             byte_order=byte_order,
-            word_order=word_order,
-        )
-        assert read_array == my_array
+            word_order=word_order
+        ).to_array()
+        assert read_array == data

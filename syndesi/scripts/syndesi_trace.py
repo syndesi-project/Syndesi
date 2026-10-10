@@ -30,6 +30,7 @@ write → <length> data
       ↓ <length> data (frag)
 read  ← <length> data (<stop_condition>)
 """
+
 from __future__ import annotations
 
 import argparse
