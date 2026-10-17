@@ -26,13 +26,13 @@ from syndesi.tools.errors import (
     AdapterWriteError,
 )
 
-from ..adapters.adapterworker import (
-    AdapterBufferEvent,
-    AdapterEvent,
-    AdapterStopConditionsUpdatedEvent,
-    AdapterTimeoutUpdatedEvent,
-)
-from ..adapters.bytesadapter import AsyncBytesAdapter, BytesAdapter
+# from ..adapters.adapterworker import (
+#     AdapterBufferEvent,
+#     AdapterEvent,
+#     AdapterStopConditionsUpdatedEvent,
+#     AdapterTimeoutUpdatedEvent,
+# )
+# from ..adapters.bytesadapter import AsyncBytesAdapter, BytesAdapter
 from ..adapters.ip import IP, AsyncIP, IPDescriptor
 from ..adapters.stop_conditions import (
     Continuation,
@@ -43,7 +43,7 @@ from ..adapters.stop_conditions import (
     Termination,
     Total,
 )
-from ..component import ReadScope
+# from ..component import ReadScope
 from .tools import Block, ComponentBlock, StringTestingGroup, bytes_help
 
 StopConditionT = TypeVar("StopConditionT", bound=StopCondition)

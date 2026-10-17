@@ -18,17 +18,15 @@ from collections.abc import Sequence
 from enum import Enum
 from typing import Any
 
-from syndesi.adapters.bytesadapter import BytesAdapter
-
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..adapters.visa import Visa
 from ..protocols.delimited import Delimited
 from ..protocols.protocol import (
     Protocol,
-    ProtocolDisconnectedEvent,
-    ProtocolEvent,
-    ProtocolFrameEvent,
+    # ProtocolDisconnectedEvent,
+    # ProtocolEvent,
+    # ProtocolFrameEvent,
 )
 from ..protocols.raw import Raw
 from ..tools.errors import AdapterOpenError

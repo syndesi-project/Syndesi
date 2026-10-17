@@ -239,7 +239,6 @@ class PendingProtocolRead(Generic[ProtocolT]):
 # │ Engine │
 # └────────┘
 
-
 # pylint: disable=too-many-instance-attributes
 class ProtocolEngine(Generic[AdapterT, ProtocolT]):
     """

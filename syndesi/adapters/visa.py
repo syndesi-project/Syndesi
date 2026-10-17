@@ -28,16 +28,18 @@ from .reader_thread import ThreadedReader
 from .stop_conditions import Continuation, StopCondition
 from .utils import Fragment, HasFileno, TimeoutParameterType, TimeoutType
 
-try:
-    import pyvisa  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency
-    pyvisa = None
 
-if TYPE_CHECKING:
-    from pyvisa.resources import MessageBasedResource  # type: ignore
+try:
+    import pyvisa
+except ImportError:
+    pyvisa = None #type: ignore
+
+try:
+    from pyvisa.resources import MessageBasedResource
+except ImportError:
+    MessageBasedResource = None # type: ignore
 
 _MISSING_PYVISA = "Missing optional dependency 'pyvisa'. Install with:\n  python -m pip install pyvisa"
-
 
 def _require_pyvisa() -> None:
     if pyvisa is None:
