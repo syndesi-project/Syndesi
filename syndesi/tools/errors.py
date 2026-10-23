@@ -7,8 +7,6 @@ Syndesi errors
 
 from pathlib import Path
 
-from syndesi.tools.types import NumberLike
-
 PACKAGE_PATH = Path(__file__).resolve().parent.parent
 
 
@@ -16,12 +14,34 @@ class SyndesiError(Exception):
     """Base class for all Syndesi errors"""
 
 
-class BackendCommunicationError(SyndesiError):
-    """Error with backend communication"""
+# ┌─────────┐
+# │ Backend │
+# └─────────┘
 
 
 class BackendError(SyndesiError):
-    """Error inside the backend"""
+    """Base class for every backend error. The engine turns these into adapter errors"""
+
+
+class BackendDisconnectedError(BackendError):
+    """The target closed the connection"""
+
+
+class BackendOpenError(BackendError):
+    """The backend could not be opened"""
+
+
+class BackendWriteError(BackendError):
+    """The backend could not write, or could not write everything"""
+
+
+class BackendReadError(BackendError):
+    """The backend could not read"""
+
+
+# ┌─────────┐
+# │ Adapter │
+# └─────────┘
 
 
 class AdapterError(SyndesiError):
@@ -32,51 +52,50 @@ class AdapterConfigurationError(AdapterError):
     """Adapter configuration error"""
 
 
-class AdapterFailedToOpen(AdapterError):
+class AdapterOpenError(AdapterError):
     """Adapter failed to open"""
 
 
-class AdapterDisconnected(AdapterError):
+class AdapterWriteError(AdapterError):
+    """Adapter failed to write"""
+
+
+class AdapterDisconnectedError(AdapterError):
     """Adapter disconnected"""
+
+
+class WorkerThreadError(AdapterError):
+    """Adapters worker thread error"""
+
+
+class AdapterReadError(AdapterError):
+    """Error while performing read operation"""
+
+
+class AdapterTimeoutError(AdapterReadError):
+    """
+    Adapter timeout error
+    """
+
+    def __init__(self, timeout: float) -> None:
+        self.timeout = timeout
+        super().__init__(
+            f"No response received from target within {self.timeout} seconds"
+        )
+
+
+# ┌──────────┐
+# │ Protocol │
+# └──────────┘
 
 
 class ProtocolError(SyndesiError):
     """Protocol error"""
 
 
-class AdapterTimeoutError(AdapterError):
-    """
-    Adapter timeout error
-    """
-
-    def __init__(self, timeout: NumberLike) -> None:
-        self.timeout = timeout
-        super().__init__(
-            f'No response received from device within {self.timeout} seconds"'
-        )
+class ProtocolWriteError(ProtocolError):
+    """The protocol could not encode a payload"""
 
 
-def make_error_description(e: Exception) -> str:
-    """
-    Generate a description of the error and include the file and line number
-    """
-    tb = e.__traceback__
-    if tb is None:
-        error_message = ""
-    else:
-        while True:
-            if tb.tb_next is None:
-                break
-            file = Path(tb.tb_next.tb_frame.f_code.co_filename).resolve()
-            if not file.is_relative_to(PACKAGE_PATH):
-                break
-            tb = tb.tb_next
-
-        _type = type(e)
-        extra_arguments = (str(e),)
-        frame = tb.tb_frame
-        line_no = tb.tb_lineno
-        filename = frame.f_code.co_filename
-        error_message = f"{_type} : {extra_arguments} {filename}:{line_no}"
-
-    return error_message
+class ProtocolReadError(ProtocolError):
+    """The protocol could not decode what it received"""

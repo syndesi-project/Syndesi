@@ -156,4 +156,11 @@ cython_debug/
 # Pylint output
 .pylint
 
+<<<<<<< HEAD
 .envrc
+=======
+# Drawio
+\.$*.bkp
+
+.envrc
+>>>>>>> new-architecture

@@ -15,3 +15,6 @@ mypy syndesi
 
 echo "Running Bandit..."
 bandit -r syndesi
+
+echo "Running Pylint..."
+pylint syndesi

@@ -1,0 +1,291 @@
+# File : tracehub.py
+# Author : Sébastien Deriaz
+# License : GPL
+"""
+Trace module
+
+A single global instance of TraceHub allows all the syndesi modules and workers
+to emit trace events
+"""
+
+from __future__ import annotations
+
+import json
+import socket
+import struct
+import time
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+from syndesi.adapters.stop_conditions import StopConditionType
+from syndesi.adapters.utils import Fragment
+
+from .framer import AdapterReadFrame, WriteFrame
+
+STOP_CONDITION_INDICATOR = {
+    StopConditionType.CONTINUATION: "Cont",
+    StopConditionType.FRAGMENT: "Frag",
+    StopConditionType.LENGTH: "Len",
+    StopConditionType.TERMINATION: "Term",
+    StopConditionType.TOTAL: "Tot",
+    StopConditionType.TIMEOUT: "Time",
+}
+
+
+@dataclass(frozen=True)
+class TraceEvent:
+    """
+    Base trace event
+    """
+
+    descriptor: str
+    timestamp: float
+    t: str = field(default="", init=False)
+
+
+@dataclass(frozen=True)
+class OpenEvent(TraceEvent):
+    """
+    Adapter open trace event
+    """
+
+    t: str = field(default="open", init=False)
+
+
+@dataclass(frozen=True)
+class FragmentEvent(TraceEvent):
+    """
+    Fragment received trace event
+    """
+
+    message: str
+    length: int
+    write_delta: float
+    t: str = field(default="fragment", init=False)
+
+
+@dataclass(frozen=True)
+class CloseEvent(TraceEvent):
+    """
+    Adapter close trace event
+    """
+
+    t: str = field(default="close", init=False)
+
+
+@dataclass(frozen=True)
+class ReadEvent(TraceEvent):
+    """
+    Adapter read trace event
+    """
+
+    message: str
+    length: int
+    stop_condition_indicator: str | None
+    write_delta: float
+    t: str = field(default="read_bytes", init=False)
+
+
+@dataclass(frozen=True)
+class WriteEvent(TraceEvent):
+    """
+    Adapter write trace event
+    """
+
+    message: str
+    length: int
+    t: str = field(default="write_bytes", init=False)
+
+
+EVENTS: list[type[TraceEvent]] = [
+    FragmentEvent,
+    OpenEvent,
+    CloseEvent,
+    ReadEvent,
+    WriteEvent,
+]
+
+EVENTS_MAP: dict[str, type[TraceEvent]] = {e.t: e for e in EVENTS}
+
+DEFAULT_MULTICAST_GROUP = "239.255.42.99"
+DEFAULT_MULTICAST_PORT = 12000
+
+
+def json_to_trace_event(payload: dict[str, Any]) -> TraceEvent:
+    """
+    Convert json data to TraceEvent
+    """
+    payload_type = payload.get("t", None)
+    if payload_type in EVENTS_MAP:
+        arguments = payload.copy()
+        arguments.pop("t")
+        return EVENTS_MAP[payload_type](**arguments)
+
+    raise ValueError(f"Could not parse payload : {payload}")
+
+
+class _TraceHub:
+    TTL = 1
+    LOOPBACK = True
+    TRUNCATE_LENGTH = 50
+
+    _udp_addr = (DEFAULT_MULTICAST_GROUP, DEFAULT_MULTICAST_PORT)
+
+    TRUNCATION_TERMINATION = "..."
+    # CHARACTERS_REPLACEMENT = {
+    #     '\n' : '\\n',
+    #     '\r' : '\\r',
+    #     '\t' : '\t',
+
+    # }
+
+    def __init__(self) -> None:
+        # self._udp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+        # self._udp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+
+        self._udp_sock = socket.socket(
+            socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
+        )
+        self._udp_sock.setblocking(False)
+        self._udp_sock.setsockopt(
+            socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton("127.0.0.1")
+        )
+        self._udp_sock.setsockopt(
+            socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, struct.pack("b", self.TTL)
+        )
+        self._udp_sock.setsockopt(
+            socket.IPPROTO_IP,
+            socket.IP_MULTICAST_LOOP,
+            struct.pack("b", 1 if self.LOOPBACK else 0),
+        )
+        self._udp_dropped = 0
+
+    def emit_open(self, descriptor: str) -> None:
+        """
+        Emit an open trace event
+        """
+        self._emit_event(OpenEvent(descriptor, time.time()))
+
+    def emit_close(self, descriptor: str) -> None:
+        """
+        Emit a close trace event
+        """
+        self._emit_event(CloseEvent(descriptor, time.time()))
+
+    def _format_bytes(self, data: bytes) -> str:
+        if len(data) > 4 * self.TRUNCATE_LENGTH:
+            # Pre-truncate to avoid working with super long data
+            data = data[: 4 * self.TRUNCATE_LENGTH]
+
+        str_data = repr(data)[2:-1]
+
+        return self._format_generic(str_data)
+
+    def _format_generic(self, str_data: str) -> str:
+        if len(str_data) > self.TRUNCATE_LENGTH:
+            return (
+                str_data[: self.TRUNCATE_LENGTH - len(self.TRUNCATION_TERMINATION)]
+                + self.TRUNCATION_TERMINATION
+            )
+        return str_data
+
+    def emit_fragment(
+        self, descriptor: str, fragment: Fragment[Any], write_delta: float
+    ) -> None:
+        """
+        Emit a fragment trace event
+        """
+        if isinstance(fragment.data, bytes):
+            message = self._format_bytes(fragment.data)
+        else:
+            message = self._format_generic(str(fragment.data))
+
+        self._emit_event(
+            FragmentEvent(
+                descriptor,
+                fragment.timestamp,
+                message,
+                self._data_length(fragment.data),
+                write_delta=write_delta,
+            )
+        )
+
+    @staticmethod
+    def _data_length(data: Any) -> int:
+        """
+        Length of a frame's data, 1 for a data type that has none
+
+        An adapter is generic : IPServer frames hold a Client, not bytes, and asking it
+        for a len() is a TypeError on the reactor thread
+        """
+        try:
+            return len(data)
+        except TypeError:
+            return 1
+
+    def emit_read_frame(self, descriptor: str, frame: AdapterReadFrame[Any]) -> None:
+        """
+        Emit a read frame event
+        """
+        if frame.stop_condition is None:
+            sc_indicator = None
+        else:
+            sc_indicator = STOP_CONDITION_INDICATOR[frame.stop_condition.type]
+
+        if isinstance(frame.data, bytes):
+            message = self._format_bytes(frame.data)
+        else:
+            message = self._format_generic(str(frame.data))
+
+        self._emit_event(
+            ReadEvent(
+                descriptor=descriptor,
+                timestamp=frame.stop_timestamp,
+                message=message,
+                length=self._data_length(frame.data),
+                stop_condition_indicator=sc_indicator,
+                write_delta=frame.response_delay,
+            )
+        )
+
+    def emit_write_frame(self, descriptor: str, frame: WriteFrame[Any]) -> None:
+        """Send a write frame to clients"""
+        if isinstance(frame.data, bytes):
+            message = self._format_bytes(frame.data)
+        else:
+            message = self._format_generic(str(frame.data))
+
+        self._emit_event(
+            WriteEvent(
+                descriptor=descriptor,
+                timestamp=time.time(),
+                message=message,
+                length=self._data_length(frame.data),
+            )
+        )
+
+    def _emit_event(self, ev: TraceEvent) -> None:
+        """Send a trace event to clients"""
+        d = asdict(ev)
+        # meta = d.setdefault("meta", {})
+        # if isinstance(meta, dict):
+        #     meta.setdefault("pid", os.getpid())
+
+        payload = json.dumps(d, separators=(",", ":"), ensure_ascii=False).encode(
+            "utf-8"
+        )
+
+        # if len(payload) > self._udp_max:
+        #     if isinstance(meta, dict):
+        #         meta["truncated"] = True
+        #     payload = payload[: self._udp_max]
+
+        try:
+            self._udp_sock.sendto(payload, self._udp_addr)
+        except (BlockingIOError, InterruptedError, OSError):
+            # drop rather than blocking I/O paths
+            self._udp_dropped += 1
+
+
+# Public singleton
+tracehub = _TraceHub()

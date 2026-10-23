@@ -10,10 +10,12 @@ name = "syndesi"
 dynamic = ["version"]
 description = "Syndesi"
 readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "GPL" }
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [{ name = "Sébastien Deriaz", email = "sebastien.deriaz1@gmail.com" }]
-keywords = ["python", "syndesi", "interface", "ethernet", "serial", "visa"]
+keywords = ["python", "syndesi", "interface", "ethernet",
+"serial", "visa", "protocol", "driver", "adpater"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Education",
@@ -22,18 +24,44 @@ classifiers = [
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: Microsoft :: Windows",
 ]
-dependencies = ['prompt_toolkit', 'pyserial', 'rich', 'platformdirs']
+dependencies = [
+    'prompt_toolkit',
+    'pyserial',
+    'rich',
+    'platformdirs'
+]
 
-#[project.optional-dependencies]
-#extra = [""]
+[project.optional-dependencies]
+visa = [
+    "pyvisa",
+]
+ui = ["dearpygui"]
 
 [project.scripts]
 syndesi = "syndesi.scripts.syndesi:main"
-syndesi-backend = "syndesi.scripts.syndesi_backend:main"
+syndesi-trace = "syndesi.scripts.syndesi_trace:main"
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "black>=26.10.0",
+    "dearpygui>=2.3.1",
+    "isort>=9.0.2",
+    "mypy>=2.4.0",
+    "pylint>=4.1.2",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
+    "pyvisa>=1.16.2",
+    "ruff>=0.16.10",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["syndesi*"]
+
+[tool.setuptools.package-data]
+"syndesi" = ["py.typed"]
 
 # ----------------------------
 # Tooling configs
@@ -50,7 +78,7 @@ ignore = ["E501"]
 [tool.ruff.format]
 
 [tool.ruff.lint.pydocstyle]
-convention = "numpy"              # or "google"
+convention = "numpy"
 
 [tool.isort]
 profile = "black"
@@ -74,4 +102,4 @@ exclude = ["tests"]
 # All arguments are necessary and it would not make sense to group them / move them
 # too-many-positional-arguments is kept however because it makes sense
 # Also disable W1203 to allow f-strings in logging lines
-disable = ["R0913", "W1203", "W0511"]
+disable = ["R0913", "W1203", "R0903"]

@@ -5,24 +5,26 @@
 Syndesi shell, used to communicate with adapters, protocols and drivers directly
 """
 
-
-from argparse import ArgumentParser
+import argparse
+import logging
+import math
+from collections.abc import Sequence
 from enum import Enum
+from typing import Any
 
 from syndesi.adapters.adapter import Adapter
-from syndesi.adapters.backend.adapter_backend import (
-    AdapterDisconnectedSignal,
-    AdapterReadPayload,
-    AdapterSignal,
-)
+from syndesi.adapters.events import AdapterClosedEvent, SyndesiEvent
 
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
-from ..adapters.timeout import Timeout
 from ..adapters.visa import Visa
 from ..protocols.delimited import Delimited
-from ..protocols.protocol import Protocol
+from ..protocols.protocol import (
+    Protocol,
+    ProtocolFrameEvent,
+)
 from ..protocols.raw import Raw
+from ..tools.errors import AdapterOpenError
 from .console import Shell
 
 HISTORY_FILE_NAME = "syndesi"
@@ -111,6 +113,43 @@ def parse_end_argument(arg: str | None) -> str | None:
     return arg.replace("\\n", "\n").replace("\\r", "\r")
 
 
+class ListSerialPortsAction(argparse.Action):
+    """List serial ports action"""
+
+    nargs = 0
+    const = True
+    default = False
+    required = False
+    # def __init__(self,
+    #              option_strings : Sequence[str],
+    #              dest : str,
+    #              default : bool = False,
+    #              required : bool = False,
+    #              help : Any | None = None
+    #     ) -> None:
+    #     super().__init__(
+    #         option_strings=option_strings,
+    #         dest=dest,
+    #         nargs=0,
+    #         const=True,
+    #         default=default,
+    #         required=required,
+    #         help=help,
+    #     )
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[str] | None,
+        option_string: str | None = None,
+    ) -> None:
+        ports = SerialPort.list_ports()
+        for port in ports:
+            print(f"{port}")
+        parser.exit()
+
+
 class AdapterShell:
     """
     Adapter shell, allows direct communication with an adapter
@@ -118,16 +157,16 @@ class AdapterShell:
 
     DEFAULT_TERMINATION = "\n"
 
+    # pylint: disable=too-many-statements too-many-branches
     def __init__(self, kind: AdapterType, input_arguments: list[str]) -> None:
-
-        self._parser = ArgumentParser()
+        logging.basicConfig(level=logging.CRITICAL + 1)
+        self._parser = argparse.ArgumentParser()
         self._parser.add_argument(
             "-t",
             "--timeout",
-            nargs="+",
             type=float,
             required=False,
-            default=[2],
+            default=2.0,
             help="Adapter timeout (response)",
         )
         self._parser.add_argument(
@@ -171,15 +210,30 @@ class AdapterShell:
             self._parser.add_argument(
                 "--rtscts", action="store_true", default=False, help="Enable RTS/CTS"
             )
+            self._parser.add_argument(
+                "--list",
+                action=ListSerialPortsAction,
+                default=False,
+                help="List available serial ports",
+            )
+
         elif kind == AdapterType.VISA:
             self._parser.add_argument("descriptor", type=str)
         else:
             raise ValueError("Unsupported Kind")
         args = self._parser.parse_args(input_arguments)
 
-        timeout = Timeout(args.timeout)
+        try:
+            timeout_arg = float(args.timeout)
+        except ValueError as e:
+            raise ValueError(f"Invalid timeout : {args.timeout}") from e
 
-        self.adapter: Adapter
+        if math.isnan(timeout_arg):
+            timeout = None
+        else:
+            timeout = timeout_arg
+
+        self.adapter: Adapter[Any, Any]
         # Create the adapter
         if kind == AdapterType.IP:
             self.adapter = IP(
@@ -187,8 +241,7 @@ class AdapterShell:
                 port=args.port,
                 transport=args.protocol,
                 timeout=timeout,
-                backend_address=args.backend_address,
-                backend_port=args.backend_port,
+                auto_open=False,
             )
         elif kind == AdapterType.SERIAL:
             self.adapter = SerialPort(
@@ -196,24 +249,18 @@ class AdapterShell:
                 baudrate=args.baudrate,
                 timeout=timeout,
                 rts_cts=args.rtscts,
-                backend_address=args.backend_address,
-                backend_port=args.backend_port,
+                auto_open=False,
             )
         elif kind == AdapterType.VISA:
             self.adapter = Visa(
-                descriptor=args.descriptor,
-                timeout=timeout,
-                backend_address=args.backend_address,
-                backend_port=args.backend_port,
+                descriptor=args.descriptor, timeout=timeout, auto_open=False
             )
-
-        self.adapter.set_default_timeout(Timeout(action="return_empty"))
 
         # Add the protocol
         _format = Format(args.format)
-        self._protocol: Protocol
+        self.protocol: Protocol[Any, Any, Any]
         if _format == Format.HEX:
-            self._protocol = Raw(self.adapter, event_callback=self.event)
+            self.protocol = Raw(self.adapter)
         elif _format == Format.TEXT:
             send_end = parse_end_argument(args.end)
             receive_end = parse_end_argument(args.receive_end)
@@ -222,12 +269,13 @@ class AdapterShell:
             if receive_end is None:
                 receive_end = send_end
 
-            self._protocol = Delimited(
+            self.protocol = Delimited(
                 self.adapter,
                 termination=send_end,
                 receive_termination=receive_end,
-                event_callback=self.event,
             )
+
+        self.protocol.register_event_callback(self.event)
 
         # Create the shell
         self.shell = Shell(
@@ -240,35 +288,42 @@ class AdapterShell:
         """
         Main adapter loop
         """
-        self.adapter.open()
-        self.shell.print(
-            f"Opened adapter {self.adapter.descriptor}", style=Shell.Style.NOTE
-        )
-        self.shell.run()
+
+        try:
+            self.protocol.open()
+        except AdapterOpenError:
+            self.shell.print(f"Failed to open {self.adapter}")
+        else:
+            self.shell.run()
+            self.shell.print(
+                f"Opened adapter {self.adapter.descriptor}",
+                style=Shell.Style.NOTE,
+            )
 
     def on_command(self, command: str) -> None:
         """
         Action to perform when a command is received
         """
-        self._protocol.write(command)
+        self.protocol.write(command)
 
-    def event(self, signal: AdapterSignal) -> None:
+    def _open_answer(self, answer: str) -> None:
         """
-        Method called when a signal is recevied from the adapter
+        Open the protocol on "y" answer or stop the shell otherwise
         """
-        if isinstance(signal, AdapterDisconnectedSignal):
+        if answer.lower() == "y":
+            # try:
+            self.protocol.open()
+        else:
+            # Set the stop flag, exit will be effective on reprompt
+            self.shell.stop()
+        self.shell.reprompt()
 
-            def f(answer: str) -> None:
-                if answer.lower() == "y":
-                    # try:
-                    self._protocol.open()
-                else:
-                    # Set the stop flag, exit will be effective on reprompt
-                    self.shell.stop()
-                self.shell.reprompt()
-
-            self.shell.ask("Adapter disconnected, reconnect ? (y/n): ", f)
-        elif isinstance(signal, AdapterReadPayload):
-            data = signal.data()
-            # TODO : Catch data from delimited with formatting
-            self.shell.print(data.decode("ASCII"))
+    def event(self, event: SyndesiEvent) -> None:
+        """
+        Method called when an event is recevied from the adapter
+        """
+        if isinstance(event, AdapterClosedEvent):
+            self.shell.ask("Adapter closed, reconnect ? [y/n]: ", self._open_answer)
+        elif isinstance(event, ProtocolFrameEvent):
+            data = event.frame.data
+            self.shell.print(data)

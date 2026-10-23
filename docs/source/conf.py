@@ -27,7 +27,10 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_inline_tabs",
     "sphinx_design",
+    "sphinx_uml"
 ]
+
+root_doc = "index"
 
 graphviz_output_format = "svg"
 

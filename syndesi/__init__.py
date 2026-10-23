@@ -2,24 +2,46 @@
 Syndesi module
 """
 
-from .adapters.ip import IP
-from .adapters.serialport import SerialPort
-from .adapters.timeout import Timeout
-from .adapters.visa import Visa
-from .protocols.delimited import Delimited
-from .protocols.modbus import Modbus
-from .protocols.raw import Raw
-from .protocols.scpi import SCPI
-from .tools.logmanager import log
+from .adapters.auto import auto_adapter, auto_async_adapter
+from .adapters.ip import IP, AsyncIP
+from .adapters.ipserver import AsyncIPServer, Client, IPServer
+from .adapters.serialport import AsyncSerialPort, Parity, SerialPort
+from .adapters.visa import AsyncVisa, Visa
+from .protocols.delimited import AsyncDelimited, Delimited
+from .protocols.modbus import (
+    AsyncModbus,
+    AsyncModbusServer,
+    Modbus,
+    ModbusMultiRegisterValue,
+    ModbusServer,
+)
+from .protocols.raw import AsyncRaw, Raw
+from .protocols.scpi import SCPI, AsyncSCPI
 
 __all__ = [
+    # Adapters
     "IP",
+    "AsyncIP",
     "SerialPort",
-    "Visa",
+    "AsyncSerialPort",
+    "Parity",
+    "IPServer",
+    "AsyncIPServer",
+    "Client",
+    "auto_adapter",
+    "auto_async_adapter",
+    # Protocols
     "Delimited",
-    "Modbus",
+    "AsyncDelimited",
     "Raw",
+    "AsyncRaw",
     "SCPI",
-    "log",
-    "Timeout",
+    "AsyncSCPI",
+    "Modbus",
+    "AsyncModbus",
+    "ModbusServer",
+    "AsyncModbusServer",
+    "ModbusMultiRegisterValue",
+    "Visa",
+    "AsyncVisa",
 ]

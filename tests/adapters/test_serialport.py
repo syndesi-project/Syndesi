@@ -1,12 +1,12 @@
 from time import sleep, time
 
-# from syndesi.adapters.backend.timeout import TimeoutType
 from serial_delayer import SerialDelayer
 
+import pytest
+
 from syndesi import SerialPort
-from syndesi.adapters.stop_condition import Length, Termination, Continuation
-from syndesi.adapters.timeout import Timeout
-from syndesi.tools.errors import AdapterTimeoutError
+from syndesi.adapters.stop_conditions import Length, Termination, Continuation
+from syndesi.tools.errors import AdapterOpenError, AdapterTimeoutError
 
 BAUDRATE = 115200
 TIME_DELTA = 30e-3
@@ -44,8 +44,8 @@ def test_delayer():
     port.write(encode_sequences([(DATA, 0.2)]))
     received = port.read(stop_conditions=Length(len(DATA)))
     assert received == DATA
-    port.flush_read()
-    port.close(force=True)
+    port.clear_read_buffer()
+    port.close()
 
 
 # Test response timeout
@@ -60,7 +60,7 @@ def test_response_A():
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     assert data == sequence
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -83,7 +83,7 @@ def test_response_B():
     # sleep(2*TIME_DELTA)
     data = client.read()
     assert data == sequence
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -98,10 +98,7 @@ def test_continuation():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(
-            response=delay_response + TIME_DELTA,
-            action="error",
-        ),
+        timeout=delay_response + TIME_DELTA,
         stop_conditions=[
             Continuation(delay_continuation+TIME_DELTA)
         ]
@@ -117,7 +114,7 @@ def test_continuation():
     )
     data = client.read()
     assert data == sequence_response + sequence_continuation
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -128,13 +125,13 @@ def test_big():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay + TIME_DELTA)#continuation=TIME_DELTA),
+        timeout=delay + TIME_DELTA
     )
 
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     assert data == sequence
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -149,16 +146,16 @@ def test_termination():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay + TIME_DELTA),#, continuation=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,#, continuation=delay + TIME_DELTA),
         stop_conditions=Termination(termination),
     )
 
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
-    assert data == A
+    assert data == A + termination
     data = client.read()
-    assert data == B
-    client.flush_read()
+    assert data == B + termination
+    client.clear_read_buffer()
     client.close()
 
 
@@ -173,10 +170,10 @@ def test_termination_partial():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
-            Continuation(time=delay + TIME_DELTA)
+            Continuation(continuation=delay + TIME_DELTA)
         ],
     )
 
@@ -186,27 +183,26 @@ def test_termination_partial():
         )
     )
     data = client.read()
-    assert data == A
+    assert data == A + termination
     data = client.read()
-    assert data == B
-    client.flush_read()
+    assert data == B + termination
     client.close()
-
 
 # Test length
 def test_length():
-    sequence = b"ABCDEFGHIJKLMNOPQKRSTUVWXYZ"
+    sequence = b"ABBBBCDEFGHIJKLMNOPQKRSTUVWXYZ"
     N = 10
     client = SerialPort(port=PORT, baudrate=BAUDRATE, stop_conditions=Length(10))
+
+    with pytest.raises(AdapterOpenError):
+        client_2 = SerialPort(port=PORT, baudrate=BAUDRATE, stop_conditions=Length(10))
 
     client.write(encode_sequences([(sequence, 0)]))
     data = client.read()
     assert data == sequence[:10]
     data = client.read()
     assert data == sequence[10:20]
-    client.flush_read()
     client.close()
-
 
 # Test length with short timeout
 def test_length_short_timeout():
@@ -216,24 +212,23 @@ def test_length_short_timeout():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay - TIME_DELTA),
+        timeout=delay - TIME_DELTA,
         stop_conditions=Length(N),
     )
 
     client.write(encode_sequences([(sequence, delay)]))
     try:
         data = client.read()
-        print(f'Data : {data}')
     except AdapterTimeoutError:
         pass  # This is what we expect
     else:
         raise RuntimeError("No timeout exception was raised")
     data = client.read()
     assert data == sequence[:N]
-    data = client.read(stop_conditions=Continuation(time=0.1))
+    data = client.read(stop_conditions=Continuation(continuation=0.1))
     # Length is still N because that was read before
     assert data == sequence[N:N+10]
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -245,7 +240,7 @@ def test_length_long_timeout():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=Length(N),
     )
 
@@ -254,7 +249,7 @@ def test_length_long_timeout():
     assert data == sequence[:N]
     data = client.read()
     assert data == sequence[N:N+10]
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -267,16 +262,16 @@ def test_termination_long_timeout():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(response=delay + TIME_DELTA),
-        stop_conditions=[Termination(termination), Continuation(time=delay + TIME_DELTA)]
+        timeout=delay + TIME_DELTA,
+        stop_conditions=[Termination(termination), Continuation(continuation=delay + TIME_DELTA)]
     )
 
     client.write(encode_sequences([(A, delay), (termination + B, 2*delay)]))
     data = client.read()
-    assert data == A
-    data = client.read()#stop_condition=None)
+    assert data == A + termination
+    data = client.read()
     assert data == B
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -289,12 +284,10 @@ def test_discard_timeout_short():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(
-            response=delay - TIME_DELTA,
-        ),
+        timeout=delay - TIME_DELTA,
         stop_conditions=[
             Termination(termination),
-            Continuation(time=delay - TIME_DELTA)
+            Continuation(continuation=delay - TIME_DELTA)
             ]
     )
 
@@ -306,13 +299,13 @@ def test_discard_timeout_short():
     else:
         raise RuntimeError('Failed to raise error')
     
-    data = client.read()
+    data = client.read() # Continuation
     assert data == A
-    data = client.read()
-    assert data == b"" # Termination only
-    data = client.read()
+    data = client.read() # Termination
+    assert data == termination
+    data = client.read() # Continuation
     assert data == B
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -325,20 +318,18 @@ def test_discard_timeout_long():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(
-            response=delay + TIME_DELTA,
-        ),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
-            Continuation(time=delay + TIME_DELTA)
+            Continuation(continuation=delay + TIME_DELTA)
         ]
     )
 
     client.write(encode_sequences([(A, delay), (termination + B, 2*delay)]))
     data = client.read()
-    assert data == A
+    assert data == A + termination
     sleep(2*delay)
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -351,12 +342,10 @@ def test_return_timeout_short():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(
-            response=delay + TIME_DELTA,
-        ),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
-            Continuation(time=delay - TIME_DELTA)
+            Continuation(continuation=delay - TIME_DELTA)
         ]
     )
 
@@ -364,10 +353,10 @@ def test_return_timeout_short():
     data = client.read()
     assert data == A
     data = client.read()
-    assert data == b'' # Termination only
+    assert data == termination
     data = client.read()
     assert data == B
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -380,179 +369,20 @@ def test_return_timeout_long():
     client = SerialPort(
         port=PORT,
         baudrate=BAUDRATE,
-        timeout=Timeout(
-            response=delay + TIME_DELTA
-        ),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
-            Continuation(time=delay+TIME_DELTA),
+            Continuation(continuation=delay+TIME_DELTA),
         ]
     )
 
     client.write(encode_sequences([(A, delay), (termination + B, delay)]))
     data = client.read()
-    assert data == A
+    assert data == A + termination
     data = client.read()
     assert data == B
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
-
-
-# Test action=whatever except 'error'
-# def test_response_no_error():
-#     for r in ["discard", "return", "store"]:
-#         A = b"ABCDEFGH"
-#         B = b"IJKLMNOPQKRSTUVWXYZ"
-#         termination = b"*"
-#         delay = 0.5
-#         client = SerialPort(
-#             port=PORT,
-#             baudrate=BAUDRATE,
-#             timeout=Timeout(response=delay - TIME_DELTA, action=r),
-#             stop_conditions=Termination(termination),
-#         )
-#         client.write(encode_sequences([(A, delay)]))
-#         data = client.read()
-#         assert data == b""
-#         data = client.read()
-#         client.flushRead()
-#         client.close()
-
-
-# Test action='error'
-def test_response_error():
-    A = b"ABCDEFGH"
-    termination = b"*"
-    delay = 0.5
-    client = SerialPort(
-        port=PORT,
-        baudrate=BAUDRATE,
-        timeout=Timeout(response=delay - TIME_DELTA, action="error"),
-        stop_conditions=Termination(termination),
-    )
-
-    client.write(encode_sequences([(A + termination, delay)]))
-    try:
-        client.read()
-    except AdapterTimeoutError as te:
-        #assert te._type == TimeoutType.RESPONSE
-        pass
-    else:
-        raise RuntimeError("No exception raised")
-    data = client.read()
-    assert data == A
-    client.flush_read()
-    client.close()
-
-
-# Test on_continuation='discard'
-# def test_continuation_discard():
-#     A = b"ABCDEFGHC"
-#     B = b"IJKLMNOPQKRSTUVWXYZD"
-#     termination = b"*"
-#     delay = 0.5
-#     client = SerialPort(
-#         port=PORT,
-#         baudrate=BAUDRATE,
-#         timeout=Timeout(
-#             response=delay + TIME_DELTA,
-#             #continuation=delay - TIME_DELTA,
-#             #on_continuation="discard",
-#         ),
-#         stop_conditions=[
-#             Termination(termination),
-#             Continuation(continuation=delay-TIME_DELTA)
-#         ]
-#     )
-
-#     client.write(encode_sequences([(A, delay), (termination + B, delay)]))
-#     data = client.read()
-#     assert data == b""
-#     data = client.read()#timeout=Timeout(on_continuation="return"))#stop_condition=None,
-#     assert data == termination + B
-#     client.flushRead()
-#     client.close()
-
-
-# Test on_continuation='return'
-# def test_continuation_return():
-#     A = b"ABCDEFGHAA"
-#     B = b"IJKLMNOPQKRSTUVWXYZBB"
-#     termination = b"*"
-#     delay = 0.5
-#     client = SerialPort(
-#         port=PORT,
-#         baudrate=BAUDRATE,
-#         timeout=Timeout(
-#             response=delay + TIME_DELTA,
-#             #continuation=delay - TIME_DELTA,
-#             #on_continuation="return",
-#         ),
-#         stop_conditions=Termination(termination),
-#     )
-
-#     client.write(encode_sequences([(A, delay), (termination + B, delay)]))
-#     data = client.read()
-#     assert data == A
-#     data = client.read()#stop_condition=None)
-#     assert data == termination + B
-#     client.flushRead()
-#     client.close()
-
-
-# Test on_continuation='store'
-# def test_continuation_store():
-#     A = b"ABCDEFGHX"
-#     B = b"IJKLMNOPQKRSTUVWXYZX"
-#     termination = b"*"
-#     delay = 0.5
-#     client = SerialPort(
-#         port=PORT,
-#         baudrate=BAUDRATE,
-#         timeout=Timeout(
-#             response=delay + TIME_DELTA,
-#             #continuation=delay - TIME_DELTA,
-#             #on_continuation="store",
-#         ),
-#         stop_conditions=Termination(termination),
-#     )
-
-#     client.write(encode_sequences([(A, delay), (termination + B, delay)]))
-#     data = client.read()
-#     assert data == b""
-#     data = client.read()
-#     assert data == A
-#     client.flushRead()
-#     client.close()
-
-
-# Test on_continuation='error'
-# def test_continuation_error():
-#     A = b"ABCDEFGH"
-#     B = b"IJKLMNOPQKRSTUVWXYZ"
-#     termination = b"*"
-#     delay = 0.5
-#     client = SerialPort(
-#         port=PORT,
-#         baudrate=BAUDRATE,
-#         timeout=Timeout(
-#             response=delay + TIME_DELTA,
-#             #continuation=delay - TIME_DELTA,
-#             #on_continuation="error",
-#         ),
-#         stop_conditions=Termination(termination),
-#     )
-
-#     client.write(encode_sequences([(A, delay), (termination + B, delay)]))
-#     try:
-#         data = client.read()
-#     except AdapterTimeoutError:
-#         pass
-#         #assert te._type == TimeoutType.CONTINUATION
-#     else:
-#         raise RuntimeError("No exception raised")
-#     client.flushRead()
-#     client.close()
 
 
 def test_flush():
@@ -562,15 +392,15 @@ def test_flush():
     B = b"XXXXXXXX"
 
     client = SerialPort(
-        port=PORT, baudrate=BAUDRATE, timeout=Timeout(response=1)#, continuation=10e-3)
+        port=PORT, baudrate=BAUDRATE, timeout=1#, continuation=10e-3)
     )
 
     client.write(encode_sequences([(A, 0)] * 3))
     sleep(1)
-    client.flush_read()
+    client.clear_read_buffer()
     sleep(0.2)
     client.write(encode_sequences([(B, 0)]))
     data = client.read()
     assert data == B
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()

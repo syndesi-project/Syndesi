@@ -10,7 +10,10 @@ Contents:
    :caption: Table of Contents
 
    introduction
+   getting_started
    adapters
    protocols
    error_handling
    api_reference
+   component
+   advanced

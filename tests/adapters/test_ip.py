@@ -1,12 +1,12 @@
+import asyncio
 import logging
 import random
 from time import sleep
 import time
 
-from syndesi import IP
-from syndesi.adapters.backend.adapter_backend import AdapterDisconnectedSignal, AdapterReadPayload
-from syndesi.adapters.stop_condition import *
-from syndesi.adapters.timeout import Timeout
+from syndesi import IP, AsyncIP
+from syndesi.adapters.framer import AdapterReadFrame
+from syndesi.adapters.stop_conditions import *
 import socket
 import os
 import shutil
@@ -17,7 +17,7 @@ import pytest
 
 from pathlib import Path
 
-from syndesi.tools.errors import AdapterTimeoutError
+from syndesi.tools.errors import AdapterOpenError, AdapterTimeoutError
 HOST = "localhost"
 PORT = 8888
 
@@ -63,26 +63,64 @@ def _wait_port_open(port: int, timeout: float = 5.0) -> bool:
     return False
 
 
+# @pytest.fixture(scope="module", autouse=True)
+# def background_proc():
+#     """Build and start ip_delayer once before tests."""
+#     global _PROC, _PATH
+#     _PATH = str(_compile_ip_delayer())
+#     _PROC = subprocess.Popen(
+#         [_PATH, "--port", str(PORT)],
+#         #stdout=subprocess.STDOUT,
+#         #stderr=subprocess.STDOUT,
+#         #text=True,
+#     )
+#     if not _wait_port_open(PORT, timeout=5.0):
+#         try:
+#             out = _PROC.communicate(timeout=0.5)[0]
+#         except Exception:
+#             out = ""
+#         _PROC.kill()
+#         raise RuntimeError(
+#             f"ip_delayer failed to start on port {PORT}. Output:\n{out}"
+#         )
+
 @pytest.fixture(scope="module", autouse=True)
 def background_proc():
-    """Build and start ip_delayer once before tests."""
+    """Build and start ip_delayer once before tests, kill it afterwards."""
     global _PROC, _PATH
+
     _PATH = str(_compile_ip_delayer())
-    _PROC = subprocess.Popen(
+    proc = subprocess.Popen(
         [_PATH, "--port", str(PORT)],
-        #stdout=subprocess.STDOUT,
-        #stderr=subprocess.STDOUT,
-        #text=True,
+        # stdout=subprocess.STDOUT,
+        # stderr=subprocess.STDOUT,
+        # text=True,
     )
+    _PROC = proc
+
     if not _wait_port_open(PORT, timeout=5.0):
         try:
-            out = _PROC.communicate(timeout=0.5)[0]
+            out = proc.communicate(timeout=0.5)[0]
         except Exception:
             out = ""
-        _PROC.kill()
+        proc.kill()
+        proc.wait(timeout=5)
         raise RuntimeError(
             f"ip_delayer failed to start on port {PORT}. Output:\n{out}"
         )
+
+    # ---- tests using the fixture run after this yield ----
+    try:
+        yield proc
+    finally:
+        # ---- teardown: called when all tests in the module are done ----
+        if proc.poll() is None:  # still running
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
 
 def encode_sequences(sequences: list):
     output = b""
@@ -91,7 +129,7 @@ def encode_sequences(sequences: list):
     return output
 
 
-TIME_DELTA = 30e-3
+TIME_DELTA = 50e-3
 
 # Test response timeout
 # long enough to catch the first sequence
@@ -102,15 +140,14 @@ def test_response_A():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(delay + TIME_DELTA, action="error"),
+        timeout=delay + TIME_DELTA,
         stop_conditions=Continuation(0.1),
     )
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
     assert data == sequence
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
-
 
 # Test response timeout
 # not long enough to catch the first sequence
@@ -120,15 +157,19 @@ def test_response_B():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA, action="return_empty"),
+        timeout=delay - TIME_DELTA,
         stop_conditions=Continuation(0.1),
     )
-    data = client.query(encode_sequences([(sequence, delay)]))
-    assert data == b''
+    try:
+        data = client.query(encode_sequences([(sequence, delay)]))
+    except AdapterTimeoutError:
+        ...
+    else:
+        raise RuntimeError("No timeout error")
     sleep(2 * TIME_DELTA)
     data = client.read()
     assert data == sequence
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -145,7 +186,7 @@ def test_continuation():
         port=PORT,
         timeout=delay_response + TIME_DELTA,
         stop_conditions=Continuation(
-            time=delay_continuation + TIME_DELTA
+            continuation=delay_continuation + TIME_DELTA
         ),
         transport="udp",
     )
@@ -158,9 +199,8 @@ def test_continuation():
         )
     )
     assert data == sequence_response + sequence_continuation
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
-
 
 # Test termination
 def test_termination():
@@ -173,16 +213,16 @@ def test_termination():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=Termination(termination),
-        transport="UDP",
+        transport="UDP"
     )
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
-    assert data == A
+    assert data == A + termination
     data = client.read()
-    assert data == B
-    client.flush_read()
+    assert data == B + termination
+    client.clear_read_buffer()
     client.close()
 
 
@@ -197,7 +237,7 @@ def test_termination_partial():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=Termination(termination),
         transport="UDP",
     )
@@ -210,11 +250,11 @@ def test_termination_partial():
         )
     )
     data = client.read()
-    assert data == A
+    assert data == A + termination
     sleep(delay + TIME_DELTA)
     data = client.read()
-    assert data == B
-    client.flush_read()
+    assert data == B + termination
+    client.clear_read_buffer()
     client.close()
 
 
@@ -228,9 +268,8 @@ def test_length():
     assert data == sequence[:10]
     data = client.read()
     assert data == sequence[10:20]
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
-
 
 # Test length with short timeout
 def test_length_short_timeout():
@@ -240,18 +279,22 @@ def test_length_short_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA, action="return_empty"),
-        stop_conditions=Length(10),
+        timeout=delay - TIME_DELTA,
+        stop_conditions=[Length(10), Continuation(0.1)],
     )
-    data = client.query(encode_sequences([(sequence, delay)]))
-    assert data == b''
+    try:
+        data = client.query(encode_sequences([(sequence, delay)]))
+    except AdapterTimeoutError:
+        ...
+    else:
+        raise RuntimeError("No timeout error")
     data = client.read()
     assert data == sequence[:N]
     data = client.read()
     assert data == sequence[N : 2 * N]
     data = client.read()  # Too short
-    assert data == b''
-    client.flush_read()
+    assert data == sequence[2*N:]
+    client.clear_read_buffer()
     client.close()
 
 
@@ -263,8 +306,8 @@ def test_length_long_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA, action="return_empty"),
-        stop_conditions=Length(10),
+        timeout=delay + TIME_DELTA,
+        stop_conditions=[Length(10), Continuation(0.1)],
     )
     client.write(encode_sequences([(sequence, delay)]))
     data = client.read()
@@ -272,7 +315,7 @@ def test_length_long_timeout():
     data = client.read()
     assert data == sequence[N : 2 * N]
     data = client.read()
-    assert data == b''
+    assert data == sequence[2*N:]
 
     client.close()
 
@@ -286,13 +329,13 @@ def test_termination_long_timeout():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay + TIME_DELTA),
+        timeout=delay + TIME_DELTA,
         stop_conditions=Termination(termination),
         transport="UDP",
     )
     client.write(encode_sequences([(A, delay), (termination + B, delay + 1e-3)]))
     data = client.read()
-    assert data == A
+    assert data == A + termination
     client.close()
 
 
@@ -308,12 +351,12 @@ def test_double_stop_condition():
         timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
-            Continuation(time=delay-TIME_DELTA)
+            Continuation(delay-TIME_DELTA)
         ],
         transport="UDP",
     )
     data = client.query(encode_sequences([(A, delay), (termination + B, delay + 1e-3)]))
-    assert data == A
+    assert data == A + termination
     data = client.read()
     assert data == B
     client.close()
@@ -328,9 +371,7 @@ def test_double_stop_condition():
 #     client = IP(
 #         HOST,
 #         port=PORT,
-#         timeout=Timeout(
-#             response=delay + TIME_DELTA
-#         ),  # continuation=delay-TIME_DELTA, on_continuation='return'
+#         timeout=delay + TIME_DELTA,  # continuation=delay-TIME_DELTA, on_continuation='return'
 #         stop_conditions=Termination(termination),
 #         transport="UDP",
 #     )
@@ -370,15 +411,19 @@ def test_timeout_on_return():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA, action="return_empty"),
+        timeout=delay - TIME_DELTA,
         stop_conditions=Termination(termination),
         transport="UDP",
     )
     client.write(encode_sequences([(A, delay)]))
-    data = client.read()
-    assert data == b''
+    try:
+        data = client.read()
+    except AdapterTimeoutError:
+        ...
+    else:
+        raise RuntimeError("No timeout error")
     sleep(TIME_DELTA*2)
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 
@@ -390,7 +435,7 @@ def test_on_response_error():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(response=delay - TIME_DELTA),
+        timeout=delay - TIME_DELTA,
         stop_conditions=Termination(termination),
         transport="UDP",
     )
@@ -402,31 +447,9 @@ def test_on_response_error():
     else:
         raise RuntimeError("No exception raised")
     data = client.read()
-    assert data == A
-    client.flush_read()
+    assert data == A + termination
+    client.clear_read_buffer()
     client.close()
-
-
-# # Test on_continuation='discard'
-# def test_continuation_discard():
-#     A = b"ABCDEFGH"
-#     B = b"IJKLMNOPQKRSTUVWXYZ"
-#     termination = b"\n"
-#     delay = 0.5
-#     client = IP(
-#         HOST,
-#         port=PORT,
-#         timeout=Timeout(
-#             response=delay + TIME_DELTA
-#         ),  # continuation=delay-TIME_DELTA, on_continuation='discard'
-#         stop_conditions=Termination(termination),
-#         transport="UDP",
-#     )
-#     client.write(encode_sequences([(A, delay), (termination + B, delay)]))
-#     data = client.read()
-#     assert data == b""
-#     client.close()
-
 
 # Test on_continuation='return'
 def test_continuation_return():
@@ -437,12 +460,10 @@ def test_continuation_return():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(
-            response=delay + TIME_DELTA, action="return_empty"
-        ),
+        timeout=delay + TIME_DELTA,
         stop_conditions=[
             Termination(termination),
-            Continuation(time=delay-TIME_DELTA)
+            Continuation(delay-TIME_DELTA)
         ],
         transport="UDP",
     )
@@ -450,10 +471,10 @@ def test_continuation_return():
     data = client.read()
     assert data == A
     data = client.read()
-    assert data == b""
+    assert data == termination
     data = client.read()
     assert data == B
-    client.flush_read()
+    client.clear_read_buffer()
     client.close()
 
 # Test if a new configuration is correctly applied
@@ -465,27 +486,21 @@ def test_read_timeout_reconfiguration():
     client = IP(
         HOST,
         port=PORT,
-        timeout=Timeout(
-            response=0,
-        ),
+        timeout=0,
         stop_conditions=Termination(termination),
         transport="UDP",
     )
     client.write(encode_sequences([(A+termination, delay)]))
-    data = client.read(
-        timeout=Timeout(
-            response=delay + TIME_DELTA,
-        )
-    )
-    assert data == A
+    data = client.read(timeout=delay + TIME_DELTA)
+    assert data == A + termination
     client.write(encode_sequences([(B+termination, delay)]))
-    data = client.read(
-        timeout=Timeout(
-            response=delay-TIME_DELTA, action="return_empty"
-        )
-    )
-    assert data == b''
-    client.flush_read()
+    try:
+        data = client.read(timeout=delay-TIME_DELTA)
+    except AdapterTimeoutError:
+        ...
+    else:
+        raise RuntimeError("No timeout error")
+    client.clear_read_buffer()
     client.close()
 
 
@@ -493,15 +508,101 @@ def test_flush():
     A = b"AAAAAAAA"
     B = b"XXXXXXXX"
 
-    client = IP(HOST, port=PORT, timeout=Timeout(response=1))
+    client = IP(HOST, port=PORT, timeout=1)
 
     client.write(encode_sequences([(A, 0)] * 3))
     sleep(1)
-    client.flush_read()
+    client.clear_read_buffer()
     sleep(0.2)
     client.write(encode_sequences([(B, 0)]))
     data = client.read()
     assert data == B
+
+def _closed_port() -> int:
+    """Return a local TCP port nobody listens on"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_open_error():
+    with pytest.raises(AdapterOpenError):
+        IP(HOST, port=_closed_port())
+
+
+def test_async_query():
+    delay = 0.25
+    sequence = b"ABCD"
+
+    async def main():
+        async with AsyncIP(
+            HOST,
+            port=PORT,
+            timeout=delay + TIME_DELTA,
+            stop_conditions=Continuation(0.1),
+        ) as client:
+            return await client.query(encode_sequences([(sequence, delay)]))
+
+    assert asyncio.run(main()) == sequence
+
+
+# The response arrives after the timeout, the next read must get it
+def test_async_timeout():
+    A = b"ABCDEFGH"
+    termination = b"\n"
+    delay = 0.5
+
+    async def main():
+        client = AsyncIP(
+            HOST,
+            port=PORT,
+            timeout=delay - TIME_DELTA,
+            stop_conditions=Termination(termination),
+            transport="UDP",
+        )
+        await client.write(encode_sequences([(A + termination, delay)]))
+        with pytest.raises(AdapterTimeoutError):
+            await client.read()
+        data = await client.read()
+        await client.close()
+        return data
+
+    assert asyncio.run(main()) == A + termination
+
+
+# A read cancelled by asyncio must free the read slot and leave the data to the next read
+def test_async_cancelled_read():
+    A = b"ABCDEFGH"
+    termination = b"\n"
+    delay = 0.5
+
+    async def main():
+        client = AsyncIP(
+            HOST,
+            port=PORT,
+            timeout=delay + TIME_DELTA,
+            stop_conditions=Termination(termination),
+            transport="UDP",
+        )
+        await client.write(encode_sequences([(A + termination, delay)]))
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(client.read(timeout=None), delay / 2)
+        data = await client.read()
+        await client.close()
+        return data
+
+    assert asyncio.run(main()) == A + termination
+
+
+# The open submitted at construction fails, the first operation must raise its error
+def test_async_open_error():
+    async def main():
+        client = AsyncIP(HOST, port=_closed_port())
+        with pytest.raises(AdapterOpenError):
+            await client.write(b"")
+
+    asyncio.run(main())
+
 
 def _test_delayer(ip_delayer_port):
     sequence = b'ABCD'
@@ -509,16 +610,15 @@ def _test_delayer(ip_delayer_port):
     client = IP(
         HOST,
         port=ip_delayer_port,
-        timeout=Timeout(1 + TIME_DELTA, action='error'),
+        timeout=1 + TIME_DELTA,
         stop_conditions=Continuation(0.005),
         transport='UDP')
     for _ in range(N):
         delay = random.random()*0.5
-        payload = client.query_detailed(encode_sequences([(sequence, delay)]))
-        data = payload.data()
-        payload : AdapterReadPayload
-        #print(f'Error : {metrics.response_delay - delay:.3f}s')
+        frame = client.query_detailed(encode_sequences([(sequence, delay)]))
+        data = frame.data
+        frame : AdapterReadFrame
         assert data == sequence
-        assert abs(payload.response_delay - delay) < TIME_DELTA
-    client.flush_read()
+        assert abs(frame.response_delay - delay) < TIME_DELTA
+    client.clear_read_buffer()
     client.close()
