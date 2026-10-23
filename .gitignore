@@ -155,3 +155,5 @@ cython_debug/
 
 # Pylint output
 .pylint
+
+.envrc
