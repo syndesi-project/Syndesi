@@ -299,3 +299,37 @@ SERIAL_FRAMINGS = {
     "rtu": (_read_rtu_frame, _unframe_rtu, frame_rtu),
     "ascii": (_read_ascii_frame, _unframe_ascii, _ascii_frame),
 }
+
+
+@contextmanager
+def virtual_serial_pair():
+    """Two pseudo terminals linked together, like a null-modem cable. Yields their paths"""
+    m1, s1 = pty.openpty()
+    m2, s2 = pty.openpty()
+    for fd in (s1, s2):
+        tty.setraw(fd)  # no echo, no CR/LF translation
+    paths = (os.ttyname(s1), os.ttyname(s2))
+
+    peer = {m1: m2, m2: m1}
+    stop_r, stop_w = os.pipe()
+
+    def relay():
+        while True:
+            ready, _, _ = select.select([m1, m2, stop_r], [], [])
+            if stop_r in ready:
+                return
+            for fd in ready:
+                data = os.read(fd, 4096)
+                while data:
+                    n = os.write(peer[fd], data)
+                    data = data[n:]
+
+    thread = threading.Thread(target=relay, daemon=True)
+    thread.start()
+    try:
+        yield paths
+    finally:
+        os.write(stop_w, b"x")
+        thread.join(timeout=2)
+        for fd in (m1, s1, m2, s2, stop_r, stop_w):
+            os.close(fd)

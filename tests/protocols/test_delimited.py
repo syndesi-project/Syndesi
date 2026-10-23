@@ -4,8 +4,6 @@ Delimited protocol tests, against a local TCP server sending back what it receiv
 
 import asyncio
 import socket
-import socketserver
-import threading
 
 import pytest
 
@@ -15,23 +13,6 @@ from syndesi.protocols.delimited import DelimitedBackend
 from syndesi.tools.errors import AdapterOpenError, ProtocolReadError
 
 HOST = "127.0.0.1"
-
-
-class _Echo(socketserver.BaseRequestHandler):
-    def handle(self):
-        while data := self.request.recv(4096):
-            self.request.sendall(data)
-
-
-@pytest.fixture(scope="module")
-def port():
-    """Port of a TCP server sending back everything it receives"""
-    server = socketserver.ThreadingTCPServer((HOST, 0), _Echo)
-    server.daemon_threads = True
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield server.server_address[1]
-    server.shutdown()
-    server.server_close()
 
 
 def _closed_port() -> int:

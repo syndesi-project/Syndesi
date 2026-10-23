@@ -1,18 +1,15 @@
 from contextlib import ExitStack, contextmanager
 import itertools
-import os
 from pathlib import Path
-import pty
 import random
-import select
 import shutil
 import socket
 import subprocess
-import threading
 import time
 from random import randint, random
-import tty
 import pytest
+
+from modbus_device import virtual_serial_pair
 
 from syndesi import IP, Modbus
 from syndesi.adapters.serialport import SerialPort
@@ -86,39 +83,6 @@ def run_process(cmd):
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-
-@contextmanager
-def virtual_serial_pair():
-    """Crée deux ports série virtuels reliés. Renvoie (chemin_a, chemin_b)."""
-    m1, s1 = pty.openpty()
-    m2, s2 = pty.openpty()
-    for fd in (s1, s2):
-        tty.setraw(fd)              # pas d'écho, pas de traduction CR/LF
-    paths = (os.ttyname(s1), os.ttyname(s2))
-
-    peer = {m1: m2, m2: m1}
-    stop_r, stop_w = os.pipe()
-
-    def relay():
-        while True:
-            ready, _, _ = select.select([m1, m2, stop_r], [], [])
-            if stop_r in ready:
-                return
-            for fd in ready:
-                data = os.read(fd, 4096)
-                while data:
-                    n = os.write(peer[fd], data)
-                    data = data[n:]
-
-    thread = threading.Thread(target=relay, daemon=True)
-    thread.start()
-    try:
-        yield paths
-    finally:
-        os.write(stop_w, b"x")
-        thread.join(timeout=2)
-        for fd in (m1, s1, m2, s2, stop_r, stop_w):
-            os.close(fd)
 
 @pytest.fixture(scope="session")
 def modbus_endpoint(request, diagslave_path):

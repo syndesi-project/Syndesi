@@ -18,15 +18,15 @@ from collections.abc import Sequence
 from enum import Enum
 from typing import Any
 
+from syndesi.adapters.events import AdapterClosedEvent, AdapterFrameEvent, SyndesiEvent
+
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
 from ..adapters.visa import Visa
 from ..protocols.delimited import Delimited
 from ..protocols.protocol import (
     Protocol,
-    # ProtocolDisconnectedEvent,
-    # ProtocolEvent,
-    # ProtocolFrameEvent,
+    ProtocolFrameEvent,
 )
 from ..protocols.raw import Raw
 from ..tools.errors import AdapterOpenError
@@ -323,13 +323,13 @@ class AdapterShell:
             self.shell.stop()
         self.shell.reprompt()
 
-    def event(self, event: ProtocolEvent) -> None:
+    def event(self, event: SyndesiEvent) -> None:
         """
         Method called when an event is recevied from the adapter
         """
-        if isinstance(event, ProtocolDisconnectedEvent):
+        if isinstance(event, AdapterClosedEvent):
             self.shell.ask(
-                "Adapter disconnected, reconnect ? [y/n]: ", self._open_answer
+                "Adapter closed, reconnect ? [y/n]: ", self._open_answer
             )
         elif isinstance(event, ProtocolFrameEvent):
             data = event.frame.data

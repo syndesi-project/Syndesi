@@ -10,7 +10,7 @@ and timestamps it is given, which makes it testable on its own
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar, runtime_checkable
+from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 
 from .stop_conditions import BytesFragment, Continuation, StopCondition, Total
 from .utils import Fragment
@@ -134,6 +134,9 @@ class SupportsStopConditions(Protocol):
     def set_stop_conditions(self, stop_conditions: list[StopCondition]) -> None:
         """Replace the stop-conditions, safe to call while a frame is in progress"""
 
+    def reframe(self) -> list[AssembledFrame[Any]]:
+        """Assemble the frame in progress again with the current stop-conditions"""
+
 
 class TrivialFramer(Framer[DataT]):
     """
@@ -199,6 +202,21 @@ class BytesFramer(Framer[bytes]):
         if self._first_fragment_timestamp is not None:
             for stop_condition in stop_conditions:
                 stop_condition.initiate_read(self._first_fragment_timestamp)
+
+    def reframe(self) -> list[AssembledFrame[bytes]]:
+        """
+        Assemble the frame in progress again with the current stop-conditions
+
+        The fragments received so far were evaluated by the previous stop-conditions.
+        The new ones may end the frame right away : FragmentSC for instance has no
+        deadline that would end it later, the frame would wait for the next fragment
+        """
+        fragments = self._fragments
+        self._clear_assembly()
+        frames: list[AssembledFrame[bytes]] = []
+        for fragment in fragments:
+            frames += self.push(fragment)
+        return frames
 
     # ┌───────────────────┐
     # │ Frame assembly    │

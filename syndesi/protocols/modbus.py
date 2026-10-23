@@ -39,18 +39,25 @@ Modbus implementation : TCP over IP, RTU and ASCII over a serial port
 
 from __future__ import annotations
 
+import asyncio
+import inspect
+import logging
 import struct
+import threading
 from abc import ABC, abstractmethod
+from collections import defaultdict, deque
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum, IntEnum, StrEnum
 from math import ceil
-from typing import Any, Generic, TypeVar, cast
+from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from syndesi.adapters.serialport import AsyncSerialPort, SerialPort
 
 from ..adapters.adapter import Adapter, AsyncAdapter
 from ..adapters.framer import AdapterReadFrame
 from ..adapters.ip import IP, AsyncIP
+from ..adapters.ipserver import AsyncIPServer, IPServer
 from ..adapters.stop_conditions import (
     Continuation,
     FragmentSC,
@@ -58,8 +65,16 @@ from ..adapters.stop_conditions import (
     Termination,
 )
 from ..adapters.utils import TimeoutParameterType, TimeoutType
-from ..tools.errors import ProtocolError, ProtocolReadError
-from .protocol import AsyncProtocol, BackendOutput, Protocol, ProtocolBackend
+from ..tools.errors import AdapterError, ProtocolError, ProtocolReadError
+from ..tools.log_settings import LoggerAlias
+from ..adapters.events import SyndesiEvent
+from .protocol import (
+    AsyncProtocol,
+    BackendOutput,
+    Protocol,
+    ProtocolBackend,
+    ProtocolEvent,
+)
 
 MODBUS_TCP_DEFAULT_PORT = 502
 
@@ -131,16 +146,20 @@ def _check_discrete_input_output_count(discrete_inputs: int) -> None:
         )
 
 
+class ModbusAddressError(ValueError):
+    """An address, or a range of addresses, is outside of the data model"""
+
+
 def _check_address(address: int, max_address: int | None = None) -> None:
     if not MIN_ADDRESS <= address <= MAX_ADDRESS:
-        raise ValueError(
+        raise ModbusAddressError(
             f"Invalid address : {address}, it must be in the range "
             f"[{MIN_ADDRESS},{MAX_ADDRESS}]"
         )
 
     if max_address is not None:
         if address > max_address:
-            raise ValueError(
+            raise ModbusAddressError(
                 f"Invalid address : {address}, it cannot exceed {max_address}"
                 " in the current context"
             )
@@ -329,7 +348,8 @@ class ModbusSDU:
     Subclasses of this contain either request or response fields to a modbus
     frame
     """
-    function_code: FunctionCode
+
+    function_code: int
 
     # def make_sdu(self) -> bytes:
     #     """Generate a bytes array containing the SDU"""
@@ -428,15 +448,13 @@ class ExceptionResponseSDU(ModbusResponseSDU[ModbusRequestSDU]):
     is kept as an int, devices are free to use non standard codes
     """
 
-    function_code: FunctionCode
+    function_code: int
     exception_code: int
 
     @property
     def description(self) -> str:
         """Human readable description of the exception code"""
-        if self.exception_code in _EXCEPTION_DESCRIPTIONS:
-            return _EXCEPTION_DESCRIPTIONS[ExceptionCode(self.exception_code)]
-        return "Unknown exception code"
+        return _exception_description(self.exception_code)
 
     @staticmethod
     def is_exception(sdu: bytes) -> bool:
@@ -459,6 +477,33 @@ class ExceptionResponseSDU(ModbusResponseSDU[ModbusRequestSDU]):
                 f", expected {request.function_code}"
             )
         return ExceptionResponseSDU(request.function_code, exception_code)
+
+def _exception_description(exception_code: int) -> str:
+    if exception_code in _EXCEPTION_DESCRIPTIONS:
+        return _EXCEPTION_DESCRIPTIONS[ExceptionCode(exception_code)]
+    return "Unknown exception code"
+
+
+class ModbusException(ModbusError):
+    """
+    Modbus exception, the error a server answers with
+
+    Raised by a client that receives an exception response, and by a server handler
+    to answer with one
+
+    Parameters
+    ----------
+    exception_code : ExceptionCode or int
+    description : str or None
+        None for the standard description of the exception code
+    """
+
+    def __init__(self, exception_code: int, description: str | None = None) -> None:
+        self.exception_code = exception_code
+        if description is None:
+            description = _exception_description(exception_code)
+        super().__init__(f"{exception_code:02X} : {description}")
+
 
 # Read Coils - 0x01
 @dataclass
@@ -1897,31 +1942,49 @@ REQUESTS = {req.function_code: req for req, _ in _SDU_PAIRS}
 RESPONSES = {resp.function_code: resp for _, resp in _SDU_PAIRS}
 
 MBAP_LENGTH = 6  # transaction id, protocol id, length : the fixed part of the header
+BROADCAST_ADDRESS = 0
+
+
+@dataclass
+class ModbusExceptionEvent(ProtocolEvent):
+    """
+    An exception response went through the backend
+
+    Received by a client, or made by a server backend for a request it couldn't accept
+    """
+
+    response: ExceptionResponseSDU
+
 
 class ModbusBackend(ProtocolBackend[bytes, ModbusSDU]):
     """
-    Builds and parses the Modbus PDU around the SDU of each request
+    Builds and parses the Modbus frames around the SDUs, as a client or as a server
 
-    Two things make this more than an encode/decode pair, and both are why the backend
-    keeps state :
+    A client writes requests and reads responses, a server reads requests and writes
+    responses. The framing is the same both ways, only what is inside changes
 
-    * the response cannot be parsed on its own. Reading 10 coils and reading 3 gives
-      the same bytes on the wire, only the request says how to read them, so the SDU
-      that was written is kept and used to parse what comes back
-    * the frame length lives in the header. FragmentSC() hands the raw fragments over
-      and the assembly happens here, which is also what makes coalesced answers work
+    The backend keeps state :
+
+    * a client response cannot be parsed on its own. Reading 10 coils and reading 3
+      gives the same bytes on the wire, only the request says how to read them, so the
+      SDU that was written is kept and used to parse what comes back
+    * a server response is framed like the request it answers (transaction id in TCP,
+      broadcast or not on a serial line), so that is kept until the response is written
+    * the TCP frame length lives in the header. FragmentSC() hands the raw fragments
+      over and the assembly happens here, which is also what makes coalesced frames
+      work
 
     Parameters
     ----------
-    modbus_type : ModbusType
-    slave_address : int or None
-        Required for RTU and ASCII, unused by TCP
-    silence : float
-        Silence that ends an RTU frame, in seconds. See rtu_silence
+    server : bool
+        False for a client (default), True for a server
     """
 
-    def __init__(self) -> None:
-        self._transaction_id = 0
+    # Whether the serial line only function codes can be used
+    serial_line: ClassVar[bool]
+
+    def __init__(self, *, server: bool = False) -> None:
+        self._server = server
         self._last_sdu: ModbusRequestSDU | None = None
         self._buffer = b""
 
@@ -1929,22 +1992,39 @@ class ModbusBackend(ProtocolBackend[bytes, ModbusSDU]):
     # │ Encoding │
     # └──────────┘
 
+    def encode(self, payload: ModbusSDU) -> list[bytes]:
+        if self._server:
+            if not isinstance(payload, ModbusResponseSDU):
+                raise RuntimeError("A Modbus server can only encode ModbusResponseSDU")
+            return self._encode_response(payload.make_sdu())
+
+        if not isinstance(payload, ModbusRequestSDU):
+            raise RuntimeError("Can only encode ModbusRequestSDU")
+        if isinstance(payload, SerialLineOnlySDU) and not self.serial_line:
+            raise ProtocolError("This function cannot be used with Modbus TCP")
+        # Kept for parse_sdu, the answer alone doesn't say how to read itself
+        self._last_sdu = payload
+        return [self._encode_request(payload.make_sdu())]
+
     @abstractmethod
-    def encode(self, payload: ModbusSDU) -> list[bytes]: ...
-
-    # ┌───────────┐
-    # │ Assembly  │
-    # └───────────┘
+    def _encode_request(self, sdu: bytes) -> bytes:
+        """Frame a request SDU"""
 
     @abstractmethod
-    def push(
-        self, frame: AdapterReadFrame[bytes]
-    ) -> BackendOutput[bytes, ModbusSDU]: ...
+    def _encode_response(self, sdu: bytes) -> list[bytes]:
+        """Frame a response SDU like the request it answers, nothing if it has no answer"""
 
-    @abstractmethod
-    def _parse(self, pdu: bytes) -> ModbusSDU: ...
+    # ┌──────────┐
+    # │ Parsing  │
+    # └──────────┘
 
-    def _parse_sdu(self, sdu: bytes) -> ModbusResponseSDU[Any]:
+    def _parse_sdu(self, sdu: bytes) -> ModbusSDU:
+        """Parse a received SDU : a response for a client, a request for a server"""
+        if self._server:
+            return self._parse_request(sdu)
+        return self._parse_response(sdu)
+
+    def _parse_response(self, sdu: bytes) -> ModbusResponseSDU[Any]:
         """
         Parse the SDU of a response with the request that was last written
 
@@ -1969,6 +2049,49 @@ class ModbusBackend(ProtocolBackend[bytes, ModbusSDU]):
         except (struct.error, IndexError) as e:
             raise ProtocolReadError(f"Malformed Modbus response : {sdu!r}") from e
 
+    def _parse_request(self, sdu: bytes) -> ModbusSDU:
+        """
+        Parse the SDU of a request
+
+        A request the server cannot accept is returned as the ExceptionResponseSDU
+        that answers it
+        """
+        if sdu == b"":
+            raise ProtocolReadError("Empty Modbus request")
+
+        request_type = REQUESTS.get(sdu[0])
+        if request_type is None or (
+            issubclass(request_type, SerialLineOnlySDU) and not self.serial_line
+        ):
+            return ExceptionResponseSDU(sdu[0], ExceptionCode.ILLEGAL_FUNCTION)
+        try:
+            return request_type.parse_sdu(sdu)
+        except ModbusAddressError:
+            return ExceptionResponseSDU(sdu[0], ExceptionCode.ILLEGAL_DATA_ADDRESS)
+        except (ValueError, struct.error, IndexError):
+            return ExceptionResponseSDU(sdu[0], ExceptionCode.ILLEGAL_DATA_VALUE)
+
+    # ┌───────────┐
+    # │ Assembly  │
+    # └───────────┘
+
+    @staticmethod
+    def _output(payloads: list[ModbusSDU]) -> BackendOutput[bytes, ModbusSDU]:
+        """The payloads, with an event for each exception response among them"""
+        return BackendOutput(
+            payloads=payloads,
+            events=[
+                ModbusExceptionEvent(payload)
+                for payload in payloads
+                if isinstance(payload, ExceptionResponseSDU)
+            ],
+        )
+
+    @abstractmethod
+    def push(
+        self, frame: AdapterReadFrame[bytes]
+    ) -> BackendOutput[bytes, ModbusSDU]: ...
+
     @property
     def in_progress(self) -> bool:
         return len(self._buffer) > 0
@@ -1978,24 +2101,29 @@ class ModbusBackend(ProtocolBackend[bytes, ModbusSDU]):
 
     @property
     def default_timeout(self) -> TimeoutType:
-        return 1.0
+        # A server waits for requests for as long as it takes
+        return None if self._server else 1.0
+
+    @property
+    def adapter_default_timeout(self) -> TimeoutParameterType:
+        return None if self._server else ...
+
 
 class ModbusTCPBackend(ModbusBackend):
+    """Modbus TCP, frames carry an MBAP header"""
+
+    serial_line = False
+
+    def __init__(self, *, server: bool = False) -> None:
+        super().__init__(server=server)
+        self._transaction_id = 0
+        # (transaction id, unit id) of the requests not answered yet, in order
+        self._requests: deque[tuple[int, int]] = deque()
 
     @property
     def stop_conditions(self) -> list[StopCondition]:
         # The MBAP header carries the length, the backend cuts the frames itself
         return [FragmentSC()]
-
-    def _parse(self, pdu: bytes) -> ModbusResponseSDU[Any]:
-        """Check the MBAP header, return the SDU"""
-        if len(pdu) < MBAP_LENGTH + 1:  # header + unit id
-            raise ProtocolReadError(f"Modbus TCP frame is too short : {pdu!r}")
-        (protocol_id,) = struct.unpack(ENDIAN + "H", pdu[2:4])
-        if protocol_id != _PROTOCO_ID:
-            raise ProtocolReadError(f"Invalid Modbus TCP protocol id : {protocol_id}")
-
-        return self._parse_sdu(pdu[MBAP_LENGTH + 1 :])
 
     def push(self, frame: AdapterReadFrame[bytes]) -> BackendOutput[bytes, ModbusSDU]:
         self._buffer += frame.data
@@ -2009,54 +2137,101 @@ class ModbusTCPBackend(ModbusBackend):
             payloads.append(self._parse(self._buffer[:total]))
             self._buffer = self._buffer[total:]
 
-        return BackendOutput(payloads=payloads)
+        return self._output(payloads)
 
-    def encode(self, payload: ModbusSDU) -> list[bytes]:
-        if not isinstance(payload, ModbusRequestSDU):
-            raise RuntimeError("Can only encode ModbusRequestSDU")
-        if isinstance(payload, SerialLineOnlySDU):
-            raise ProtocolError("This function cannot be used with Modbus TCP")
-
-        sdu = payload.make_sdu()
-
-        length = len(sdu) + 1  # unit_id is included
-        output = (
-            struct.pack(
-                ENDIAN + "HHHB",
-                self._transaction_id,
-                _PROTOCO_ID,
-                length,
-                _UNIT_ID,
-            )
-            + sdu
+    def _parse(self, pdu: bytes) -> ModbusSDU:
+        """Check the MBAP header, return the SDU"""
+        if len(pdu) < MBAP_LENGTH + 1:  # header + unit id
+            raise ProtocolReadError(f"Modbus TCP frame is too short : {pdu!r}")
+        transaction_id, protocol_id, _, unit_id = struct.unpack(
+            ENDIAN + "HHHB", pdu[: MBAP_LENGTH + 1]
         )
+        if protocol_id != _PROTOCO_ID:
+            raise ProtocolReadError(f"Invalid Modbus TCP protocol id : {protocol_id}")
+        if self._server:
+            self._requests.append((transaction_id, unit_id))
 
+        return self._parse_sdu(pdu[MBAP_LENGTH + 1 :])
+
+    def _encode_request(self, sdu: bytes) -> bytes:
+        output = _mbap_frame(self._transaction_id, _UNIT_ID, sdu)
         self._transaction_id = (self._transaction_id + 1) % 0x10000
-        # Kept for parse_sdu, the answer alone doesn't say how to read itself
-        self._last_sdu = payload
-        return [output]
-    
-class ModbusSerialBackend(ModbusBackend, ABC):
+        return output
 
-    def __init__(self, slave_address: int) -> None:
-        super().__init__()
+    def _encode_response(self, sdu: bytes) -> list[bytes]:
+        if not self._requests:
+            raise ProtocolError("There is no request to answer")
+        transaction_id, unit_id = self._requests.popleft()
+        return [_mbap_frame(transaction_id, unit_id, sdu)]
+
+
+def _mbap_frame(transaction_id: int, unit_id: int, sdu: bytes) -> bytes:
+    length = len(sdu) + 1  # unit_id is included
+    return (
+        struct.pack(ENDIAN + "HHHB", transaction_id, _PROTOCO_ID, length, unit_id)
+        + sdu
+    )
+
+
+class ModbusSerialBackend(ModbusBackend, ABC):
+    """
+    Modbus over a serial line, RTU and ASCII only differ by their framing
+
+    A client only accepts answers from its slave. A server only reads the requests
+    addressed to it and the broadcasts, which it doesn't answer
+    """
+
+    serial_line = True
+
+    def __init__(self, slave_address: int, *, server: bool = False) -> None:
+        super().__init__(server=server)
         self._slave_address = slave_address
+        self._request_address = slave_address
 
     def push(self, frame: AdapterReadFrame[bytes]) -> BackendOutput[bytes, ModbusSDU]:
-        # RTU and ASCII are framed by the adapter (silence, trailer), one frame is
-        # one response
-        return BackendOutput(payloads=[self._parse(frame.data)])
+        # RTU and ASCII are framed by the adapter (silence, trailer), one adapter frame
+        # is one Modbus frame
+        address, sdu = self._unframe(frame.data)
+
+        if self._server:
+            if address not in (self._slave_address, BROADCAST_ADDRESS):
+                return BackendOutput()  # for another slave
+            self._request_address = address
+        elif address != self._slave_address:
+            raise ProtocolReadError(
+                f"Modbus answer came from slave {address}, "
+                f"expected {self._slave_address}"
+            )
+
+        return self._output([self._parse_sdu(sdu)])
+
+    def _encode_request(self, sdu: bytes) -> bytes:
+        return self._frame(self._slave_address, sdu)
+
+    def _encode_response(self, sdu: bytes) -> list[bytes]:
+        if self._request_address == BROADCAST_ADDRESS:
+            return []  # a broadcast is never answered
+        return [self._frame(self._slave_address, sdu)]
+
+    @abstractmethod
+    def _unframe(self, pdu: bytes) -> tuple[int, bytes]:
+        """Check a frame, return its (address, SDU)"""
+
+    @abstractmethod
+    def _frame(self, address: int, sdu: bytes) -> bytes:
+        """Frame an SDU for the given address"""
 
 
 class ModbusASCIIBackend(ModbusSerialBackend):
+    """Modbus ASCII, frames are hexadecimal text with an LRC"""
 
     @property
     def stop_conditions(self) -> list[StopCondition]:
         # Every ASCII frame ends with CRLF
         return [Termination(_ASCII_TRAILER)]
 
-    def _parse(self, pdu: bytes) -> ModbusResponseSDU[Any]:
-        """Decode the hex, check the LRC and the slave address, return the SDU"""
+    def _unframe(self, pdu: bytes) -> tuple[int, bytes]:
+        """Decode the hex and check the LRC"""
         if not pdu.startswith(_ASCII_HEADER) or not pdu.endswith(_ASCII_TRAILER):
             raise ProtocolReadError(f"Malformed Modbus ASCII frame : {pdu!r}")
 
@@ -2078,34 +2253,17 @@ class ModbusASCIIBackend(ModbusSerialBackend):
                 f"Modbus ASCII LRC mismatch : got {received:02X}, expected {expected:02X}"
             )
 
-        if self._slave_address is not None and body[0] != self._slave_address:
-            raise ProtocolReadError(
-                f"Modbus ASCII answer came from slave {body[0]}, expected {self._slave_address}"
-            )
+        return body[0], body[1:-1]
 
-        data = body[1:-1]
-
-        return self._parse_sdu(data)
-
-    def encode(self, payload: ModbusSDU) -> list[bytes]:
-        if not isinstance(payload, ModbusRequestSDU):
-            raise RuntimeError("Can only encode ModbusRequestSDU")
-        sdu = payload.make_sdu()
-
-        output = _ascii_frame(self._slave_address or 0, sdu)
-
-        self._transaction_id = (self._transaction_id + 1) % 0x10000
-        # Kept for parse_sdu, the answer alone doesn't say how to read itself
-        self._last_sdu = payload
-        return [output]
+    def _frame(self, address: int, sdu: bytes) -> bytes:
+        return _ascii_frame(address, sdu)
 
 
 class ModbusRTUBackend(ModbusSerialBackend):
+    """Modbus RTU, binary frames with a CRC, separated by silences"""
 
-    def __init__(
-        self, slave_address: int, baudrate: int  # = rtu_silence(None),
-    ) -> None:
-        super().__init__(slave_address)
+    def __init__(self, slave_address: int, baudrate: int, *, server: bool = False) -> None:
+        super().__init__(slave_address, server=server)
 
         # Silence that ends an RTU frame, in seconds
         # 3.5 character (11 bits) times below 19200, fixed 1.75ms above
@@ -2116,8 +2274,8 @@ class ModbusRTUBackend(ModbusSerialBackend):
         # An RTU frame ends on a silence on the line
         return [Continuation(self._silence)]
 
-    def _parse(self, pdu: bytes) -> ModbusResponseSDU[Any]:
-        """Check the CRC and the slave address, return the SDU"""
+    def _unframe(self, pdu: bytes) -> tuple[int, bytes]:
+        """Check the CRC"""
         if len(pdu) < 4:  # address + at least a function code + CRC
             raise ProtocolReadError(f"Modbus RTU frame is too short : {pdu!r}")
 
@@ -2128,31 +2286,19 @@ class ModbusRTUBackend(ModbusSerialBackend):
                 f"Modbus RTU CRC mismatch : got {received:04X}, expected {expected:04X}"
             )
 
-        if self._slave_address is not None and pdu[0] != self._slave_address:
-            raise ProtocolReadError(
-                f"Modbus RTU answer came from slave {pdu[0]}, expected {self._slave_address}"
-            )
+        return pdu[0], pdu[1:-2]
 
-        data = pdu[1:-2]
-
-        return self._parse_sdu(data)
-
-    def encode(self, payload: ModbusSDU) -> list[bytes]:
-        if not isinstance(payload, ModbusRequestSDU):
-            raise RuntimeError("Can only encode ModbusRequestSDU")
-        sdu = payload.make_sdu()
-
-        frame = struct.pack(ENDIAN + "B", self._slave_address) + sdu
-        output = frame + struct.pack("<H", modbus_crc(frame))
-
-        self._transaction_id = (self._transaction_id + 1) % 0x10000
-        # Kept for parse_sdu, the answer alone doesn't say how to read itself
-        self._last_sdu = payload
-        return [output]
+    def _frame(self, address: int, sdu: bytes) -> bytes:
+        frame = struct.pack(ENDIAN + "B", address) + sdu
+        return frame + struct.pack("<H", modbus_crc(frame))
 
 
 def _serial_backend(
-    serial_type: str, slave_address: int | None, baudrate: int | None
+    serial_type: str,
+    slave_address: int | None,
+    baudrate: int | None,
+    *,
+    server: bool = False,
 ) -> ModbusBackend:
     """Check the serial parameters and pick the RTU or ASCII backend"""
     if slave_address is None:
@@ -2166,8 +2312,8 @@ def _serial_backend(
     except ValueError as e:
         raise ValueError(f"Invalid modbus serial type : {serial_type}") from e
     if _type == ModbusSerialType.ASCII:
-        return ModbusASCIIBackend(slave_address)
-    return ModbusRTUBackend(slave_address, baudrate)
+        return ModbusASCIIBackend(slave_address, server=server)
+    return ModbusRTUBackend(slave_address, baudrate, server=server)
 
 
 ResponseT = TypeVar("ResponseT", bound=ModbusResponseSDU[Any])
@@ -2180,16 +2326,15 @@ class ModbusCommon:
     def _check_response(
         request: ModbusRequestSDU, response: ModbusSDU, response_type: type[ResponseT]
     ) -> ResponseT:
-        """Raise the exception response as a ModbusError, check the response type"""
+        """Raise the exception response as a ModbusException, check the response type"""
         if isinstance(response, ExceptionResponseSDU):
-            description = response.description
+            description = None
             if (
                 isinstance(request, EncapsulatedInterfaceTransportRequestSDU)
                 and request.extra_exceptions is not None
-                and response.exception_code in request.extra_exceptions
             ):
-                description = request.extra_exceptions[response.exception_code]
-            raise ModbusError(f"{response.exception_code:02X} : {description}")
+                description = request.extra_exceptions.get(response.exception_code)
+            raise ModbusException(response.exception_code, description)
         if not isinstance(response, response_type):
             raise ProtocolReadError(
                 f"Unexpected response {response!r}, expected {response_type.__name__}"
@@ -3836,3 +3981,603 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         output = await self._query(payload, EncapsulatedInterfaceTransportResponseSDU)
 
         return output.data
+
+
+# ┌────────┐
+# │ Server │
+# └────────┘
+
+FIFO_MAX_COUNT = 31
+MAX_RECORD_NUMBER = 9999
+COMM_EVENT_STATUS_READY = 0x0000
+RESTART_CLEAR_EVENT_LOG = b"\xff\x00"
+
+# Diagnostics answered with the value of a counter
+_DIAGNOSTICS_COUNTERS = {
+    DiagnosticsCode.RETURN_BUS_MESSAGE_COUNT,
+    DiagnosticsCode.RETURN_BUS_COMMUNICATION_ERROR_COUNT,
+    DiagnosticsCode.RETURN_BUS_EXCEPTION_ERROR_COUNT,
+    DiagnosticsCode.RETURN_SERVER_MESSAGE_COUNT,
+    DiagnosticsCode.RETURN_SERVER_NO_RESPONSE_COUNT,
+    DiagnosticsCode.RETURN_SERVER_NAK_COUNT,
+    DiagnosticsCode.RETURN_SERVER_BUSY_COUNT,
+    DiagnosticsCode.RETURN_BUS_CHARACTER_OVERRUN_COUNT,
+}
+
+RequestHandlerT = TypeVar("RequestHandlerT", bound=ModbusRequestSDU)
+
+
+@dataclass
+class ModbusConnectionOpenedEvent(ProtocolEvent):
+    """A server started answering on a connection : a TCP client, or the serial line"""
+
+    adapter: Adapter[Any, bytes] | AsyncAdapter[Any, bytes]
+
+
+@dataclass
+class ModbusConnectionClosedEvent(ProtocolEvent):
+    """A server stopped answering on a connection"""
+
+    adapter: Adapter[Any, bytes] | AsyncAdapter[Any, bytes]
+
+
+@dataclass
+class ModbusRequestHandledEvent(ProtocolEvent):
+    """
+    A server handled a request
+
+    request is an ExceptionResponseSDU for a request the backend couldn't accept.
+    response is None when nothing was answered
+    """
+
+    request: ModbusSDU
+    response: ModbusResponseSDU[Any] | None
+
+
+@dataclass
+class ModbusHandlerErrorEvent(ProtocolEvent):
+    """A handler raised something else than a ModbusException, a bug in the handler"""
+
+    request: ModbusRequestSDU
+    error: Exception
+
+
+class ModbusServerCommon:
+    """
+    Data model and request handling shared by ModbusServer and AsyncModbusServer
+
+    Every function code has a default handler, default_handler(), working on the data
+    model below. set_handler() replaces it for one function code. Addresses are the data
+    model ones, starting at 1, like the client methods
+
+    Attributes
+    ----------
+    coils : dict[int, bool]
+    discrete_inputs : dict[int, bool]
+    holding_registers : dict[int, int]
+    input_registers : dict[int, int]
+    files : dict[int, dict[int, int]]
+        Registers of the files, by file number then record number
+    fifos : dict[int, list[int]]
+        FIFO queues by address, 31 values at most
+    exception_status : int
+        Answer to read_exception_status
+    server_id : bytes
+    run_indicator_status : bool
+    additional_data : bytes
+        Answer to report_server_id
+    diagnostic_register : int
+    counters : dict[DiagnosticsCode, int]
+        Diagnostics counters. The bus, server message, exception and no response
+        counters are kept up to date, the others are left to the user
+    event_count : int
+        Communication event counter
+    listen_only : bool
+        Set by the force listen only mode diagnostic, nothing is answered until the
+        restart communications option diagnostic
+    """
+
+    def __init__(self) -> None:
+        self.coils: defaultdict[int, bool] = defaultdict(bool)
+        self.discrete_inputs: defaultdict[int, bool] = defaultdict(bool)
+        self.holding_registers: defaultdict[int, int] = defaultdict(int)
+        self.input_registers: defaultdict[int, int] = defaultdict(int)
+        self.files: defaultdict[int, defaultdict[int, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
+        self.fifos: defaultdict[int, list[int]] = defaultdict(list)
+        self.exception_status = 0
+        self.server_id = b"syndesi"
+        self.run_indicator_status = True
+        self.additional_data = b""
+        self.diagnostic_register = 0
+        self.counters: defaultdict[DiagnosticsCode, int] = defaultdict(int)
+        self.event_count = 0
+        self.listen_only = False
+
+        self._handlers: dict[type[ModbusRequestSDU], Callable[[Any], Any]] = {}
+        self._callbacks: list[Callable[[SyndesiEvent], None]] = []
+        self._logger = logging.getLogger(LoggerAlias.PROTOCOL.value)
+
+    def register_event_callback(self, callback: Callable[[SyndesiEvent], None]) -> None:
+        """
+        Register an event callback
+
+        It receives the server events, and the protocol and adapter events of every
+        connection. It runs on the reactor thread or on the thread (task) serving the
+        connection, and must not block
+        """
+        self._callbacks.append(callback)
+
+    def clear_event_callbacks(self) -> None:
+        """Remove every event callback"""
+        self._callbacks.clear()
+
+    def _emit(self, event: SyndesiEvent) -> None:
+        for callback in list(self._callbacks):
+            try:
+                callback(event)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                self._logger.exception(f"Event callback failed : {e}")
+
+    # ┌──────────────────┐
+    # │ Request handling │
+    # └──────────────────┘
+
+    def default_handler(self, request: ModbusRequestSDU) -> ModbusResponseSDU[Any] | None:
+        """
+        Answer a request from the data model, None when it has no answer
+
+        Raises ModbusException for the requests that are answered with an exception.
+        A custom handler can call it to keep the default behaviour
+        """
+        # pylint: disable=too-many-return-statements
+        match request:
+            case ReadCoilsRequestSDU(address, n):
+                return ReadCoilsResponseSDU(_read(self.coils, address, n))
+            case ReadDiscreteInputsRequestSDU(address, n):
+                return ReadDiscreteInputsResponseSDU(
+                    _read(self.discrete_inputs, address, n)
+                )
+            case ReadHoldingRegistersRequestSDU(address, n):
+                return ReadHoldingRegistersResponseSDU(
+                    _read(self.holding_registers, address, n)
+                )
+            case ReadInputRegistersRequestSDU(address, n):
+                return ReadInputRegistersResponseSDU(
+                    _read(self.input_registers, address, n)
+                )
+            case WriteSingleCoilRequestSDU(address, status):
+                self.coils[address] = status
+                return WriteSingleCoilResponseSDU(address, status)
+            case WriteSingleRegisterRequestSDU(address, value):
+                self.holding_registers[address] = value
+                return WriteSingleRegisterResponseSDU(address, value)
+            case ReadExceptionStatusRequestSDU():
+                return ReadExceptionStatusResponseSDU(self.exception_status)
+            case DiagnosticsRequestSDU(code, data):
+                return self._diagnostics(code, data)
+            case GetCommEventCounterRequestSDU():
+                return GetCommEventCounterResponseSDU(
+                    COMM_EVENT_STATUS_READY, self.event_count
+                )
+            case GetCommEventLogRequestSDU():
+                # The events themselves aren't logged
+                return GetCommEventLogResponseSDU(
+                    COMM_EVENT_STATUS_READY,
+                    self.event_count,
+                    self.counters[DiagnosticsCode.RETURN_BUS_MESSAGE_COUNT],
+                    b"",
+                )
+            case WriteMultipleCoilsRequestSDU(address, values):
+                _write(self.coils, address, values)
+                return WriteMultipleCoilsResponseSDU(address, len(values))
+            case WriteMultipleRegistersRequestSDU(address, values):
+                _write(self.holding_registers, address, values)
+                return WriteMultipleRegistersResponseSDU(address, len(values))
+            case ReportServerIdRequestSDU():
+                return ReportServerIdResponseSDU(
+                    self.server_id, self.run_indicator_status, self.additional_data
+                )
+            case ReadFileRecordRequestSDU(records):
+                return ReadFileRecordResponseSDU(
+                    [self._read_file(*record) for record in records]
+                )
+            case WriteFileRecordRequestSDU(records):
+                for record in records:
+                    self._write_file(*record)
+                return WriteFileRecordResponseSDU(records)
+            case MaskWriteRegisterRequestSDU(address, and_mask, or_mask):
+                value = self.holding_registers[address]
+                self.holding_registers[address] = (value & and_mask) | (
+                    or_mask & ~and_mask
+                )
+                return MaskWriteRegisterResponseSDU(address, and_mask, or_mask)
+            case ReadWriteMultipleRegistersRequestSDU(read_address, n, write_address, values):
+                # The write is done before the read
+                _write(self.holding_registers, write_address, values)
+                return ReadWriteMultipleRegistersResponseSDU(
+                    _read(self.holding_registers, read_address, n)
+                )
+            case ReadFifoQueueRequestSDU(address):
+                values = self.fifos[address]
+                if len(values) > FIFO_MAX_COUNT:
+                    raise ModbusException(ExceptionCode.ILLEGAL_DATA_VALUE)
+                return ReadFifoQueueResponseSDU(list(values))
+        # Encapsulated interface transport has no default behaviour
+        raise ModbusException(ExceptionCode.ILLEGAL_FUNCTION)
+
+    def _diagnostics(
+        self, code: DiagnosticsCode, data: bytes
+    ) -> DiagnosticsResponseSDU | None:
+        match code:
+            case DiagnosticsCode.RETURN_QUERY_DATA:
+                pass
+            case DiagnosticsCode.RESTART_COMMUNICATIONS_OPTION:
+                self.listen_only = False
+                if data == RESTART_CLEAR_EVENT_LOG:
+                    self.event_count = 0
+            case DiagnosticsCode.RETURN_DIAGNOSTIC_REGISTER:
+                data = struct.pack(ENDIAN + "H", self.diagnostic_register)
+            case DiagnosticsCode.FORCE_LISTEN_ONLY_MODE:
+                self.listen_only = True
+                return None
+            case DiagnosticsCode.CLEAR_COUNTERS_AND_DIAGNOSTIC_REGISTER:
+                self.counters.clear()
+                self.diagnostic_register = 0
+            case DiagnosticsCode.CLEAR_OVERRUN_COUNTER_AND_FLAG:
+                self.counters[DiagnosticsCode.RETURN_BUS_CHARACTER_OVERRUN_COUNT] = 0
+            case _ if code in _DIAGNOSTICS_COUNTERS:
+                data = struct.pack(ENDIAN + "H", self.counters[code] & 0xFFFF)
+            case _:
+                # The ASCII input delimiter cannot be changed
+                raise ModbusException(ExceptionCode.ILLEGAL_FUNCTION)
+        return DiagnosticsResponseSDU(code, data)
+
+    def _read_file(self, file_number: int, record_number: int, length: int) -> bytes:
+        _check_file_record(file_number, record_number, length)
+        registers = self.files[file_number]
+        return struct.pack(
+            ENDIAN + f"{length}H",
+            *(registers[record_number + i] for i in range(length)),
+        )
+
+    def _write_file(self, file_number: int, record_number: int, data: bytes) -> None:
+        values = struct.unpack(ENDIAN + f"{len(data) // 2}H", data)
+        _check_file_record(file_number, record_number, len(values))
+        _write(self.files[file_number], record_number, values)
+
+    # ┌──────────────┐
+    # │ Bookkeeping  │
+    # └──────────────┘
+
+    def _handler(self, request: ModbusRequestSDU) -> Callable[[Any], Any]:
+        return self._handlers.get(type(request), self.default_handler)
+
+    def _accept(self, payload: ModbusSDU) -> bool:
+        """Count a received request, False if it must be ignored (listen only mode)"""
+        self.counters[DiagnosticsCode.RETURN_BUS_MESSAGE_COUNT] += 1
+        self.counters[DiagnosticsCode.RETURN_SERVER_MESSAGE_COUNT] += 1
+        restart = (
+            isinstance(payload, DiagnosticsRequestSDU)
+            and payload.code == DiagnosticsCode.RESTART_COMMUNICATIONS_OPTION
+        )
+        if self.listen_only and not restart:
+            self.counters[DiagnosticsCode.RETURN_SERVER_NO_RESPONSE_COUNT] += 1
+            return False
+        return True
+
+    def _exception_response(
+        self, request: ModbusRequestSDU, error: Exception
+    ) -> ExceptionResponseSDU:
+        """The answer to a request whose handler raised"""
+        if isinstance(error, ModbusException):
+            return ExceptionResponseSDU(request.function_code, error.exception_code)
+        self._logger.exception(f"Modbus handler failed on {request}")
+        self._emit(ModbusHandlerErrorEvent(request, error))
+        return ExceptionResponseSDU(
+            request.function_code, ExceptionCode.SERVER_DEVICE_FAILURE
+        )
+
+    def _account(
+        self, request: ModbusSDU, response: ModbusResponseSDU[Any] | None
+    ) -> ModbusResponseSDU[Any] | None:
+        """Count an answer and return it"""
+        if response is None:
+            self.counters[DiagnosticsCode.RETURN_SERVER_NO_RESPONSE_COUNT] += 1
+        elif isinstance(response, ExceptionResponseSDU):
+            self.counters[DiagnosticsCode.RETURN_BUS_EXCEPTION_ERROR_COUNT] += 1
+        elif not isinstance(
+            request, (GetCommEventCounterRequestSDU, GetCommEventLogRequestSDU)
+        ):
+            self.event_count += 1
+        return response
+
+    def _count_communication_error(self) -> None:
+        self.counters[DiagnosticsCode.RETURN_BUS_COMMUNICATION_ERROR_COUNT] += 1
+
+
+def _read(table: defaultdict[int, Any], address: int, n: int) -> list[Any]:
+    return [table[address + i] for i in range(n)]
+
+
+def _write(table: defaultdict[int, Any], address: int, values: Sequence[Any]) -> None:
+    for i, value in enumerate(values):
+        table[address + i] = value
+
+
+def _check_file_record(file_number: int, record_number: int, length: int) -> None:
+    if file_number == 0 or record_number + length - 1 > MAX_RECORD_NUMBER:
+        raise ModbusException(ExceptionCode.ILLEGAL_DATA_ADDRESS)
+
+
+class ModbusServer(ModbusServerCommon):
+    """
+    Modbus server (slave) : Modbus TCP with an IPServer, RTU or ASCII with a SerialPort
+
+    In TCP, every client is served by its own thread. Handlers can run concurrently,
+    each call holds a lock so the data model stays consistent
+
+    Parameters
+    ----------
+    adapter : IPServer or SerialPort
+    serial_type : {'RTU', 'ASCII'}
+        Serial flavour, ignored with an IPServer. 'RTU' by default
+    slave_address : int or None
+        1 to 247, required for RTU and ASCII, unused by TCP
+
+    Examples
+    --------
+    >>> server = ModbusServer(IPServer('0.0.0.0'))
+    >>> server.holding_registers[1] = 1234
+    >>> server.set_handler(ReadCoilsRequestSDU, lambda request: ...)
+    >>> server.serve_forever()
+    """
+
+    def __init__(
+        self,
+        adapter: IPServer | SerialPort,
+        *,
+        serial_type: str = ModbusSerialType.RTU.value,
+        slave_address: int | None = None,
+    ) -> None:
+        super().__init__()
+        self._lock = threading.Lock()
+        self._protocols: set[Protocol[ModbusBackend, bytes, ModbusSDU]] = set()
+        self._stopped = False
+
+        # One of the two is set : the server that accepts the TCP clients, or the
+        # serial line with its backend
+        self._ip_server: IPServer | None = None
+        self._serial: tuple[Adapter[Any, bytes], ModbusBackend] | None = None
+        if isinstance(adapter, IPServer):
+            adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
+            self._ip_server = adapter
+        elif isinstance(adapter, SerialPort):
+            backend = _serial_backend(
+                serial_type, slave_address, adapter.descriptor.baudrate, server=True
+            )
+            self._serial = (adapter, backend)
+        else:
+            raise ValueError(f"Invalid adapter : {adapter}")
+
+    def set_handler(
+        self,
+        request_type: type[RequestHandlerT],
+        handler: Callable[[RequestHandlerT], ModbusResponseSDU[Any] | None] | None,
+    ) -> None:
+        """
+        Answer the requests of a type with a custom handler, None for the default one
+
+        The handler returns the response, None for no response, or raises
+        ModbusException to answer with an exception
+        """
+        if handler is None:
+            self._handlers.pop(request_type, None)
+        else:
+            self._handlers[request_type] = handler
+
+    def serve_forever(self) -> None:
+        """Answer the requests until stop() is called"""
+        if self._serial is not None:
+            self._serve(*self._serial)
+            return
+
+        assert self._ip_server is not None
+        threads: list[threading.Thread] = []
+        while True:
+            try:
+                client = self._ip_server.get_client()
+            except AdapterError:
+                break  # stop() closed the server
+            thread = threading.Thread(
+                target=self._serve,
+                args=(client, ModbusTCPBackend(server=True)),
+                daemon=True,
+            )
+            thread.start()
+            threads = [t for t in threads if t.is_alive()] + [thread]
+
+        for thread in threads:
+            thread.join()
+
+    def stop(self) -> None:
+        """Stop serving : close the server and every connection"""
+        if self._ip_server is not None:
+            self._ip_server.close()
+        with self._lock:
+            self._stopped = True
+            protocols = list(self._protocols)
+        for protocol in protocols:
+            protocol.close()
+
+    def _serve(self, adapter: Adapter[Any, bytes], backend: ModbusBackend) -> None:
+        """Answer the requests of one connection until it closes"""
+        protocol: Protocol[ModbusBackend, bytes, ModbusSDU] = Protocol(
+            adapter, backend, event_callback=self._emit
+        )
+        with self._lock:
+            self._protocols.add(protocol)
+            stopped = self._stopped
+        if stopped:
+            protocol.close()  # stop() came before this connection was known
+        self._emit(ModbusConnectionOpenedEvent(adapter))
+        try:
+            while True:
+                try:
+                    payload = protocol.read()
+                except ProtocolReadError:
+                    with self._lock:
+                        self._count_communication_error()
+                    continue
+                response = self._answer(payload)
+                self._emit(ModbusRequestHandledEvent(payload, response))
+                if response is not None:
+                    protocol.write(response)
+        except AdapterError:
+            pass  # the client left, or stop() closed the connection
+        finally:
+            with self._lock:
+                self._protocols.discard(protocol)
+            protocol.close()
+            self._emit(ModbusConnectionClosedEvent(adapter))
+
+    def _answer(self, payload: ModbusSDU) -> ModbusResponseSDU[Any] | None:
+        with self._lock:
+            if not self._accept(payload):
+                return None
+            if not isinstance(payload, ModbusRequestSDU):
+                # An invalid request, the backend made the exception response
+                return self._account(payload, cast(ModbusResponseSDU[Any], payload))
+            try:
+                response = self._handler(payload)(payload)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                response = self._exception_response(payload, e)
+            return self._account(payload, response)
+
+
+class AsyncModbusServer(ModbusServerCommon):
+    """
+    Async Modbus server, same parameters as ModbusServer with async adapters
+
+    In TCP, every client is served by its own task. Handlers can be functions or
+    coroutine functions
+
+    Examples
+    --------
+    >>> server = AsyncModbusServer(AsyncIPServer('0.0.0.0'))
+    >>> server.holding_registers[1] = 1234
+    >>> await server.serve_forever()
+    """
+
+    def __init__(
+        self,
+        adapter: AsyncIPServer | AsyncSerialPort,
+        *,
+        serial_type: str = ModbusSerialType.RTU.value,
+        slave_address: int | None = None,
+    ) -> None:
+        super().__init__()
+        self._protocols: set[AsyncProtocol[ModbusBackend, bytes, ModbusSDU]] = set()
+        self._stopped = False
+
+        # One of the two is set : the server that accepts the TCP clients, or the
+        # serial line with its backend
+        self._ip_server: AsyncIPServer | None = None
+        self._serial: tuple[AsyncAdapter[Any, bytes], ModbusBackend] | None = None
+        if isinstance(adapter, AsyncIPServer):
+            adapter.set_default_port(MODBUS_TCP_DEFAULT_PORT)
+            self._ip_server = adapter
+        elif isinstance(adapter, AsyncSerialPort):
+            backend = _serial_backend(
+                serial_type, slave_address, adapter.descriptor.baudrate, server=True
+            )
+            self._serial = (adapter, backend)
+        else:
+            raise ValueError(f"Invalid adapter : {adapter}")
+
+    def set_handler(
+        self,
+        request_type: type[RequestHandlerT],
+        handler: (
+            Callable[[RequestHandlerT], ModbusResponseSDU[Any] | None]
+            | Callable[[RequestHandlerT], Awaitable[ModbusResponseSDU[Any] | None]]
+            | None
+        ),
+    ) -> None:
+        """
+        Answer the requests of a type with a custom handler, None for the default one
+
+        The handler, a function or a coroutine function, returns the response, None for
+        no response, or raises ModbusException to answer with an exception
+        """
+        if handler is None:
+            self._handlers.pop(request_type, None)
+        else:
+            self._handlers[request_type] = handler
+
+    async def serve_forever(self) -> None:
+        """Answer the requests until stop() is called"""
+        if self._serial is not None:
+            await self._serve(*self._serial)
+            return
+
+        assert self._ip_server is not None
+        async with asyncio.TaskGroup() as tasks:
+            while True:
+                try:
+                    client = await self._ip_server.get_client()
+                except AdapterError:
+                    break  # stop() closed the server
+                tasks.create_task(self._serve(client, ModbusTCPBackend(server=True)))
+
+    async def stop(self) -> None:
+        """Stop serving : close the server and every connection"""
+        self._stopped = True
+        if self._ip_server is not None:
+            await self._ip_server.close()
+        for protocol in list(self._protocols):
+            await protocol.close()
+
+    async def _serve(
+        self, adapter: AsyncAdapter[Any, bytes], backend: ModbusBackend
+    ) -> None:
+        """Answer the requests of one connection until it closes"""
+        protocol: AsyncProtocol[ModbusBackend, bytes, ModbusSDU] = AsyncProtocol(
+            adapter, backend, event_callback=self._emit
+        )
+        self._protocols.add(protocol)
+        if self._stopped:
+            await protocol.close()  # stop() came before this connection was known
+        self._emit(ModbusConnectionOpenedEvent(adapter))
+        try:
+            while True:
+                try:
+                    payload = await protocol.read()
+                except ProtocolReadError:
+                    self._count_communication_error()
+                    continue
+                response = await self._answer(payload)
+                self._emit(ModbusRequestHandledEvent(payload, response))
+                if response is not None:
+                    await protocol.write(response)
+        except AdapterError:
+            pass  # the client left, or stop() closed the connection
+        finally:
+            self._protocols.discard(protocol)
+            await protocol.close()
+            self._emit(ModbusConnectionClosedEvent(adapter))
+
+    async def _answer(self, payload: ModbusSDU) -> ModbusResponseSDU[Any] | None:
+        if not self._accept(payload):
+            return None
+        if not isinstance(payload, ModbusRequestSDU):
+            # An invalid request, the backend made the exception response
+            return self._account(payload, cast(ModbusResponseSDU[Any], payload))
+        try:
+            response = self._handler(payload)(payload)
+            if inspect.isawaitable(response):
+                response = await response
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            response = self._exception_response(payload, e)
+        return self._account(payload, response)

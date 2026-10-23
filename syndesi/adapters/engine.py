@@ -201,6 +201,9 @@ class FrameSink(Protocol[DataT]):
     def on_fragment_timeout(self) -> None:
         """The deadline armed with arm_fragment_deadline passed with nothing received"""
 
+    def on_close(self, error: AdapterError) -> None:
+        """The adapter closed, by its user or because the target went away"""
+
 
 class SetFrameSinkCommand(Generic[DataT], Command[None]):
     """Attach or detach the consumer of the frame stream"""
@@ -607,8 +610,13 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
             case SetStopConditionsCommand():
                 if isinstance(self._framer, SupportsStopConditions):
                     self._framer.set_stop_conditions(command.stop_conditions)
+                    frames = self._framer.reframe()
+                else:
+                    frames = []
                 command.set_result(None)
                 self._emit(AdapterStopConditionsUpdatedEvent())
+                for frame in frames:
+                    self._deliver(frame)
             case GetStopConditionsCommand():
                 command.set_result(self.stop_conditions)
             case AddEventCallbackCommand():
@@ -622,6 +630,9 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
                 if command.sink is None:
                     self._fragment_deadline = None
                 command.set_result(None)
+                # The stream is the sink's, the frames received before it came too
+                while command.sink is not None and self.frame_buffer:
+                    command.sink.on_frame(self.frame_buffer.popleft())
             case StopCommand():
                 self._close_command(clear_buffer=True)
                 self._reactor.detach(self)
@@ -650,7 +661,9 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         command.set_result(None)
         self._emit(AdapterOpenedEvent())
 
-    def _close_command(self, clear_buffer: bool) -> None:
+    def _close_command(
+        self, clear_buffer: bool, error: AdapterError | None = None
+    ) -> None:
         self._open_error = None
         if self._is_open:
             self._backend.close()
@@ -667,6 +680,10 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         if pending is not None:
             self._clear_pending_read(pending)
             self._fail(pending.command, AdapterDisconnectedError())
+
+        # The sink may be waiting for a frame that will never come
+        if self._frame_sink is not None:
+            self._frame_sink.on_close(error or AdapterDisconnectedError())
 
         self._emit(AdapterClosedEvent())
 
@@ -890,7 +907,7 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         # consistent. The buffer is kept : frames received before the target went away
         # are still valid. The pending read is already cleared, _close_command won't
         # fail it a second time
-        self._close_command(clear_buffer=False)
+        self._close_command(clear_buffer=False, error=error)
 
     def _clear_pending_read(self, pending: PendingRead[DataT]) -> None:
         self._pending_read = None

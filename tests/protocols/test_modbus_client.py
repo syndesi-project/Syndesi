@@ -27,7 +27,12 @@ from modbus_device import (
 from syndesi import IP, AsyncModbus, Modbus, ModbusMultiRegisterValue
 from syndesi.adapters.ip import AsyncIP
 from syndesi.adapters.serialport import AsyncSerialPort, SerialPort
-from syndesi.protocols.modbus import DiagnosticsCode, ExceptionCode, ModbusError
+from syndesi.protocols.modbus import (
+    DiagnosticsCode,
+    ExceptionCode,
+    ModbusError,
+    ModbusExceptionEvent,
+)
 from syndesi.tools.errors import ProtocolError
 
 BAUDRATE = 19200
@@ -173,9 +178,13 @@ def test_encapsulated_interface_transport(client):
 
 
 def test_exception_response(client, device):
+    events = []
+    client.register_event_callback(events.append)
     device.exception = ExceptionCode.ILLEGAL_DATA_ADDRESS
     with pytest.raises(ModbusError, match="02 : Invalid data address"):
         client.read_coils(1, 1)
+    (event,) = [event for event in events if isinstance(event, ModbusExceptionEvent)]
+    assert event.response.exception_code == ExceptionCode.ILLEGAL_DATA_ADDRESS
     # The client is still usable after an exception
     client.write_single_coil(1, True)
 

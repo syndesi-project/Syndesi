@@ -8,7 +8,13 @@ from .adapters.ipserver import AsyncIPServer, Client, IPServer
 from .adapters.serialport import AsyncSerialPort, Parity, SerialPort
 from .adapters.visa import AsyncVisa, Visa
 from .protocols.delimited import AsyncDelimited, Delimited
-from .protocols.modbus import AsyncModbus, Modbus, ModbusMultiRegisterValue
+from .protocols.modbus import (
+    AsyncModbus,
+    AsyncModbusServer,
+    Modbus,
+    ModbusMultiRegisterValue,
+    ModbusServer,
+)
 from .protocols.raw import AsyncRaw, Raw
 from .protocols.scpi import SCPI, AsyncSCPI
 
@@ -33,6 +39,8 @@ __all__ = [
     "AsyncSCPI",
     "Modbus",
     "AsyncModbus",
+    "ModbusServer",
+    "AsyncModbusServer",
     "ModbusMultiRegisterValue",
     "Visa",
     "AsyncVisa",
