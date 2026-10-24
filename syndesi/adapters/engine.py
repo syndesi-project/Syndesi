@@ -789,8 +789,10 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
             return None
         for index, frame in enumerate(self.frame_buffer):
             if scope == ReadScope.LAST_WRITE:
-                if self._last_write_timestamp is None or \
-                    frame.first_fragment_timestamp < self._last_write_timestamp:
+                if (
+                    self._last_write_timestamp is None
+                    or frame.first_fragment_timestamp < self._last_write_timestamp
+                ):
                     continue
             return index
         return None

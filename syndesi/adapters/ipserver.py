@@ -19,7 +19,7 @@ from .adapter import Adapter, AsyncAdapter
 from .engine import AdapterBackend
 from .framer import TrivialFramer
 from .ip import IP, AsyncIP, IPDescriptor, default_stop_conditions
-from .stop_conditions import FragmentSC, StopCondition
+from .stop_conditions import StopCondition
 from .utils import Fragment, HasFileno, TimeoutType
 
 
