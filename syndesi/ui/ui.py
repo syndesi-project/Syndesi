@@ -16,19 +16,6 @@ from typing import Any, TypeVar, overload
 
 import dearpygui.dearpygui as dpg  # type: ignore
 
-# from syndesi.adapters.adapterworker import (
-#     AdapterBufferEvent,
-#     AdapterClosedEvent,
-#     AdapterEvent,
-#     AdapterFragmentEvent,
-#     AdapterFrameEvent,
-#     AdapterOpenedEvent,
-#     AdapterReadEvent,
-#     AdapterStopConditionsUpdatedEvent,
-#     AdapterTimeoutUpdatedEvent,
-#     AdapterWriteEvent,
-# )
-# from syndesi.adapters.bytesadapter import BytesAdapter
 from syndesi.adapters.adapter import Adapter, AsyncAdapter
 from syndesi.adapters.events import (
     AdapterBufferEvent,
@@ -45,7 +32,6 @@ from syndesi.adapters.events import (
 from syndesi.adapters.ip import AsyncIP
 from syndesi.adapters.serialport import AsyncSerialPort
 
-# from syndesi.component import Component
 from syndesi.drivers.driver import Driver
 from syndesi.protocols.delimited import AsyncDelimited
 from syndesi.protocols.protocol import (
@@ -178,7 +164,7 @@ class UIBase:
     def start(self) -> None:
         """Start the UI"""
         with dpg.font_registry():
-            with importlib.resources.path("syndesi.fonts", "DejaVuSans.ttf") as f:
+            with importlib.resources.path("syndesi.ui.fonts", "DejaVuSans.ttf") as f:
                 with dpg.font(str(f), 16) as font:
                     dpg.bind_font(font)
 
@@ -679,12 +665,12 @@ def main(args: list[str] | None = None) -> None:
     driver_path_parser.add_argument("path", help="Driver path")
 
     # IP
-    # ip_parser = subparsers.add_parser(Command.IP)
+    ip_parser = subparsers.add_parser(Command.IP)
     # ip_parser.add_argument('address', help="IP address")
     # ip_parser.add_argument('port', help="IP port")
 
     # Serial
-    # serial_parser = subparsers.add_parser(Command.SERIAL)
+    serial_parser = subparsers.add_parser(Command.SERIAL)
     # serial_parser.add_argument("port", help="Serial port")
     # serial_parser.add_argument("")
 
