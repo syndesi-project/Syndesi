@@ -10,8 +10,6 @@ import logging
 from enum import Enum
 from importlib.util import find_spec
 
-from syndesi.ui.ui import main as start_ui
-
 from ..cli.shell import AdapterShell, AdapterType
 from ..version import __version__
 
@@ -71,6 +69,8 @@ def main() -> None:
                     "Missing optional dependency 'dearpygui'. Install with:\n"
                     "  python -m pip install syndesi[ui]"
                 )
+
+            from syndesi.ui.ui import main as start_ui
 
             start_ui(remaining_args)
         else:
