@@ -54,6 +54,7 @@ dev = [
     "pytest-xdist>=3.8.0",
     "pyvisa>=1.16.2",
     "ruff>=0.16.10",
+    "twine>=7.0.0",
 ]
 
 [tool.setuptools.packages.find]
