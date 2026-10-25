@@ -10,8 +10,13 @@ it uses a TrivialFramer, there is nothing to assemble
 
 from __future__ import annotations
 
+from abc import abstractmethod
 import socket
 from dataclasses import dataclass
+from types import EllipsisType
+from typing import Generic, TypeVar
+
+from syndesi.adapters.engine import ReadScope
 
 from ..tools.errors import AdapterOpenError, AdapterReadError, AdapterWriteError
 from ..tools.others import DEFAULT, DefaultType
@@ -37,8 +42,9 @@ class Client:
 
 DEFAULT_BACKLOG = 5
 
+ClientType = TypeVar("ClientType", bound=IP|AsyncIP)
 
-class IPServerBackend(AdapterBackend[IPDescriptor, Client]):
+class IPServerBackendCommon(Generic[ClientType], AdapterBackend[IPDescriptor, ClientType]):
     """
     Listens on an address and accepts connections
 
@@ -87,17 +93,25 @@ class IPServerBackend(AdapterBackend[IPDescriptor, Client]):
                 pass
             self._socket = None
 
-    def read(self, fragment_timestamp: float) -> Fragment[Client]:
-        """Accept one connection, the reactor only calls this when one is pending"""
+    def get_client(self) -> Client:
         if self._socket is None:
             raise AdapterReadError(f"Server {self.descriptor} is not open")
         try:
             sock, (address, port) = self._socket.accept()
         except OSError as e:
             raise AdapterReadError(f"Cannot accept on {self.descriptor} : {e}") from e
-        return Fragment(Client(address, port, sock), fragment_timestamp)
+        return Client(
+                address=address,
+                port=port,
+                socket=sock
+            )
 
-    def write(self, data: Client) -> None:
+
+    @abstractmethod
+    def read(self, fragment_timestamp: float) -> Fragment[ClientType]:
+        """Accept one connection, the reactor only calls this when one is pending"""
+
+    def write(self, data: ClientType) -> None:
         raise AdapterWriteError(
             "Cannot write to an IPServer, write to one of its clients instead"
         )
@@ -107,8 +121,31 @@ class IPServerBackend(AdapterBackend[IPDescriptor, Client]):
         # A server waits for clients for as long as it takes
         return None
 
+class IPServerBackend(IPServerBackendCommon[IP]):
+    def read(self, fragment_timestamp: float) -> Fragment[IP]:
+        client = self.get_client()
+        return Fragment(
+            IP(
+                address=client.address,
+                port=client.port,
+                sock=client.socket
+            ),
+            timestamp=fragment_timestamp
+        )
+    
+class AsyncIPServerBackend(IPServerBackendCommon[AsyncIP]):
+    def read(self, fragment_timestamp: float) -> Fragment[AsyncIP]:
+        client = self.get_client()
+        return Fragment(
+            AsyncIP(
+                address=client.address,
+                port=client.port,
+                sock=client.socket
+            ),
+            timestamp=fragment_timestamp
+        )
 
-class IPServer(Adapter[IPDescriptor, Client]):
+class IPServer(Adapter[IPDescriptor, IP]):
     """
     IP server, reads accepted connections as IP adapters
 
@@ -143,7 +180,12 @@ class IPServer(Adapter[IPDescriptor, Client]):
         alias: str = "",
         auto_open: bool = True,
     ) -> None:
-        self._client_stop_conditions = stop_conditions
+        if stop_conditions is ...:
+            self._client_stop_conditions = default_stop_conditions()
+        elif isinstance(stop_conditions, StopCondition):
+            self._client_stop_conditions = [stop_conditions]
+        else:
+            self._client_stop_conditions = stop_conditions
 
         super().__init__(
             IPServerBackend(
@@ -166,25 +208,28 @@ class IPServer(Adapter[IPDescriptor, Client]):
         if self.descriptor.port is None:
             self.descriptor.port = port
 
-    def get_client(self, timeout: float | None = None) -> IP:
-        """
-        Wait for a client to connect and return it as an IP adapter
+    def read(self, timeout: EllipsisType | float | int | None = ..., scope: ReadScope | str = ReadScope.BUFFERED, stop_conditions: StopCondition | list[StopCondition] | EllipsisType = ...) -> IP:
+        return super().read(timeout, scope, stop_conditions)
 
-        Parameters
-        ----------
-        timeout : float or None
-            None waits forever
-        """
-        client = self.read(timeout=timeout)
-        return _client_adapter(client, self._client_stop_conditions)
+    # def get_client(self, timeout: float | None = None) -> IP:
+    #     """
+    #     Wait for a client to connect and return it as an IP adapter
 
-    def write(self, data: Client) -> None:
+    #     Parameters
+    #     ----------
+    #     timeout : float or None
+    #         None waits forever
+    #     """
+    #     client = self.read(timeout=timeout)
+    #     return _client_adapter(client, self._client_stop_conditions)
+
+    def write(self, data: IP) -> None:
         raise AdapterWriteError(
             "Cannot write to an IPServer, write to one of its clients instead"
         )
 
 
-class AsyncIPServer(AsyncAdapter[IPDescriptor, Client]):
+class AsyncIPServer(AsyncAdapter[IPDescriptor, AsyncIP]):
     """
     Async IP server, same parameters as IPServer
 
@@ -209,7 +254,7 @@ class AsyncIPServer(AsyncAdapter[IPDescriptor, Client]):
         self._client_stop_conditions = stop_conditions
 
         super().__init__(
-            IPServerBackend(
+            AsyncIPServerBackend(
                 IPDescriptor(
                     address,
                     IPDescriptor.Transport(transport.upper()),
@@ -229,45 +274,48 @@ class AsyncIPServer(AsyncAdapter[IPDescriptor, Client]):
         if self.descriptor.port is None:
             self.descriptor.port = port
 
-    async def get_client(self, timeout: float | None = None) -> AsyncIP:
-        """Wait for a client to connect and return it as an AsyncIP adapter"""
-        client = await self.read(timeout=timeout)
-        return _async_client_adapter(client, self._client_stop_conditions)
+    # async def get_client(self, timeout: float | None = None) -> AsyncIP:
+    #     """Wait for a client to connect and return it as an AsyncIP adapter"""
+    #     client = await self.read(timeout=timeout)
+    #     return AsyncIP(
+    #         address=
+    #     )
+    #     return _async_client_adapter(client, self._client_stop_conditions)
 
-    async def write(self, data: Client) -> None:
+    async def write(self, data: AsyncIP) -> None:
         raise AdapterWriteError(
             "Cannot write to an IPServer, write to one of its clients instead"
         )
 
 
-def _resolve(
-    stop_conditions: StopCondition | list[StopCondition] | DefaultType,
-) -> StopCondition | list[StopCondition]:
-    """A new set of instances per client, stop-conditions hold per-frame state"""
-    if stop_conditions is DEFAULT:
-        return default_stop_conditions()
-    return stop_conditions
+# def _resolve(
+#     stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
+# ) -> StopCondition | list[StopCondition]:
+#     """A new set of instances per client, stop-conditions hold per-frame state"""
+#     if stop_conditions is ...:
+#         return default_stop_conditions()
+#     return stop_conditions
 
 
-def _client_adapter(
-    client: Client,
-    stop_conditions: StopCondition | list[StopCondition] | DefaultType,
-) -> IP:
-    return IP(
-        client.address,
-        client.port,
-        stop_conditions=_resolve(stop_conditions),
-        _socket=client.socket,
-    )
+# def _client_adapter(
+#     client: Client,
+#     stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
+# ) -> IP:
+#     return IP(
+#         client.address,
+#         client.port,
+#         stop_conditions=_resolve(stop_conditions),
+#         _socket=client.socket,
+#     )
 
 
-def _async_client_adapter(
-    client: Client,
-    stop_conditions: StopCondition | list[StopCondition] | DefaultType,
-) -> AsyncIP:
-    return AsyncIP(
-        client.address,
-        client.port,
-        stop_conditions=_resolve(stop_conditions),
-        _socket=client.socket,
-    )
+# def _async_client_adapter(
+#     client: Client,
+#     stop_conditions: StopCondition | list[StopCondition] | EllipsisType,
+# ) -> AsyncIP:
+#     return AsyncIP(
+#         client.address,
+#         client.port,
+#         stop_conditions=_resolve(stop_conditions),
+#         _socket=client.socket,
+#     )

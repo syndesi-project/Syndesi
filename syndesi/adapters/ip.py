@@ -216,16 +216,16 @@ class IP(Adapter[IPDescriptor, bytes]):
         stop_conditions: StopCondition | list[StopCondition] | DefaultType = DEFAULT,
         alias: str = "",
         auto_open: bool = True,
-        _socket: socket.socket | None = None,
+        sock: socket.socket | None = None,
     ) -> None:
         backend = IPBackend(
             IPDescriptor(
                 address,
                 IPDescriptor.Transport(transport.upper()),
                 port,
-                server=_socket is not None,
+                server=sock is not None,
             ),
-            _socket,
+            sock,
         )
         super().__init__(
             backend,
@@ -261,16 +261,16 @@ class AsyncIP(AsyncAdapter[IPDescriptor, bytes]):
         stop_conditions: StopCondition | list[StopCondition] | DefaultType = DEFAULT,
         alias: str = "",
         auto_open: bool = True,
-        _socket: socket.socket | None = None,
+        sock: socket.socket | None = None,
     ) -> None:
         backend = IPBackend(
             IPDescriptor(
                 address,
                 IPDescriptor.Transport(transport.upper()),
                 port,
-                server=_socket is not None,
+                server=sock is not None,
             ),
-            _socket,
+            sock,
         )
         super().__init__(
             backend,
