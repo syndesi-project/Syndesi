@@ -216,16 +216,17 @@ class IP(Adapter[IPDescriptor, bytes]):
         stop_conditions: StopCondition | list[StopCondition] | DefaultType = DEFAULT,
         alias: str = "",
         auto_open: bool = True,
-        _socket: socket.socket | None = None,
+        sock: socket.socket | None = None,
     ) -> None:
+        is_server = sock is not None
         backend = IPBackend(
             IPDescriptor(
                 address,
                 IPDescriptor.Transport(transport.upper()),
                 port,
-                server=_socket is not None,
+                server=is_server
             ),
-            _socket,
+            sock,
         )
         super().__init__(
             backend,
@@ -233,8 +234,10 @@ class IP(Adapter[IPDescriptor, bytes]):
             timeout,
             stop_conditions=stop_conditions,
             alias=alias,
-            auto_open=auto_open,
+            auto_open=False if is_server else auto_open,
         )
+        if is_server:
+            self._engine._is_open = True
 
     def set_default_port(self, port: int) -> None:
         """Set the port, unless one was given. Used by protocols with a well-known port"""
@@ -261,16 +264,17 @@ class AsyncIP(AsyncAdapter[IPDescriptor, bytes]):
         stop_conditions: StopCondition | list[StopCondition] | DefaultType = DEFAULT,
         alias: str = "",
         auto_open: bool = True,
-        _socket: socket.socket | None = None,
+        sock: socket.socket | None = None,
     ) -> None:
+        is_server = sock is not None
         backend = IPBackend(
             IPDescriptor(
                 address,
                 IPDescriptor.Transport(transport.upper()),
                 port,
-                server=_socket is not None,
+                server=is_server,
             ),
-            _socket,
+            sock,
         )
         super().__init__(
             backend,
@@ -278,7 +282,7 @@ class AsyncIP(AsyncAdapter[IPDescriptor, bytes]):
             timeout=timeout,
             stop_conditions=stop_conditions,
             alias=alias,
-            auto_open=auto_open,
+            auto_open=False if is_server else auto_open,
         )
 
     def set_default_port(self, port: int) -> None:
