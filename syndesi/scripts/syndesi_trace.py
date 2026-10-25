@@ -13,6 +13,7 @@ syndesi-trace [--mode MODE]
 Modes
 -----
 - interactive (default): tabs per adapter, switch with ←/→ (or h/l), quit with q.
+  r clears the current adapter, R clears everything.
 - flat: append-only timeline (stdout or --output file).
 
 
@@ -389,7 +390,6 @@ class InteractiveTrace(Trace):
         if token in ("q", "Q"):
             return False
         if token in ("LEFT", "h"):
-
             if self._adapters:
                 self._selected_idx = (self._selected_idx - 1) % len(self._adapters)
         if token in ("RIGHT", "l"):
@@ -407,7 +407,28 @@ class InteractiveTrace(Trace):
                     self._scroll_offset -= 1
                 if self._scroll_offset == 0:
                     self._auto_follow = True
+        if token == "r":
+            self._reset_current()
+        if token == "R":
+            self._reset_all()
         return True
+
+    def _reset_current(self) -> None:
+        """Clear the events of the selected adapter"""
+        if self._adapters:
+            selected_adapter = list(self._adapters.values())[self._selected_idx]
+            if selected_adapter.blocks is not None:
+                selected_adapter.blocks.clear()
+        self._scroll_offset = 0
+        self._auto_follow = True
+
+    def _reset_all(self) -> None:
+        """Remove all adapters and events"""
+        self._adapters.clear()
+        self._selected_idx = 0
+        self._first_event_timestamp = None
+        self._scroll_offset = 0
+        self._auto_follow = True
 
     def run(self) -> None:
         with _TerminalRawMode():
@@ -461,7 +482,10 @@ class InteractiveTrace(Trace):
             t.append("(no adapters)")
 
         t.append("   ", style="dim")
-        t.append("←/→ switch  ↑/↓ scroll  q quit  (h/j/k/l also)", style="dim")
+        t.append(
+            "←/→ switch  ↑/↓ scroll  r reset  R reset all  q quit  (h/j/k/l also)",
+            style="dim",
+        )
         return t
 
     def _render_interactive(self) -> Panel:

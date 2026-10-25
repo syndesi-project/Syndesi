@@ -1,4 +1,4 @@
-from syndesi.adapters import IP, Proxy
+from syndesi import IP
 
 # Settings
 ADDRESS = "tcpbin.com"
@@ -7,9 +7,6 @@ DATA = b"Hello World\n"
 
 
 def main():
-    # Create a proxy server
-    proxy = Proxy()
-
     print(f"Opening IP adapter to {ADDRESS}:{PORT} ...")
     # Open the adapter
     adapter = IP(ADDRESS, port=PORT)

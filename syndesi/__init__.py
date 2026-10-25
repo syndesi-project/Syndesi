@@ -17,6 +17,7 @@ from .protocols.modbus import (
 )
 from .protocols.raw import AsyncRaw, Raw
 from .protocols.scpi import SCPI, AsyncSCPI
+from .adapters.stop_conditions import Termination, Continuation, FragmentSC, Length, Total
 
 __all__ = [
     # Adapters
@@ -44,4 +45,10 @@ __all__ = [
     "ModbusMultiRegisterValue",
     "Visa",
     "AsyncVisa",
+    # Stop conditions
+    "Termination",
+    "Continuation",
+    "FragmentSC",
+    "Length",
+    "Total"
 ]

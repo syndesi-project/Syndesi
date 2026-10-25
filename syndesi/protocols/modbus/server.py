@@ -493,7 +493,7 @@ class ModbusServer(ModbusServerCommon):
         threads: list[threading.Thread] = []
         while True:
             try:
-                client = self._ip_server.get_client()
+                client = self._ip_server.read()
             except AdapterError:
                 break  # stop() closed the server
             thread = threading.Thread(
@@ -633,7 +633,7 @@ class AsyncModbusServer(ModbusServerCommon):
         async with asyncio.TaskGroup() as tasks:
             while True:
                 try:
-                    client = await self._ip_server.get_client()
+                    client = await self._ip_server.read()
                 except AdapterError:
                     break  # stop() closed the server
                 tasks.create_task(self._serve(client, ModbusTCPBackend(server=True)))
