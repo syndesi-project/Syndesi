@@ -144,6 +144,7 @@ class ModbusHandlerErrorEvent(ProtocolEvent):
     error: Exception
 
 
+#pylint: disable=too-many-instance-attributes
 class ModbusServerCommon:
     """
     Data model and request handling shared by ModbusServer and AsyncModbusServer
@@ -226,6 +227,7 @@ class ModbusServerCommon:
     # │ Request handling │
     # └──────────────────┘
 
+    #pylint: disable=too-many-branches
     def default_handler(
         self, request: ModbusRequestSDU
     ) -> ModbusResponseSDU[Any] | None:

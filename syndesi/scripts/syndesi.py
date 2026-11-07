@@ -70,6 +70,7 @@ def main() -> None:
                     "  python -m pip install syndesi[ui]"
                 )
 
+            #pylint: disable=import-outside-toplevel
             from syndesi.ui.ui import main as start_ui
 
             start_ui(remaining_args)

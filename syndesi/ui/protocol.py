@@ -1,7 +1,11 @@
 # File : protocol.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Protocol module blocks
+"""
 
+from abc import abstractmethod
 import ast
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -24,14 +28,26 @@ loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
 
 class ProtocolBlock(Generic[ProtocolT], ComponentBlock):
+    """Protocol block"""
     _protocol: ProtocolT
 
+    @abstractmethod
+    async def build_configuration_tab(self, parent: int | str) -> None:
+        ...
 
+    @abstractmethod
+    async def build_testing_group(self, testing_window: int | str) -> int | str:
+        ...
+
+
+#pylint: disable=too-many-instance-attributes
 class DelimitedBlock(ProtocolBlock[AsyncDelimited]):
+    """Delimited protocol block"""
     title: str = "Delimited"
 
     def __init__(
         self,
+        *,
         protocol: AsyncDelimited,
         write_callback: Callable[[str], None],
         read_callback: Callable[[str], Awaitable[None]],
@@ -48,6 +64,9 @@ class DelimitedBlock(ProtocolBlock[AsyncDelimited]):
         self._different_receive_termination = False
         self._buffer_items: dict[int, int | str] = {}
         self._buffer_window: int | str = -1
+        self._termination_input: int | str = -1
+        self._checkbox: int | str = -1
+        self._receive_termination_input: int | str = -1
 
     def _event_callback_safe(self, event: SyndesiEvent) -> None:
         self._ui_protocol_event_callback(event)

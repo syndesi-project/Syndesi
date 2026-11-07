@@ -33,9 +33,11 @@ DEFAULT_PADDING = "\0"
 
 
 class ModbusMultiRegisterValue:
+    """
+    A wrapper for a multi-register modbus value
+    """
     _buffer: bytes
 
-    # ENDIAN_SYMBOL = {Endian.BIG: ">", Endian.LITTLE: "<"}
     # Formats based on the number of registers (half the number of bytes)
     INT_FORMAT = {
         1: "h",
@@ -65,6 +67,15 @@ class ModbusMultiRegisterValue:
     def from_registers(
         register_values: list[int], byte_order: Endian | str, word_order: Endian | str
     ) -> ModbusMultiRegisterValue:
+        """Build a ModbusMultiRegisterValue from a buffer
+        
+        Parameters
+        ----------
+        byte_order : Endian | str
+            Order by the individual bytes inside a modbus register (2 bytes)
+        word_order : Endian | str
+            Order of the different registers to constitute a multi-register value
+        """
         direction = 1 if Endian(word_order) == Endian.BIG else -1
         buffer = b"".join(
             [
@@ -77,6 +88,7 @@ class ModbusMultiRegisterValue:
         )
 
     def to_registers(self) -> list[int]:
+        """Convert multi-register value to a list of register values"""
         direction = 1 if self._word_order == Endian.BIG else -1
         registers = [
             int.from_bytes(
@@ -87,6 +99,7 @@ class ModbusMultiRegisterValue:
         return registers[::direction]
 
     def to_int(self) -> int:
+        """Convert a multi-register value to integer"""
         n = len(self._buffer) // 2
         try:
             fmt = self.INT_FORMAT[n]
@@ -98,6 +111,7 @@ class ModbusMultiRegisterValue:
         return output
 
     def to_uint(self) -> int:
+        """Convert a multi-register value to unsigned integer"""
         n = len(self._buffer) // 2
         try:
             fmt = self.UINT_FORMAT[n]
@@ -108,6 +122,7 @@ class ModbusMultiRegisterValue:
         return output
 
     def to_float(self) -> float:
+        """Convert a multi-register value to float"""
         n = len(self._buffer) // 2
         try:
             fmt = self.FLOAT_FORMAT[n]
@@ -120,21 +135,25 @@ class ModbusMultiRegisterValue:
     def to_string(
         self, encoding: str = DEFAULT_ENCODING, padding: str = DEFAULT_PADDING
     ) -> str:
+        """Convert a multi-register value to string"""
         data = self.to_array()
         # Cast
         decoded_data = data.decode(encoding)
         return decoded_data.strip(padding)
 
     def to_array(self) -> bytes:
+        """Convert a multi-register value to an array (bytes)"""
         return self._buffer
 
     @staticmethod
     def from_int(
         value: int,
         n_registers: int,
+        *,
         word_order: Endian | str = Endian.BIG,
         byte_order: Endian | str = Endian.BIG,
     ) -> ModbusMultiRegisterValue:
+        """Create a multi-register value from an integer"""
         return ModbusMultiRegisterValue(
             struct.pack(">" + ModbusMultiRegisterValue.INT_FORMAT[n_registers], value),
             word_order=word_order,
@@ -145,9 +164,11 @@ class ModbusMultiRegisterValue:
     def from_uint(
         value: int,
         n_registers: int,
+        *,
         word_order: Endian | str = Endian.BIG,
         byte_order: Endian | str = Endian.BIG,
     ) -> ModbusMultiRegisterValue:
+        """Create a multi-register value from an unsigned integer"""
         return ModbusMultiRegisterValue(
             struct.pack(">" + ModbusMultiRegisterValue.UINT_FORMAT[n_registers], value),
             word_order=word_order,
@@ -158,9 +179,11 @@ class ModbusMultiRegisterValue:
     def from_float(
         value: float,
         n_registers: int,
+        *,
         word_order: Endian | str = Endian.BIG,
         byte_order: Endian | str = Endian.BIG,
     ) -> ModbusMultiRegisterValue:
+        """Create a multi-register value from a float"""
         return ModbusMultiRegisterValue(
             struct.pack(
                 ">" + ModbusMultiRegisterValue.FLOAT_FORMAT[n_registers], value
@@ -175,9 +198,11 @@ class ModbusMultiRegisterValue:
         n_registers: int,
         padding: str = DEFAULT_PADDING,
         encoding: str = DEFAULT_ENCODING,
+        *,
         word_order: Endian | str = Endian.BIG,
         byte_order: Endian | str = Endian.BIG,
     ) -> ModbusMultiRegisterValue:
+        """Create a multi-register value from a string"""
         buffer = value.encode(encoding)
         buffer_size = n_registers * 2
         if len(buffer) > buffer_size:
@@ -195,12 +220,15 @@ class ModbusMultiRegisterValue:
     def from_array(
         array: bytes,
         n_registers: int,
+        *,
         word_order: Endian | str = Endian.BIG,
         byte_order: Endian | str = Endian.BIG,
     ) -> ModbusMultiRegisterValue:
+        """Create a multi-register value from an array"""
         if len(array) != 2 * n_registers:
             raise ValueError(
-                f"Cannot fit '{array!r}' ({len(array)}) into {n_registers} registers ({2*n_registers})"
+                f"Cannot fit '{array!r}' ({len(array)}) into \
+                    {n_registers} registers ({2*n_registers})"
             )
         return ModbusMultiRegisterValue(
             array, word_order=word_order, byte_order=byte_order

@@ -13,10 +13,7 @@ from __future__ import annotations
 from abc import abstractmethod
 import socket
 from dataclasses import dataclass
-from types import EllipsisType
 from typing import Generic, TypeVar
-
-from syndesi.adapters.engine import ReadScope
 
 from ..tools.errors import AdapterOpenError, AdapterReadError, AdapterWriteError
 from ..tools.others import DEFAULT, DefaultType
@@ -42,9 +39,9 @@ class Client:
 
 DEFAULT_BACKLOG = 5
 
-ClientType = TypeVar("ClientType", bound=IP|AsyncIP)
+ClientTypeT = TypeVar("ClientTypeT", bound=IP|AsyncIP)
 
-class IPServerBackendCommon(Generic[ClientType], AdapterBackend[IPDescriptor, ClientType]):
+class IPServerBackendCommon(Generic[ClientTypeT], AdapterBackend[IPDescriptor, ClientTypeT]):
     """
     Listens on an address and accepts connections
 
@@ -55,7 +52,10 @@ class IPServerBackendCommon(Generic[ClientType], AdapterBackend[IPDescriptor, Cl
     """
 
     def __init__(
-        self, descriptor: IPDescriptor, stop_conditions : list[StopCondition], backlog: int, 
+        self,
+        descriptor: IPDescriptor,
+        stop_conditions : list[StopCondition],
+        backlog: int
     ) -> None:
         super().__init__(descriptor)
         self._socket: socket.socket | None = None
@@ -94,7 +94,10 @@ class IPServerBackendCommon(Generic[ClientType], AdapterBackend[IPDescriptor, Cl
                 pass
             self._socket = None
 
-    def get_client(self) -> Client:
+    def _get_client(self) -> Client:
+        """
+        Accept an incoming connection and return an IP client
+        """
         if self._socket is None:
             raise AdapterReadError(f"Server {self.descriptor} is not open")
         try:
@@ -107,24 +110,25 @@ class IPServerBackendCommon(Generic[ClientType], AdapterBackend[IPDescriptor, Cl
                 socket=sock
             )
 
-
-    # @abstractmethod
-    # def read(self, fragment_timestamp: float) -> Fragment[ClientType]:
-    #     """Accept one connection, the reactor only calls this when one is pending"""
-
-    def write(self, data: ClientType) -> None:
+    def write(self, data: ClientTypeT) -> None:
         raise AdapterWriteError(
             "Cannot write to an IPServer, write to one of its clients instead"
         )
 
     @property
     def default_timeout(self) -> TimeoutType:
+        """Default timeout"""
         # A server waits for clients for as long as it takes
         return None
 
+    @abstractmethod
+    def read(self, fragment_timestamp: float) -> Fragment[ClientTypeT]:
+        ...
+
 class IPServerBackend(IPServerBackendCommon[IP]):
+    """IPServer backend for sync implementation"""
     def read(self, fragment_timestamp: float) -> Fragment[IP]:
-        client = self.get_client()
+        client = self._get_client()
         fragment = Fragment(
             IP(
                 address=client.address,
@@ -136,10 +140,11 @@ class IPServerBackend(IPServerBackendCommon[IP]):
         )
         print(f'Fragment : {fragment}')
         return fragment
-    
+
 class AsyncIPServerBackend(IPServerBackendCommon[AsyncIP]):
+    """IPServer backend for async implementation"""
     def read(self, fragment_timestamp: float) -> Fragment[AsyncIP]:
-        client = self.get_client()
+        client = self._get_client()
         return Fragment(
             AsyncIP(
                 address=client.address,
@@ -170,7 +175,7 @@ class IPServer(Adapter[IPDescriptor, IP]):
     Examples
     --------
     >>> server = IPServer('0.0.0.0', 8888)
-    >>> client = server.get_client()        # an IP adapter, already connected
+    >>> client = server.read()        # an IP adapter, already connected
     >>> client.read()
     """
 
@@ -225,7 +230,7 @@ class AsyncIPServer(AsyncAdapter[IPDescriptor, AsyncIP]):
     Examples
     --------
     >>> async with AsyncIPServer('0.0.0.0', 8888) as server:
-    ...     client = await server.get_client()
+    ...     client = await server.read()
     ...     await client.read()
     """
 

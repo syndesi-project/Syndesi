@@ -43,7 +43,7 @@ from enum import StrEnum
 from fnmatch import fnmatchcase
 from math import isnan
 from types import TracebackType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from syndesi.adapters.tracehub import (
     DEFAULT_MULTICAST_GROUP,
@@ -63,25 +63,16 @@ if os.name == "posix":
 elif os.name == "nt":
     import msvcrt  # pylint: disable=import-error
 
-if TYPE_CHECKING:
+try:
     from rich.align import Align
     from rich.console import Console
     from rich.live import Live
     from rich.panel import Panel
     from rich.text import Text
 
-    rich_available = True
-else:
-    try:
-        from rich.align import Align
-        from rich.console import Console
-        from rich.live import Live
-        from rich.panel import Panel
-        from rich.text import Text
-
-        rich_available = True
-    except ImportError:
-        rich_available = False
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
 
 
 class TimeMode(StrEnum):
@@ -384,6 +375,7 @@ class InteractiveTrace(Trace):
         self._scroll_offset: int = 0
         self._auto_follow: bool = True
 
+    #pylint: disable=too-many-branches
     def _handle_key(self, token: str) -> bool:
         # returns False to quit
         token = token.strip()
@@ -537,6 +529,7 @@ class _TerminalRawMode:
         self._old: list[Any] | None = None
 
     def __enter__(self) -> _TerminalRawMode:
+        #pylint: disable=possibly-used-before-assignment
         if os.name != "posix":
             return self
         try:

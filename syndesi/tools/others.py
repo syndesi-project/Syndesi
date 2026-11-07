@@ -1,6 +1,9 @@
 # File : others.py
 # Author : Sébastien Deriaz
 # License : GPL
+"""
+Other syndesi tools
+"""
 
 from enum import Enum
 from typing import Final, Literal

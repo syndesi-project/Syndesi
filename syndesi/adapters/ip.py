@@ -116,10 +116,6 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
         else:
             raise AdapterOpenError("Invalid transport protocol")
         try:
-            # TODO : Simulate a very long connect time (bad network) and manage timeout
-            # error accordingly
-            # if timeout is ...:
-            #     raise BackendOpenError("Invalid timeout")
             if timeout is None:
                 s.settimeout(None)
             else:
@@ -132,7 +128,6 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
         # We only set the socket on success to prevent the worker thread
         # from sending events before the adapter is opened
         self._socket = s
-        # self._logger.info(f"IP Adapter {self.descriptor} opened")
 
     def close(self) -> None:
         if self._socket is not None:
