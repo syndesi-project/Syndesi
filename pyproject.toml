@@ -89,6 +89,7 @@ line_length = 100
 python_version = "3.11"
 strict = true
 warn_return_any = true
+
 warn_unused_configs = true
 disallow_untyped_defs = true
 no_implicit_optional = true
@@ -103,4 +104,10 @@ exclude = ["tests"]
 # All arguments are necessary and it would not make sense to group them / move them
 # too-many-positional-arguments is kept however because it makes sense
 # Also disable W1203 to allow f-strings in logging lines
-disable = ["R0913", "W1203", "R0903"]
+#disable = ["W1203"]
+disable = [
+    "R0903", # too-few-public-methods
+    "R0801", # Similar lines
+    "R0913", # Too many arguments
+]
+    

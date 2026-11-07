@@ -30,7 +30,6 @@ from .framer import AdapterReadFrame, Framer, SupportsStopConditions
 from .stop_conditions import StopCondition
 from .utils import TimeoutParameterType, TimeoutType
 
-
 def _as_list(
     stop_conditions: StopCondition | list[StopCondition],
 ) -> list[StopCondition]:
@@ -136,6 +135,7 @@ class AdapterCommon(Generic[DescriptorT, DataT]):
     # Experimental
     @property
     def frame_buffer(self) -> list[AdapterReadFrame[DataT]]:
+        """Return the engine frame buffer"""
         return list(self._engine.frame_buffer)
 
 

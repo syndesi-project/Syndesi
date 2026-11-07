@@ -114,7 +114,7 @@ class Reactor:
                 self._iterate()
             except Exception as e:  # pylint: disable=broad-exception-caught
                 # The loop is shared, one misbehaving client must not stop the others
-                self._logger.exception(f"Reactor iteration failed : {e}")
+                self._logger.exception("Reactor iteration failed : %s", e)
 
     def _iterate(self) -> None:
         clients = self._snapshot()
@@ -185,7 +185,7 @@ class Reactor:
         try:
             method(*args)
         except Exception as e:  # pylint: disable=broad-exception-caught
-            self._logger.exception(f"Reactor client failed : {e}")
+            self._logger.exception("Reactor client failed : %s", e)
 
 
 def _usable(selectable: HasFileno) -> bool:

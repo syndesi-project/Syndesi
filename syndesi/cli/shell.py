@@ -29,7 +29,6 @@ from .console import Shell
 
 HISTORY_FILE_NAME = "syndesi"
 
-
 class Format(Enum):
     """
     Display format
@@ -66,13 +65,11 @@ class SpecialLineEnding(Enum):
     LF = "lf"
     CRLF = "crlf"
 
-
 LINE_ENDING_CHARS = {
     SpecialLineEnding.CR: "\r",
     SpecialLineEnding.LF: "\n",
     SpecialLineEnding.CRLF: "\r\n",
 }
-
 
 def hex2array(raw: str) -> bytes:
     """
@@ -90,14 +87,12 @@ def hex2array(raw: str) -> bytes:
         raise ValueError(f"Cannot parse hex string : {raw}") from err
     return array
 
-
 def array2hex(array: bytes) -> str:
     """
     Convert bytes to hex string
     b'\x00\x01\x0a\xff' -> 00 01 0A FF
     """
     return " ".join([f"{x:02X}" for x in array])
-
 
 def parse_end_argument(arg: str | None) -> str | None:
     """
@@ -111,7 +106,6 @@ def parse_end_argument(arg: str | None) -> str | None:
             return t
     # Otherwise parse "\\n" -> "\n"
     return arg.replace("\\n", "\n").replace("\\r", "\r")
-
 
 class ListSerialPortsAction(argparse.Action):
     """List serial ports action"""
@@ -148,7 +142,6 @@ class ListSerialPortsAction(argparse.Action):
         for port in ports:
             print(f"{port}")
         parser.exit()
-
 
 class AdapterShell:
     """

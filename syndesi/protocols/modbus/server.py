@@ -7,6 +7,7 @@ Modbus servers (slaves), sync and async
 
 from __future__ import annotations
 
+from abc import abstractmethod
 import asyncio
 import inspect
 import logging
@@ -144,6 +145,7 @@ class ModbusHandlerErrorEvent(ProtocolEvent):
     error: Exception
 
 
+#pylint: disable=too-many-instance-attributes
 class ModbusServerCommon:
     """
     Data model and request handling shared by ModbusServer and AsyncModbusServer
@@ -201,6 +203,13 @@ class ModbusServerCommon:
         self._callbacks: list[Callable[[SyndesiEvent], None]] = []
         self._logger = logging.getLogger(LoggerAlias.PROTOCOL.value)
 
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    @abstractmethod
+    def __str__(self) -> str:
+        ...
+
     def register_event_callback(self, callback: Callable[[SyndesiEvent], None]) -> None:
         """
         Register an event callback
@@ -220,12 +229,13 @@ class ModbusServerCommon:
             try:
                 callback(event)
             except Exception as e:  # pylint: disable=broad-exception-caught
-                self._logger.exception(f"Event callback failed : {e}")
+                self._logger.exception("Event callback failed : %s", e)
 
     # ┌──────────────────┐
     # │ Request handling │
     # └──────────────────┘
 
+    #pylint: disable=too-many-branches
     def default_handler(
         self, request: ModbusRequestSDU
     ) -> ModbusResponseSDU[Any] | None:
@@ -379,7 +389,7 @@ class ModbusServerCommon:
         """The answer to a request whose handler raised"""
         if isinstance(error, ModbusException):
             return ExceptionResponseSDU(request.function_code, error.exception_code)
-        self._logger.exception(f"Modbus handler failed on {request}")
+        self._logger.exception("Modbus handler failed on %s", request)
         self._emit(ModbusHandlerErrorEvent(request, error))
         return ExceptionResponseSDU(
             request.function_code, ExceptionCode.SERVER_DEVICE_FAILURE
@@ -467,6 +477,16 @@ class ModbusServer(ModbusServerCommon):
         else:
             raise ValueError(f"Invalid adapter : {adapter}")
 
+    def __str__(self) -> str:
+        if self._ip_server is not None:
+            desc = str(self._ip_server)
+        elif self._serial is not None:
+            desc = str(self._serial[0])
+        else:
+            desc = 'error'
+
+        return f"ModbusServer({desc})"
+    
     def set_handler(
         self,
         request_type: type[RequestHandlerT],
@@ -601,6 +621,16 @@ class AsyncModbusServer(ModbusServerCommon):
             self._serial = (adapter, backend)
         else:
             raise ValueError(f"Invalid adapter : {adapter}")
+
+    def __str__(self) -> str:
+        if self._ip_server is not None:
+            desc = str(self._ip_server)
+        elif self._serial is not None:
+            desc = str(self._serial[0])
+        else:
+            desc = 'error'
+
+        return f"AsyncModbusServer({desc})"
 
     def set_handler(
         self,

@@ -659,7 +659,7 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         self._is_open = True
         self._open_error = None
         tracehub.emit_open(str(self._backend.descriptor))
-        self._logger.info(f"{self._backend.descriptor} opened")
+        self._logger.info("%s opened", self._backend.descriptor)
         command.set_result(None)
         self._emit(AdapterOpenedEvent())
 
@@ -971,4 +971,4 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
             try:
                 callback(event)
             except Exception as e:  # pylint: disable=broad-exception-caught
-                self._logger.exception(f"Event callback failed : {e}")
+                self._logger.exception("Event callback failed : %s", e)

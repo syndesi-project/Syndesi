@@ -111,6 +111,7 @@ class LengthBlock(StopConditionBlock[Length]):
     DEFAULT_LENGTH = 10
 
     def __init__(self, stop_condition: Length) -> None:
+        super().__init__(stop_condition)
         length = self.DEFAULT_LENGTH if stop_condition is None else stop_condition.n
         self._stop_condition = Length(length)
         self._length_input: int | str = -1
@@ -136,12 +137,14 @@ class ContinuationBlock(StopConditionBlock[Continuation]):
     DEFAULT_CONTINUATION = 0.2
 
     def __init__(self, stop_condition: Continuation) -> None:
+        super().__init__(stop_condition)
         continuation = (
             self.DEFAULT_CONTINUATION
             if stop_condition is None
             else stop_condition.continuation
         )
         self._stop_condition = Continuation(continuation)
+        self._continuation_input : int | str = -1
 
     def build(self, parent: int | str) -> None:
         with dpg.tab(label=str(self._stop_condition), parent=parent) as self.tab:
@@ -166,6 +169,7 @@ class TotalBlock(StopConditionBlock[Total]):
     DEFAULT_TOTAL = 0.2
 
     def __init__(self, stop_condition: Total) -> None:
+        super().__init__(stop_condition)
         total = self.DEFAULT_TOTAL if stop_condition is None else stop_condition.total
         self._stop_condition = Total(total)
         self._total_input: int | str = -1
@@ -197,20 +201,19 @@ class FragmentBlock(StopConditionBlock[FragmentSC]):
 
 AdapterT = TypeVar("AdapterT", bound=AsyncAdapter[Any, Any])
 
-
+#pylint: disable=too-many-instance-attributes
 class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
     """BytesAdapter UI block"""
 
     _adapter: AdapterT
     title = ""
-    # on_close : Callable[[], None] | None = None
-    # on_open : Callable[[], None] | None = None
     DEFAULT_TIMEOUT = 0
 
     STOP_CONDITIONS = [x for x in StopConditionType if x != StopConditionType.TIMEOUT]
 
     def __init__(
         self,
+        *,
         title: str,
         adapter: AdapterT,
         write_callback: Callable[[str], None],
@@ -297,7 +300,7 @@ class BytesAdapterBlock(Generic[AdapterT], ComponentBlock, ABC):
             try:
                 await self._event_callback_safe(event)
             except Exception:  # pylint: disable=broad-exception-caught
-                _logger.exception(f"Cannot handle {event} in the UI")
+                _logger.exception("Cannot handle %s in the UI", event)
 
     @abstractmethod
     def _build_descriptor(self, parent: int | str) -> None: ...
@@ -453,6 +456,7 @@ class IPBlock(BytesAdapterBlock[AsyncIP]):
 
     def __init__(
         self,
+        *,
         adapter: AsyncIP,
         write_callback: Callable[[str], None],
         read_callback: Callable[[str], Awaitable[None]],
@@ -462,14 +466,14 @@ class IPBlock(BytesAdapterBlock[AsyncIP]):
         loop: asyncio.AbstractEventLoop,
     ) -> None:
         super().__init__(
-            "IP Adapter",
-            adapter,
-            write_callback,
-            read_callback,
-            read_fail_callback,
-            event_callback,
-            is_top_level,
-            loop,
+            title="IP Adapter",
+            adapter=adapter,
+            write_callback=write_callback,
+            read_callback=read_callback,
+            read_fail_callback=read_fail_callback,
+            event_callback=event_callback,
+            is_top_level=is_top_level,
+            loop=loop,
         )
         self._address_input: int | str = -1
         self._port_input: int | str = -1

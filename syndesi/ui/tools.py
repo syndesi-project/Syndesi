@@ -23,17 +23,19 @@ loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
 
 class UIColor(Enum):
+    """UI color"""
     ERROR = (250, 20, 20)
 
 
 # From dearpygui's demo.py
+#pylint: disable=too-many-return-statements
 def _hsv_to_rgb(h: float, s: float, v: float) -> tuple[int, int, int]:
     def to_int(inp: tuple[float, float, float]) -> tuple[int, int, int]:
         return (int(inp[0]), int(inp[1]), int(inp[2]))
 
     if s == 0.0:
         return to_int((v, v, v))
-    i = int(h * 6.0)  # XXX assume int() truncates!
+    i = int(h * 6.0)  # assume int() truncates!
     f = (h * 6.0) - i
     p, q, t = v * (1.0 - s), v * (1.0 - s * f), v * (1.0 - s * (1.0 - f))
     i %= 6
@@ -103,7 +105,7 @@ def get_method_arguments(
         module_globals = vars(sys.modules[func.__module__])
         localns = dict(vars(cls))
         type_hints = get_type_hints(func, globalns=module_globals, localns=localns)
-    except Exception:
+    except Exception: #pylint: disable=broad-exception-caught
         # Fallback if some hints cannot be resolved
         type_hints = getattr(func, "__annotations__", {})
 
@@ -141,10 +143,9 @@ class Block(ABC):
     @abstractmethod
     def build(self, parent: int | str) -> None:
         """Construct the block in dearpygui"""
-        ...
-
 
 class ComponentBlock(ABC):
+    """Component block, represents an adapter, a protocol or a driver in a UI"""
     _is_top_level: bool
     _ui_event_callback: Callable[[SyndesiEvent, bool], None]
 
@@ -164,43 +165,59 @@ class ComponentBlock(ABC):
     title: str = ""
 
     @abstractmethod
-    async def reset(self) -> None: ...
+    async def reset(self) -> None:
+        """Reset component block"""
 
     @abstractmethod
-    async def build_configuration_tab(self, configuration_tab: int | str) -> None: ...
+    async def build_configuration_tab(self, parent: int | str) -> None:
+        """Build the configuration tab (left pane)"""
 
     @abstractmethod
-    async def build_testing_group(self, testing_window: int | str) -> int | str: ...
+    async def build_testing_group(self, testing_window: int | str) -> int | str:
+        """Build the testing group (center pane)"""
 
     @abstractmethod
-    async def open(self) -> None: ...
+    async def open(self) -> None:
+        """Open the component"""
 
     @abstractmethod
-    async def close(self) -> None: ...
+    async def close(self) -> None:
+        """Close the component"""
 
     @abstractmethod
-    async def sync_component_to_block(self) -> None: ...
+    async def sync_component_to_block(self) -> None:
+        """Send UI component's data to the adapter/protocol/driver"""
 
     @abstractmethod
-    async def sync_block_to_component(self) -> None: ...
+    async def sync_block_to_component(self) -> None:
+        """Send the adapter/protocol/driver data to the UI component"""
 
 
 def bytes_help() -> None:
+    """Help icon for text inputs in bytes format"""
     _help("bytes formatting can be used such as \\n and \\r")
 
 
+#pylint: disable=too-many-instance-attributes
 class StringTestingGroup:
+    """String-based testing group. A testing group (center pane) that
+    uses string as input/output
+    """
     def __init__(
         self,
         write_callback: Callable[
             [str], Coroutine[Any, Any, None]
-        ],  # Callable[[str], None],
+        ],
         read_callback: Callable[[ReadScope], Awaitable[None]],
     ) -> None:
         self._write_callback = write_callback
         self._read_callback = read_callback
         self._write_status: int | str = -1
         self._read_scope_combo: int | str = -1
+        self._write_input: int | str = -1
+        self._query_input: int | str = -1
+        self._query_status: int | str = -1
+        self._read_status: int | str = -1
 
     async def _write_button_callback(self) -> None:
         dpg.set_value(self._write_status, "")
@@ -228,6 +245,7 @@ class StringTestingGroup:
             dpg.set_value(self._read_status, "")
 
     def build(self, parent: int | str) -> int | str:
+        """Build the testing group in the given parent"""
         testing_group: int | str
         with dpg.group(parent=parent) as testing_group:
             dpg.add_text("Write", color=(70, 142, 194))

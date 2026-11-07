@@ -450,7 +450,6 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
 
         return output.data == subfunction_data
 
-    # TODO : Check how this function interracts with Listen Only mode
     def diagnostics_restart_communications_option(
         self, clear_communications_event_log: bool = False
     ) -> None:

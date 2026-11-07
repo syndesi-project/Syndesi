@@ -62,26 +62,29 @@ AdapterT = TypeVar("AdapterT", bound=Adapter[Any, Any])
 # t = TypeVar("t", bound=Component[Any])
 
 
-def default_ip() -> AsyncIP:
+def ip_adapter() -> AsyncIP:
+    """Default IP adapter"""
     return AsyncIP(address="", port=0, auto_open=False)
 
 
 def default_serialport() -> AsyncSerialPort:
+    """Default SerialPort adapter"""
     return AsyncSerialPort(port="", baudrate=9600)
 
 
 def default_delimited(adapter: AsyncAdapter[Any, Any]) -> AsyncDelimited:
+    """Default Delimited protocol"""
     return AsyncDelimited(adapter, termination="\n")
 
-
 class EntrySource(StrEnum):
+    """Event table abreviation for each component type"""
     ADAPTER = "A"
     PROTOCOL = "P"
     DRIVER = "D"
     UNKNOWN = "x"
 
-
 class TestingEntryType(IntEnum):
+    """Entry type"""
     # Meta
     UNKNOWN_EVENT = 0
     # Primary events (always visible)
@@ -98,6 +101,7 @@ class TestingEntryType(IntEnum):
     FIRST_FRAGMENT_EVENT = 10
 
     def is_event(self) -> bool:
+        """True if the entry is an event"""
         return self in [
             TestingEntryType.FRAME_EVENT,
             TestingEntryType.FRAGMENT_EVENT,
@@ -107,42 +111,31 @@ class TestingEntryType(IntEnum):
         ]
 
 
-ENTRY_PREFIX = {
-    TestingEntryType.UNKNOWN_EVENT: "Invalid event",
-    TestingEntryType.TOPLEVEL_READ: "←  read",
-    TestingEntryType.TOPLEVEL_READ_FAIL: "←  read",
-    TestingEntryType.TOPLEVEL_WRITE: "→ write",
-    TestingEntryType.OPEN_EVENT: "● opened",
-    TestingEntryType.CLOSE_EVENT: "● closed",
-    TestingEntryType.WRITE_EVENT: "→ write",
-    TestingEntryType.FRAME_EVENT: "↓ frame",
-    TestingEntryType.READ_EVENT: "←  read",
-    TestingEntryType.FRAGMENT_EVENT: "↓ frag",
-    TestingEntryType.FIRST_FRAGMENT_EVENT: "↓ frag*",
-}
-
-ENTRY_COLOR = {
-    TestingEntryType.UNKNOWN_EVENT: (255, 0, 0),
-    TestingEntryType.TOPLEVEL_READ: (197, 213, 235),
-    TestingEntryType.TOPLEVEL_READ_FAIL: (255, 170, 180),
-    TestingEntryType.TOPLEVEL_WRITE: (212, 235, 197),
-    TestingEntryType.OPEN_EVENT: (30, 199, 38),
-    TestingEntryType.CLOSE_EVENT: (207, 19, 19),
-    TestingEntryType.WRITE_EVENT: (127, 127, 127),
-    TestingEntryType.FRAME_EVENT: (127, 127, 127),
-    TestingEntryType.READ_EVENT: (127, 127, 127),
-    TestingEntryType.FRAGMENT_EVENT: (127, 127, 127),
-    TestingEntryType.FIRST_FRAGMENT_EVENT: (127, 127, 127),
+# Entry description and color
+ENTRY : dict [TestingEntryType, tuple[str, tuple[int, int, int]]] = {
+    TestingEntryType.UNKNOWN_EVENT: ("Invalid event", (255, 0, 0)),
+    TestingEntryType.TOPLEVEL_READ: ("←  read", (197, 213, 235)),
+    TestingEntryType.TOPLEVEL_READ_FAIL: ("←  read", (255, 170, 180)),
+    TestingEntryType.TOPLEVEL_WRITE: ("→ write", (212, 235, 197)),
+    TestingEntryType.OPEN_EVENT: ("● opened", (30, 199, 38)),
+    TestingEntryType.CLOSE_EVENT: ("● closed", (207, 19, 19)),
+    TestingEntryType.WRITE_EVENT: ("→ write", (127, 127, 127)),
+    TestingEntryType.FRAME_EVENT: ("↓ frame", (127, 127, 127)),
+    TestingEntryType.READ_EVENT: ("←  read", (127, 127, 127)),
+    TestingEntryType.FRAGMENT_EVENT: ("↓ frag", (127, 127, 127)),
+    TestingEntryType.FIRST_FRAGMENT_EVENT: ("↓ frag*", (127, 127, 127)),
 }
 
 
 @dataclass
 class TestingEntry:
+    """Testing entry dataclass"""
     time_delta: float
     entry_type: TestingEntryType
     group_tag: int | str
 
 
+#pylint: disable=too-many-instance-attributes
 class UIBase:
     """Main UI window"""
 
@@ -174,25 +167,28 @@ class UIBase:
         dpg.destroy_context()
 
     @overload
-    def adapter_block(self, adapter: AsyncIP, is_top_level: bool) -> IPBlock: ...
+    def adapter_block(self, adapter: AsyncIP, is_top_level: bool) -> IPBlock:
+        """Create a block from an adapter"""
 
     @overload
     def adapter_block(
         self, adapter: AsyncAdapter[Any, Any], is_top_level: bool
-    ) -> BytesAdapterBlock[Any]: ...
+    ) -> BytesAdapterBlock[Any]:
+        ...
 
     def adapter_block(
         self, adapter: AsyncAdapter[Any, Any], is_top_level: bool
     ) -> BytesAdapterBlock[Any]:
+        """Create an IP block from an IP instance"""
         if isinstance(adapter, AsyncIP):
             return IPBlock(
-                adapter,
-                self._adapter_write_callback,
-                self._adapter_read_callback,
-                self._adapter_read_fail_callback,
-                self._event_callback,
-                is_top_level,
-                dpg_async.loop,
+                adapter=adapter,
+                write_callback=self._adapter_write_callback,
+                read_callback=self._adapter_read_callback,
+                read_fail_callback=self._adapter_read_fail_callback,
+                event_callback=self._event_callback,
+                is_top_level=is_top_level,
+                loop=dpg_async.loop,
             )
 
         raise RuntimeError(f"Invalid adapter : {adapter}")
@@ -201,6 +197,7 @@ class UIBase:
     def protocol_block(
         self, protocol: AsyncDelimited, is_top_level: bool
     ) -> DelimitedBlock: ...
+
     @overload
     def protocol_block(
         self, protocol: AsyncProtocol[Any, Any, Any], is_top_level: bool
@@ -209,14 +206,15 @@ class UIBase:
     def protocol_block(
         self, protocol: AsyncProtocol[Any, Any, Any], is_top_level: bool
     ) -> ProtocolBlock[Any]:
+        """Create a Delimited block from a Delimited instance"""
         if isinstance(protocol, AsyncDelimited):
             return DelimitedBlock(
-                protocol,
-                self._protocol_write_callback,
-                self._protocol_read_callback,
-                self._protocol_read_fail_callback,
-                self._event_callback,
-                is_top_level,
+                protocol=protocol,
+                write_callback=self._protocol_write_callback,
+                read_callback=self._protocol_read_callback,
+                read_fail_callback=self._protocol_read_fail_callback,
+                event_callback=self._event_callback,
+                is_top_level=is_top_level,
             )
         raise RuntimeError(f"Invalid protocol : {protocol}")
 
@@ -350,10 +348,11 @@ class UIBase:
         show = self._show_events or not entry_type.is_event()
 
         with dpg.table_row(parent=self._testing_table, show=show) as row_tag:
-            dpg.add_text(f"{time_delta:+8.3f}", color=ENTRY_COLOR[entry_type])
-            dpg.add_text(entry_source, color=ENTRY_COLOR[entry_type])
-            dpg.add_text(ENTRY_PREFIX[entry_type], color=ENTRY_COLOR[entry_type])
-            dpg.add_text(text, color=ENTRY_COLOR[entry_type])
+            entry_text, entry_color = ENTRY[entry_type]
+            dpg.add_text(f"{time_delta:+8.3f}", color=entry_color)
+            dpg.add_text(entry_source, color=entry_color)
+            dpg.add_text(entry_text, color=entry_color)
+            dpg.add_text(text, color=entry_color)
 
         new_entry = TestingEntry(
             time_delta=time_delta, entry_type=entry_type, group_tag=row_tag
@@ -389,7 +388,7 @@ class UIBase:
         b_h = max(total_h - a_h - c_h - 2 * padding - 10, 50)
         dpg.configure_item(self._testing_subwindow, height=b_h)
 
-    def _show_events_callback(self, sender: int | str, value: bool) -> None:
+    def _show_events_callback(self, _: int | str, value: bool) -> None:
         self._show_events = value
         for entry in self._entries:
             if entry.entry_type.is_event():
@@ -404,6 +403,7 @@ class UIBase:
         asyncio.run(block.build_configuration_tab(adapter_tab))
 
     def load_adapter(self, adapter: AsyncAdapter[Any, Any]) -> None:
+        """Load an adapter in the UI"""
         block = self.adapter_block(adapter, True)
         self._add_adapter(block)
         self._testing_bottom_group = asyncio.run(
@@ -420,8 +420,7 @@ class UIBase:
         asyncio.run(block.build_configuration_tab(protocol_tab))
 
     def load_protocol(self, protocol: AsyncProtocol[Any, Any, Any]) -> None:
-        if not isinstance(protocol.adapter, AsyncAdapter):
-            raise RuntimeError("Non-bytes adapter are not yet supported")
+        """Load a protocol in the UI"""
         block = self.protocol_block(protocol, True)
         self._add_adapter(self.adapter_block(protocol.adapter, False))
         self._add_protocol(block)
@@ -430,8 +429,11 @@ class UIBase:
             block.build_testing_group(self._testing_window)
         )
 
-    def load_driver(self, driver: Driver) -> None: ...
+    #pylint: disable=unused-argument
+    def load_driver(self, driver: Driver) -> None:
+        """Load a driver"""
 
+    #pylint: disable=unused-argument
     def _add_driver(self, driver: Driver) -> None: ...
 
     async def open(self) -> None:
@@ -450,6 +452,7 @@ class UIBase:
         # No need to update status to True here, it will be done by the event
 
     async def close(self) -> None:
+        """Close the top-level component (driver, protocol or adapter)"""
         if self.toplevel_component is None:
             raise RuntimeError("Top-level component hasn't been set")
         await self.toplevel_component.close()
@@ -665,11 +668,13 @@ def main(args: list[str] | None = None) -> None:
     driver_path_parser.add_argument("path", help="Driver path")
 
     # IP
+    #pylint: disable=unused-variable
     ip_parser = subparsers.add_parser(Command.IP)
     # ip_parser.add_argument('address', help="IP address")
     # ip_parser.add_argument('port', help="IP port")
 
     # Serial
+    #pylint: disable=unused-variable
     serial_parser = subparsers.add_parser(Command.SERIAL)
     # serial_parser.add_argument("port", help="Serial port")
     # serial_parser.add_argument("")
@@ -703,11 +708,11 @@ def main(args: list[str] | None = None) -> None:
     #     ui = UIDriver(c)
 
     if command == Command.IP:
-        ui.load_adapter(default_ip())
+        ui.load_adapter(ip_adapter())
     if command == Command.DELIMITED:
         adapter = arguments.adapter
         if adapter == Command.IP:
-            ui.load_protocol(default_delimited(default_ip()))
+            ui.load_protocol(default_delimited(ip_adapter()))
         elif adapter == Command.SERIAL:
             ui.load_protocol(default_delimited(default_serialport()))
 

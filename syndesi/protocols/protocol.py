@@ -19,6 +19,7 @@ a single class
                 └ DelimitedBackend                            │
                        ▲───────────── frames ─────────────────┘
 """
+# pylint: disable=too-many-lines
 
 from __future__ import annotations
 
@@ -62,11 +63,9 @@ from ..tools.others import DEFAULT
 AdapterT = TypeVar("AdapterT")
 ProtocolT = TypeVar("ProtocolT")
 
-
 # ┌────────┐
 # │ Frames │
 # └────────┘
-
 
 @dataclass(kw_only=True)
 class ProtocolFrame(Generic[ProtocolT]):
@@ -78,7 +77,6 @@ class ProtocolFrame(Generic[ProtocolT]):
 
     def __str__(self) -> str:
         return f"ProtocolFrame({self.data!r})"
-
 
 @dataclass
 class BackendOutput(Generic[AdapterT, ProtocolT]):
@@ -95,7 +93,6 @@ class BackendOutput(Generic[AdapterT, ProtocolT]):
     # Events specific to the protocol, emitted before the payloads
     events: list[ProtocolEvent] = field(default_factory=list)
 
-
 # ┌────────┐
 # │ Events │
 # └────────┘
@@ -103,7 +100,6 @@ class BackendOutput(Generic[AdapterT, ProtocolT]):
 # Protocol events and adapter events go through the same callbacks, in the order they
 # happened : the adapter frame, then the payload it completed. Like adapter events, they
 # are emitted on the reactor thread and callbacks must not block
-
 
 class ProtocolEvent(SyndesiEvent):
     """
@@ -113,13 +109,10 @@ class ProtocolEvent(SyndesiEvent):
     own events by inheriting from this class, and emits them with BackendOutput.events
     """
 
-
 @dataclass
 class ProtocolWriteEvent(Generic[ProtocolT], ProtocolEvent):
     """A payload has been encoded, its data is being written to the adapter"""
-
     payload: ProtocolT
-
 
 @dataclass
 class ProtocolFrameEvent(Generic[ProtocolT], ProtocolEvent):
@@ -129,39 +122,30 @@ class ProtocolFrameEvent(Generic[ProtocolT], ProtocolEvent):
     adapter_frame_ids are the adapter frames it was assembled from. An adapter frame can
     hold the end of a payload and the start of the next one, it is then in both lists
     """
-
     frame: ProtocolFrame[ProtocolT]
     buffered: bool
     adapter_frame_ids: list[int]
 
-
 @dataclass
 class ProtocolReadEvent(Generic[ProtocolT], ProtocolEvent):
     """A payload has been handed to a read call"""
-
     frame: ProtocolFrame[ProtocolT]
     from_buffer: bool
-
 
 @dataclass
 class ProtocolBufferEvent(ProtocolEvent):
     """Payloads have been added to or removed from the frame buffer"""
-
     added_frame_ids: list[int]
     removed_frame_ids: list[int]
-
 
 @dataclass
 class ProtocolDecodeErrorEvent(ProtocolEvent):
     """An adapter frame couldn't be decoded by the backend"""
-
     error: ProtocolReadError
-
 
 # ┌─────────┐
 # │ Backend │
 # └─────────┘
-
 
 class ProtocolBackend(Generic[AdapterT, ProtocolT], ABC):
     """
@@ -240,11 +224,9 @@ class ProtocolBackend(Generic[AdapterT, ProtocolT], ABC):
         """
         return DEFAULT
 
-
 # ┌──────────┐
 # │ Commands │
 # └──────────┘
-
 
 class ProtocolWriteCommand(Generic[ProtocolT], Command[None]):
     """Encode a payload and write it to the adapter"""
@@ -253,7 +235,6 @@ class ProtocolWriteCommand(Generic[ProtocolT], Command[None]):
         super().__init__()
         self.payload = payload
 
-
 class ConfigureBackendCommand(Command[None]):
     """Run an action on the backend, on the reactor thread"""
 
@@ -261,14 +242,12 @@ class ConfigureBackendCommand(Command[None]):
         super().__init__()
         self.action = action
 
-
 class ProtocolWriteRawCommand(Generic[AdapterT], Command[None]):
     """Write data to the adapter without encoding it"""
 
     def __init__(self, data: AdapterT) -> None:
         super().__init__()
         self.data = data
-
 
 class ProtocolReadCommand(Generic[ProtocolT], Command[ProtocolFrame[ProtocolT]]):
     """Read one protocol frame"""
@@ -278,7 +257,6 @@ class ProtocolReadCommand(Generic[ProtocolT], Command[ProtocolFrame[ProtocolT]])
         self.timeout = timeout
         self.scope = scope
 
-
 class AddProtocolEventCallbackCommand(Command[None]):
     """Register an event callback"""
 
@@ -286,14 +264,11 @@ class AddProtocolEventCallbackCommand(Command[None]):
         super().__init__()
         self.callback = callback
 
-
 class ClearProtocolEventCallbacksCommand(Command[None]):
     """Remove every event callback"""
 
-
 class ProtocolStopCommand(Command[None]):
     """Detach the protocol engine from the reactor and give the stream back"""
-
 
 class SetProtocolTimeoutCommand(Command[None]):
     """Set the protocol timeout"""
@@ -301,7 +276,6 @@ class SetProtocolTimeoutCommand(Command[None]):
     def __init__(self, timeout: TimeoutType) -> None:
         super().__init__()
         self.timeout = timeout
-
 
 @dataclass
 class PendingProtocolRead(Generic[ProtocolT]):
@@ -313,13 +287,11 @@ class PendingProtocolRead(Generic[ProtocolT]):
     response_deadline: float | None
     timeout: TimeoutType
 
-
 # ┌────────┐
 # │ Engine │
 # └────────┘
 
-
-# pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-instance-attributes, too-many-public-methods
 class ProtocolEngine(Generic[AdapterT, ProtocolT]):
     """
     Drives one ProtocolBackend on the reactor thread and exposes it as futures
@@ -594,10 +566,10 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
     @staticmethod
     def _claim(command: Command[Any]) -> bool:
         """Take a command for completion, False if its caller cancelled it"""
-        if command.running():
-            return True
         if command.done():
             return False
+        if command.running():
+            return True
         return command.set_running_or_notify_cancel()
 
     @classmethod
@@ -727,7 +699,7 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
             try:
                 callback(event)
             except Exception as e:  # pylint: disable=broad-exception-caught
-                self._logger.exception(f"Event callback failed : {e}")
+                self._logger.exception("Event callback failed : %s", e)
 
     def _reset_assembly(self) -> None:
         """Drop the payload being assembled"""
@@ -817,7 +789,7 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
     def _fail_pending(self, error: BaseException) -> None:
         pending = self._pending_read
         if pending is None:
-            self._logger.debug(f"No read waiting for {error}")
+            self._logger.debug("No read waiting for %s", error)
             return
         self._pending_read = None
         self._adapter_engine.arm_fragment_deadline(None)
@@ -858,19 +830,15 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
         self._frame_id += 1
         return output
 
-
 class _ClearProtocolBufferCommand(Command[None]):
     """Drop the buffered payloads and the one being assembled"""
-
 
 CommandT = TypeVar("CommandT", bound=Command[Any])
 BackendT = TypeVar("BackendT", bound=ProtocolBackend[Any, Any])
 
-
 def _stop_engine(engine: ProtocolEngine[Any, Any]) -> None:
     """Detach a protocol engine from the reactor once its protocol is collected"""
     engine.stop()
-
 
 def _resolve_timeout(
     timeout: TimeoutParameterType,
@@ -890,11 +858,9 @@ def _resolve_timeout(
         return backend.default_timeout
     return adapter.timeout
 
-
 # ┌─────────┐
 # │ Facades │
 # └─────────┘
-
 
 class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
     """
@@ -951,9 +917,9 @@ class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
         """
         self._engine.register_event_callback(callback).result()
 
-    # Experimental
     @property
     def frame_buffer(self) -> list[ProtocolFrame[ProtocolT] | BaseException]:
+        """Return the engine's frame buffer"""
         return list(self._engine.frame_buffer)
 
     def __str__(self) -> str:
@@ -961,7 +927,6 @@ class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
 
     def __repr__(self) -> str:
         return self.__str__()
-
 
 class Protocol(
     Generic[BackendT, AdapterT, ProtocolT],
@@ -981,6 +946,8 @@ class Protocol(
         Event callback registered from the start, it also gets the events of the frames
         the adapter received before the protocol was built
     """
+
+    adapter : Adapter[Any, AdapterT]
 
     def __init__(
         self,
@@ -1073,7 +1040,6 @@ class Protocol(
     ) -> None:
         self.close()
 
-
 class AsyncProtocol(
     Generic[BackendT, AdapterT, ProtocolT],
     ProtocolCommon[BackendT, AdapterT, ProtocolT],
@@ -1081,6 +1047,8 @@ class AsyncProtocol(
     """
     Async protocol, same parameters as Protocol
     """
+    
+    adapter : AsyncAdapter[Any, AdapterT]
 
     def __init__(
         self,
@@ -1155,16 +1123,6 @@ class AsyncProtocol(
         """Drop the buffered payloads, the one being assembled, and the adapter ones"""
         async with self._lock:
             await asyncio.wrap_future(self._engine.clear_buffer())
-
-    # def register_event_callback(
-    #     self, callback: Callable[[SyndesiEvent], None]
-    # ) -> None:
-    #     """
-    #     Register an event callback, for the protocol and the adapter events
-
-    #     It runs on the reactor thread and must not block
-    #     """
-    #     asyncio.wrap_future(self._engine.register_event_callback(callback))
 
     async def clear_event_callbacks(self) -> None:
         """Remove every event callback"""

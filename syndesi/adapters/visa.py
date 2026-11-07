@@ -38,7 +38,8 @@ try:
 except ImportError:
     MessageBasedResource = None  # type: ignore
 
-_MISSING_PYVISA = "Missing optional dependency 'pyvisa'. Install with:\n  python -m pip install pyvisa"
+_MISSING_PYVISA = """Missing optional dependency 'pyvisa'. Install with:
+  python -m pip install pyvisa"""
 
 
 def _require_pyvisa() -> None:

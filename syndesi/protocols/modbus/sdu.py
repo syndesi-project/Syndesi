@@ -44,33 +44,9 @@ class ModbusSDU:
 
     function_code: int
 
-    # def make_sdu(self) -> bytes:
-    #     """Generate a bytes array containing the SDU"""
-    #     raise ProtocolError("make_sdu() is not supported for this SDU")
-
-    # def parse_sdu(self, sdu: bytes) -> ModbusSDU:
-    #     """Generate a ModbusSDU instance from a given sdu buffer"""
-    #     raise ProtocolError("parse_sdu() is not supported for this SDU")
-
-    # def exceptions(self) -> dict[int, str]:
-    #     """Return a dictionary of exceptions based on their integer code"""
-    #     return {}
-
     @abstractmethod
-    def make_sdu(self) -> bytes: ...
-
-    # @abstractmethod
-    # def exceptions(self) -> dict[int, str]:
-    #     """Return a dictionary of exceptions based on their integer code"""
-
-    # @property
-    # @abstractmethod
-    # def function_code(self) -> FunctionCode:
-    #     """Return the function code of this modbus request"""
-
-    # def _check_for_error(self, sdu: bytes) -> None:
-    #     """Check the given sdu buffer for an exception"""
-    #     _raise_if_error(sdu, self.exceptions())
+    def make_sdu(self) -> bytes:
+        """Generate the SDU buffer"""
 
 
 class ModbusRequestSDU(ModbusSDU):

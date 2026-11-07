@@ -4,7 +4,7 @@ import random
 from time import sleep
 import time
 
-from syndesi import IP, AsyncIP
+from syndesi import IP, AsyncIP, IPServer
 from syndesi.adapters.framer import AdapterReadFrame
 from syndesi.adapters.stop_conditions import *
 import socket
@@ -622,3 +622,79 @@ def _test_delayer(ip_delayer_port):
         assert abs(frame.response_delay - delay) < TIME_DELTA
     client.clear_read_buffer()
     client.close()
+
+
+class BlockedConnectServer:
+    """Local TCP server on which ``connect()`` blocks instead of succeeding.
+
+    How it works:
+        The kernel completes TCP handshakes on behalf of a listening socket and
+        stores the established connections in an "accept queue" until the
+        application calls ``accept()``. This class listens with a minimal
+        backlog, never calls ``accept()`` and fills the queue with filler
+        connections. Once the queue is full, Linux silently drops new SYN
+        packets, so any further client ``connect()`` hangs (the client keeps
+        retransmitting its SYN) until its own timeout expires.
+
+    Notes:
+        - Reliable on Linux. Behaviour on macOS and Windows differs (a
+          connection may be refused or accepted), so skip tests there.
+        - The filler sockets must stay open for as long as the server is used.
+
+    Example:
+        with BlockedConnectServer() as server:
+            adapter = IPAdapter("127.0.0.1", port=server.port, timeout=1)
+            with pytest.raises(TimeoutError):
+                adapter.connect()
+    """
+
+    def __init__(self, host: str = "127.0.0.1", fillers: int = 3) -> None:
+        self._host = host
+        self._fillers_count = fillers
+        self._server: socket.socket | None = None
+        self._fillers: list[socket.socket] = []
+        self.port: int | None = None
+
+    @property
+    def address(self) -> tuple[str, int]:
+        """(host, port) of the blocked server."""
+        return self._host, self.port
+
+    def start(self) -> None:
+        """Open the listening socket and saturate its accept queue."""
+        self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server.bind((self._host, 0))  # port 0: the OS picks a free port
+        self._server.listen(0)              # smallest possible accept queue
+        self.port = self._server.getsockname()[1]
+
+        for _ in range(self._fillers_count):
+            filler = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            filler.setblocking(False)       # do not block on the stuck connects
+            try:
+                filler.connect(self.address)
+            except BlockingIOError:
+                pass                        # expected: connection in progress
+            self._fillers.append(filler)
+
+    def stop(self) -> None:
+        """Close the filler sockets and the listening socket."""
+        for filler in self._fillers:
+            filler.close()
+        self._fillers.clear()
+        if self._server is not None:
+            self._server.close()
+            self._server = None
+
+    def __enter__(self) -> "BlockedConnectServer":
+        self.start()
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.stop()
+
+def test_long_connect():
+    server = BlockedConnectServer()
+    server.start()
+
+    with pytest.raises(AdapterOpenError):
+        IP("127.0.0.1", port=server.port, timeout=1)
