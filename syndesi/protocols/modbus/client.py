@@ -127,6 +127,9 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
     slave_address : int or None
         1 to 247, required for RTU and ASCII, unused by TCP
     alias : str
+    auto_open : bool
+        Let the adapter open on the first request, see Protocol. False requires an
+        explicit open()
     """
 
     def __init__(
@@ -137,6 +140,7 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         serial_type: str = ModbusSerialType.RTU.value,
         slave_address: int | None = None,
         alias: str = "",
+        auto_open: bool = True,
     ) -> None:
         backend: ModbusBackend
         if isinstance(adapter, IP):
@@ -154,6 +158,7 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
             backend,
             timeout,
             alias,
+            auto_open=auto_open,
         )
 
     def _query(
@@ -977,6 +982,7 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         serial_type: str = ModbusSerialType.RTU.value,
         slave_address: int | None = None,
         alias: str = "",
+        auto_open: bool = True,
     ) -> None:
         backend: ModbusBackend
         if isinstance(adapter, AsyncIP):
@@ -994,6 +1000,7 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
             backend,
             timeout,
             alias,
+            auto_open=auto_open,
         )
 
     async def _query(

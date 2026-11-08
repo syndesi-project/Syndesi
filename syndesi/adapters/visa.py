@@ -246,6 +246,8 @@ class Visa(Adapter[VisaDescriptor, bytes]):
         When a frame is complete, Continuation(0.1) by default
     alias : str
     auto_open : bool
+        Open on the first operation rather than at construction. Call open() to fail
+        early
     """
 
     def __init__(

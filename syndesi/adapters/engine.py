@@ -178,6 +178,10 @@ class SetStopConditionsCommand(Command[None]):
         self.stop_conditions = stop_conditions
 
 
+class DisableAutoOpenCommand(Command[None]):
+    """Never open implicitly, only on an explicit open"""
+
+
 class AddEventCallbackCommand(Command[None]):
     """Register an event callback"""
 
@@ -329,8 +333,24 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
     framer : Framer
     timeout : float | int | None
     alias : str
+    auto_open : bool
+        Open implicitly on the first operation that needs the target (write, or a read
+        that the buffer cannot answer), see the "Auto-open" rules below
     reactor : Reactor or None
         Default shared reactor if None
+
+    Auto-open
+    ---------
+    The open is deferred to the first operation rather than done at construction :
+    by then every layer built on top (protocol, driver, ...) has finished configuring
+    the adapter, a protocol setting its well-known port for instance
+
+    1. The first write, or read that needs the target, opens it
+    2. An explicit open() is always possible, to fail early
+    3. A failed implicit open is raised by the operation, and retried by the next one
+    4. Once closed (explicitly, or because the target went away), the engine is never
+       reopened implicitly : an operation raises until open() is called again
+    5. auto_open=False : never opened implicitly
     """
 
     _FRAME_BUFFER_MAX = 256
@@ -342,6 +362,7 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         *,
         timeout: TimeoutParameterType,
         alias: str,
+        auto_open: bool = True,
         # reactor: Reactor | None = None,
     ) -> None:
         self._backend = backend
@@ -374,6 +395,9 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         self._pending_read: PendingRead[DataT] | None = None
         self._last_write_timestamp: float | None = None
         self._is_open = False
+        # True until the first successful open or the first close : the next operation
+        # that needs the target opens it. See the "Auto-open" rules in the docstring
+        self._auto_open_armed = auto_open
         # Why the last open failed, raised by the operations that need the target open
         self._open_error: str | None = None
 
@@ -393,6 +417,11 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
     def is_open(self) -> bool:
         """True if the backend is open"""
         return self._is_open
+
+    @property
+    def auto_open_armed(self) -> bool:
+        """True if the next operation that needs the target will open it"""
+        return self._auto_open_armed
 
     @property
     def timeout(self) -> TimeoutType:
@@ -446,6 +475,10 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         """Return the framer stop-conditions"""
         return self._submit(GetStopConditionsCommand())
 
+    def disable_auto_open(self) -> DisableAutoOpenCommand:
+        """Never open implicitly, only on an explicit open"""
+        return self._submit(DisableAutoOpenCommand())
+
     def register_event_callback(
         self, callback: Callable[[AdapterEvent], None]
     ) -> AddEventCallbackCommand:
@@ -487,6 +520,23 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         the sink's equivalent of the response deadline a pending read carries
         """
         self._fragment_deadline = deadline
+
+    def ensure_open(self) -> AdapterError | None:
+        """
+        Auto-open the backend if it is still armed, return the error if that fails
+
+        Reactor side : called before an operation that needs the target, by this engine
+        and by the protocol engine built on it, which runs on the same thread. Returns
+        None if the engine is open, or closed and not armed : the caller then reports
+        the closed state the way it usually does
+        """
+        if self._is_open or not self._auto_open_armed:
+            return None
+        try:
+            self._do_open()
+        except AdapterError as e:
+            return e
+        return None
 
     def next_deadline(self) -> float | None:
         """Earliest timestamp at which on_deadline must be called"""
@@ -623,6 +673,9 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
                     self._deliver(frame)
             case GetStopConditionsCommand():
                 command.set_result(self.stop_conditions)
+            case DisableAutoOpenCommand():
+                self._auto_open_armed = False
+                command.set_result(None)
             case AddEventCallbackCommand():
                 self._callbacks.append(command.callback)
                 command.set_result(None)
@@ -645,29 +698,39 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
                 command.set_exception(WorkerThreadError(f"Unknown command {command!r}"))
 
     def _open_command(self, command: OpenCommand) -> None:
+        try:
+            self._do_open()
+        except AdapterError as e:
+            command.set_exception(e)
+            return
+        command.set_result(None)
+
+    def _do_open(self) -> None:
+        """Open the backend, explicitly or implicitly. Raises an AdapterError on failure"""
         if self._is_open:
-            command.set_result(None)
             return
         if not self._backend.descriptor.is_initialized():
-            command.set_exception(AdapterOpenError("Descriptor is not initialized"))
-            return
+            raise AdapterOpenError(
+                f"Cannot open {self._backend.descriptor} : descriptor is incomplete"
+            )
         try:
             self._backend.open(self._timeout)
         except AdapterError as e:
             self._logger.error(str(e))
             self._open_error = str(e)
-            command.set_exception(e)
-            return
+            raise
         self._is_open = True
+        self._auto_open_armed = False
         self._open_error = None
         tracehub.emit_open(str(self._backend.descriptor))
         self._logger.info("%s opened", self._backend.descriptor)
-        command.set_result(None)
         self._emit(AdapterOpenedEvent())
 
     def _close_command(
         self, clear_buffer: bool, error: AdapterError | None = None
     ) -> None:
+        # Closed, by the user or by the target : never reopened implicitly after this
+        self._auto_open_armed = False
         self._open_error = None
         if self._is_open:
             self._backend.close()
@@ -692,6 +755,10 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         self._emit(AdapterClosedEvent())
 
     def _write(self, command: WriteCommand[DataT]) -> None:
+        open_error = self.ensure_open()
+        if open_error is not None:
+            command.set_exception(open_error)
+            return
         if not self._is_open:
             command.set_exception(
                 self._not_open_error(AdapterWriteError("Adapter is not opened"))
@@ -751,6 +818,11 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
                 self._emit(AdapterReadEvent(frame, from_buffer=True))
             return
 
+        open_error = self.ensure_open()
+        if open_error is not None:
+            self._fail(command, open_error)
+            return
+
         # A closed engine receives nothing, fail now instead of at the timeout
         if not self._is_open:
             self._fail(
@@ -758,6 +830,8 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
             )
             return
 
+        # Taken again : an implicit open must not eat into the response timeout
+        now = time.time()
         timeout = self._resolve_timeout(command.timeout)
         pending = PendingRead(
             command=command,
@@ -932,7 +1006,7 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         Error of an operation that needs the target open
 
         If the last open failed its reason is raised instead, that's how an open
-        submitted without waiting (AsyncEndpoint auto_open) reports its failure
+        submitted without waiting reports its failure
         """
         if self._open_error is not None:
             return AdapterOpenError(self._open_error)

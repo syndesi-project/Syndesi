@@ -170,6 +170,8 @@ class IPServer(Adapter[IPDescriptor, IP]):
     backlog : int
     alias : str
     auto_open : bool
+        Start listening on the first read (accept) rather than at construction, call
+        open() to listen right away
 
     Examples
     --------

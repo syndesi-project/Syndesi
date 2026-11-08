@@ -654,11 +654,19 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
                     command.set_result(result)
             return
 
+        # Same thread as the adapter engine : its auto-open can run right here
+        open_error = self._adapter_engine.ensure_open()
+        if open_error is not None:
+            self._fail(command, open_error)
+            return
+
         if not self._adapter_engine.is_open:
             # Nothing will come, the buffered payloads were the last ones
             self._fail(command, AdapterDisconnectedError("Adapter is not open"))
             return
 
+        # Taken again : an implicit open must not eat into the response timeout
+        now = time.time()
         timeout = self._timeout if command.timeout is DEFAULT else command.timeout
         self._pending_read = PendingProtocolRead(
             command=command,
@@ -874,6 +882,7 @@ class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
         timeout: TimeoutParameterType,
         alias: str,
         event_callback: Callable[[SyndesiEvent], None] | None,
+        auto_open: bool,
     ) -> None:
         super().__init__()
         # Public : the user built it, and the UI uses it
@@ -891,6 +900,11 @@ class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
         adapter_timeout = backend.adapter_default_timeout
         if adapter_timeout is not DEFAULT and adapter.has_default_timeout:
             adapter.engine.set_timeout(adapter_timeout)
+
+        # Both have to allow it : auto_open=False on either the adapter or the
+        # protocol means an explicit open() is required
+        if not auto_open:
+            self._engine.configuration.append(adapter.engine.disable_auto_open())
 
         weakref.finalize(self, _stop_engine, self._engine)
 
@@ -945,6 +959,9 @@ class Protocol(
     event_callback : callable or None
         Event callback registered from the start, it also gets the events of the frames
         the adapter received before the protocol was built
+    auto_open : bool
+        Let the adapter open on the first operation (see Adapter). False requires an
+        explicit open(), whatever the adapter's own auto_open. True keeps the adapter's
     """
 
     adapter : Adapter[Any, AdapterT]
@@ -957,9 +974,10 @@ class Protocol(
         alias: str = "",
         *,
         event_callback: Callable[[SyndesiEvent], None] | None = None,
+        auto_open: bool = True,
     ) -> None:
         self._lock = threading.Lock()
-        super().__init__(adapter, backend, timeout, alias, event_callback)
+        super().__init__(adapter, backend, timeout, alias, event_callback, auto_open)
 
         # Waited for, so that the adapter attributes (framing, ...) are up to date as
         # soon as the constructor returns. AsyncProtocol deliberately doesn't wait
@@ -1058,9 +1076,10 @@ class AsyncProtocol(
         alias: str = "",
         *,
         event_callback: Callable[[SyndesiEvent], None] | None = None,
+        auto_open: bool = True,
     ) -> None:
         self._lock = asyncio.Lock()
-        super().__init__(adapter, backend, timeout, alias, event_callback)
+        super().__init__(adapter, backend, timeout, alias, event_callback, auto_open)
 
     async def open(self) -> None:
         """Open communication with the target"""

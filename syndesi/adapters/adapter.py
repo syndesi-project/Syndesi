@@ -63,6 +63,7 @@ class AdapterCommon(Generic[DescriptorT, DataT]):
         *,
         stop_conditions: StopCondition | list[StopCondition] | DefaultType,
         alias: str,
+        auto_open: bool,
     ) -> None:
         super().__init__()
 
@@ -75,7 +76,9 @@ class AdapterCommon(Generic[DescriptorT, DataT]):
                 )
             framer.set_stop_conditions(_as_list(stop_conditions))
 
-        self._engine = AdapterEngine(backend, framer, timeout=timeout, alias=alias)
+        self._engine = AdapterEngine(
+            backend, framer, timeout=timeout, alias=alias, auto_open=auto_open
+        )
         self._is_default_timeout = timeout is DEFAULT
         self._is_default_stop_condition = stop_conditions is DEFAULT
         self._alias = alias
@@ -154,8 +157,10 @@ class Adapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT]):
         When a frame is complete, ``DEFAULT`` keeps the framer ones
     alias : str
     auto_open : bool
-        Open on construction. Skipped while the descriptor is incomplete, a protocol
-        may still have to set a default (port, ...)
+        Open on the first operation that needs the target rather than at construction,
+        so that a protocol or a driver built on top can finish configuring the adapter
+        first (a well-known port, ...). Call open() to fail early. Once closed, the
+        adapter is only reopened by an explicit open(). See AdapterEngine
     """
 
     def __init__(
@@ -176,13 +181,8 @@ class Adapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT]):
             timeout,
             stop_conditions=stop_conditions,
             alias=alias,
+            auto_open=auto_open,
         )
-
-        # Sync waits for the open : a failed one is raised here rather than at the first
-        # operation. Skipped while the descriptor is incomplete, a protocol may still
-        # have to set a default (port, baudrate, ...)
-        if auto_open and self.descriptor.is_initialized():
-            self.open()
 
     def set_default_timeout(self, timeout: TimeoutType) -> None:
         """Set the timeout, unless one was given at construction"""
@@ -294,7 +294,8 @@ class AsyncAdapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT
     """
     Async adapter, same parameters as Adapter
 
-    auto_open submits the open without waiting for it, see AsyncEndpoint
+    auto_open opens on the first operation that needs the target, use ``async with``
+    or ``await open()`` to fail early
     """
 
     def __init__(
@@ -315,13 +316,8 @@ class AsyncAdapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT
             timeout,
             stop_conditions=stop_conditions,
             alias=alias,
+            auto_open=auto_open,
         )
-
-        # Async submits the open without waiting : no event loop is needed at
-        # construction, and a failed open is raised by the first operation. Use
-        # ``async with`` or ``await open()`` to wait for it
-        if auto_open and self.descriptor.is_initialized():
-            self._engine.open()
 
     async def set_stop_conditions(
         self, stop_conditions: StopCondition | list[StopCondition]
