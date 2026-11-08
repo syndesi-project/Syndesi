@@ -193,9 +193,11 @@ def test_length():
     sequence = b"ABBBBCDEFGHIJKLMNOPQKRSTUVWXYZ"
     N = 10
     client = SerialPort(port=PORT, baudrate=BAUDRATE, stop_conditions=Length(10))
+    client.open()
 
+    # The port is already taken by client
     with pytest.raises(AdapterOpenError):
-        client_2 = SerialPort(port=PORT, baudrate=BAUDRATE, stop_conditions=Length(10))
+        SerialPort(port=PORT, baudrate=BAUDRATE, stop_conditions=Length(10)).open()
 
     client.write(encode_sequences([(sequence, 0)]))
     data = client.read()

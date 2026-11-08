@@ -525,9 +525,13 @@ def _closed_port() -> int:
         return s.getsockname()[1]
 
 
+# The open is deferred to the first operation : the constructor never raises
 def test_open_error():
+    client = IP(HOST, port=_closed_port())
     with pytest.raises(AdapterOpenError):
-        IP(HOST, port=_closed_port())
+        client.write(b"")
+    with pytest.raises(AdapterOpenError):
+        client.open()
 
 
 def test_async_query():
@@ -594,7 +598,7 @@ def test_async_cancelled_read():
     assert asyncio.run(main()) == A + termination
 
 
-# The open submitted at construction fails, the first operation must raise its error
+# The implicit open of the first operation fails, that operation must raise its error
 def test_async_open_error():
     async def main():
         client = AsyncIP(HOST, port=_closed_port())
@@ -697,4 +701,4 @@ def test_long_connect():
     server.start()
 
     with pytest.raises(AdapterOpenError):
-        IP("127.0.0.1", port=server.port, timeout=1)
+        IP("127.0.0.1", port=server.port, timeout=1).open()

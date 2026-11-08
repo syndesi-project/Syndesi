@@ -261,7 +261,8 @@ class SerialPort(Adapter[SerialPortDescriptor, bytes]):
     bytesize, stopbits, parity, rts_cts, xon_xoff, dsr_dtr
         Line settings, see pyserial
     auto_open : bool
-        Open on construction, skipped while the baudrate is None
+        Open on the first operation rather than at construction, so that a protocol
+        can still set its default baudrate. Call open() to fail early
     """
 
     def __init__(

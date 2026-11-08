@@ -477,6 +477,12 @@ class ModbusServer(ModbusServerCommon):
         else:
             raise ValueError(f"Invalid adapter : {adapter}")
 
+        # A server must listen before its clients connect : waiting for the first
+        # accept of serve_forever() would race with them. Opened here, now that the
+        # default port is set, unless the user asked for an explicit open
+        if adapter.engine.auto_open_armed:
+            adapter.open()
+
     def __str__(self) -> str:
         if self._ip_server is not None:
             desc = str(self._ip_server)
@@ -621,6 +627,12 @@ class AsyncModbusServer(ModbusServerCommon):
             self._serial = (adapter, backend)
         else:
             raise ValueError(f"Invalid adapter : {adapter}")
+
+        # A server must listen before its clients connect, see ModbusServer. A
+        # constructor can't await : the open is submitted without waiting, a failure is
+        # raised by the first operation of serve_forever()
+        if adapter.engine.auto_open_armed:
+            adapter.engine.open()
 
     def __str__(self) -> str:
         if self._ip_server is not None:

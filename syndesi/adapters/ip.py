@@ -198,7 +198,8 @@ class IP(Adapter[IPDescriptor, bytes]):
         When a frame is complete, Continuation(0.2) by default
     alias : str
     auto_open : bool
-        Open on construction, skipped while the port is None
+        Open on the first operation rather than at construction, so that a protocol
+        can still set its well-known port. Call open() to fail early
     """
 
     def __init__(
@@ -244,9 +245,8 @@ class AsyncIP(AsyncAdapter[IPDescriptor, bytes]):
     """
     Async IP adapter, same parameters as IP
 
-    auto_open submits the open without waiting for it : use ``async with`` or
-    ``await open()`` to wait for it, otherwise a failed open is raised by the first
-    operation
+    auto_open opens on the first operation, use ``async with`` or ``await open()``
+    to fail early
     """
 
     def __init__(
