@@ -531,7 +531,9 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         try:
             fragment = self._backend.read(now)
         except AdapterError as e:
-            self._logger.error("Failed to read from %s (%s)", self.descriptor, e)
+            if not isinstance(e, AdapterDisconnectedError):
+                # No need to raise an error if the adapter simply disconnected
+                self._logger.error("Failed to read from %s (%s)", self.descriptor, e)
             self._fail_and_close(e)
             return
 

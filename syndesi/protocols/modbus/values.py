@@ -68,7 +68,7 @@ class ModbusMultiRegisterValue:
         register_values: list[int], byte_order: Endian | str, word_order: Endian | str
     ) -> ModbusMultiRegisterValue:
         """Build a ModbusMultiRegisterValue from a buffer
-        
+
         Parameters
         ----------
         byte_order : Endian | str

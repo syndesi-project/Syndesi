@@ -5,9 +5,9 @@
 Protocol module blocks
 """
 
-from abc import abstractmethod
 import ast
 import asyncio
+from abc import abstractmethod
 from collections.abc import Awaitable, Callable
 from typing import Any, Generic, TypeVar
 
