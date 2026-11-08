@@ -1047,7 +1047,7 @@ class AsyncProtocol(
     """
     Async protocol, same parameters as Protocol
     """
-    
+
     adapter : AsyncAdapter[Any, AdapterT]
 
     def __init__(

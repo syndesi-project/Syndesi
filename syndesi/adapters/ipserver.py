@@ -10,8 +10,8 @@ it uses a TrivialFramer, there is nothing to assemble
 
 from __future__ import annotations
 
-from abc import abstractmethod
 import socket
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 

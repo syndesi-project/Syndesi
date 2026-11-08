@@ -7,12 +7,12 @@ Modbus servers (slaves), sync and async
 
 from __future__ import annotations
 
-from abc import abstractmethod
 import asyncio
 import inspect
 import logging
 import struct
 import threading
+from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
@@ -486,7 +486,7 @@ class ModbusServer(ModbusServerCommon):
             desc = 'error'
 
         return f"ModbusServer({desc})"
-    
+
     def set_handler(
         self,
         request_type: type[RequestHandlerT],

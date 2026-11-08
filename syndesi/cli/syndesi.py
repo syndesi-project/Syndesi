@@ -10,19 +10,16 @@ import logging
 from enum import Enum
 from importlib.util import find_spec
 
-from ..cli.shell import AdapterShell, AdapterType
 from ..version import __version__
+from .terminal import Terminal
 
 
-class SyndesiCommands(Enum):
+class SyndesiCommand(Enum):
     """
     Syndesi script commands enum
     """
-
-    SERIAL = "serial"
-    IP = "ip"
-    MODBUS = "modbus"
-    VISA = "visa"
+    TERMINAL = "term"
+    DRIVER = "driver"
     UI = "ui"
 
 
@@ -41,12 +38,14 @@ def main() -> None:
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument(
         "command",
-        choices=[x.value for x in SyndesiCommands],
+        choices=[x.value for x in SyndesiCommand],
         help="Command, use syndesi <command> -h for help",
     )
 
-    args, remaining_args = parser.parse_known_args()
-    command = SyndesiCommands(args.command)
+    parser.add_argument("remaining", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
+
+    args = parser.parse_args()
+    command = SyndesiCommand(args.command)
 
     if args.quiet:
         debug_level = logging.CRITICAL
@@ -57,13 +56,11 @@ def main() -> None:
     logging.basicConfig(level=debug_level)
 
     try:
-        if command == SyndesiCommands.SERIAL:
-            AdapterShell(AdapterType.SERIAL, remaining_args).run()
-        elif command == SyndesiCommands.IP:
-            AdapterShell(AdapterType.IP, remaining_args).run()
-        elif command == SyndesiCommands.VISA:
-            AdapterShell(AdapterType.VISA, remaining_args).run()
-        elif command == SyndesiCommands.UI:
+        if command == SyndesiCommand.TERMINAL:
+            Terminal(args.remaining).run()
+        elif command == SyndesiCommand.DRIVER:
+            ...
+        elif command == SyndesiCommand.UI:
             if find_spec("dearpygui") is None:
                 raise ImportError(
                     "Missing optional dependency 'dearpygui'. Install with:\n"
@@ -73,7 +70,7 @@ def main() -> None:
             #pylint: disable=import-outside-toplevel
             from syndesi.ui.ui import main as start_ui
 
-            start_ui(remaining_args)
+            start_ui(args.remaining)
         else:
             raise NotImplementedError(f"Command '{command.value}' is not supported yet")
     except KeyboardInterrupt:

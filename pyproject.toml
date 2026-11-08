@@ -38,8 +38,8 @@ visa = [
 ui = ["dearpygui"]
 
 [project.scripts]
-syndesi = "syndesi.scripts.syndesi:main"
-syndesi-trace = "syndesi.scripts.syndesi_trace:main"
+syndesi = "syndesi.cli.syndesi:main"
+syndesi-trace = "syndesi.cli.syndesi_trace:main"
 
 [dependency-groups]
 dev = [

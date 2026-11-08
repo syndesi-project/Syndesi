@@ -31,7 +31,6 @@ from syndesi.adapters.events import (
 )
 from syndesi.adapters.ip import AsyncIP
 from syndesi.adapters.serialport import AsyncSerialPort
-
 from syndesi.drivers.driver import Driver
 from syndesi.protocols.delimited import AsyncDelimited
 from syndesi.protocols.protocol import (

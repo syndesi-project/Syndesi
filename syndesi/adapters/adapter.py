@@ -30,6 +30,7 @@ from .framer import AdapterReadFrame, Framer, SupportsStopConditions
 from .stop_conditions import StopCondition
 from .utils import TimeoutParameterType, TimeoutType
 
+
 def _as_list(
     stop_conditions: StopCondition | list[StopCondition],
 ) -> list[StopCondition]:
