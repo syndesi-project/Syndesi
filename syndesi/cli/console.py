@@ -23,8 +23,7 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.keys import Keys
 
-from ..version import AUTHOR, NAME
-
+DATA_DIR_NAME = "syndesi"
 
 # pylint: disable=too-many-instance-attributes
 class Shell:
@@ -76,7 +75,7 @@ class Shell:
         commands: list[str] | None = None,
     ):
         # Get the appropriate directory
-        data_dir = Path(user_data_dir(NAME, AUTHOR))
+        data_dir = Path(user_data_dir(DATA_DIR_NAME, DATA_DIR_NAME))
         data_dir.mkdir(parents=True, exist_ok=True)
 
         # Now you can store your history file here

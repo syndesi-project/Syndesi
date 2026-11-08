@@ -2,12 +2,9 @@
 requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.dynamic]
-version = { attr = "syndesi.version.__version__" }
-
 [project]
 name = "syndesi"
-dynamic = ["version"]
+version = "0.7.4"
 description = "Syndesi"
 readme = "README.md"
 requires-python = ">=3.11"

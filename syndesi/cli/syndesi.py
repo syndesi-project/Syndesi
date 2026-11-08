@@ -10,8 +10,9 @@ import logging
 from enum import Enum
 from importlib.util import find_spec
 
-from ..version import __version__
 from .terminal import Terminal
+
+from .. import __version__
 
 
 class SyndesiCommand(Enum):

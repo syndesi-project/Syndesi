@@ -1,6 +1,9 @@
 """
 Syndesi module
 """
+from importlib.metadata import version
+
+__version__ = version("syndesi")
 
 from .adapters.auto import auto_adapter, auto_async_adapter
 from .adapters.ip import IP, AsyncIP
