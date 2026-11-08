@@ -10,3 +10,4 @@
 | 0.7.3   | 2026-10-25 | Improve IP server and syndesi-trace                           |
 | 0.7.4   | 2026-11-08 | Refactor, rework cli and remove version file                  |
 | 0.7.5   | 2026-11-08 | Change auto_open behaviour and add Adapter to \_\_init\_\_.py |
+| 0.7.6   | 2026-11-08 | Fix merge bug                                                 |
