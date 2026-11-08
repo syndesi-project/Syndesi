@@ -2,11 +2,6 @@
 Syndesi module
 """
 from importlib.metadata import version
-<<<<<<< HEAD
-
-__version__ = version("syndesi")
-=======
->>>>>>> dev
 
 __version__ = version("syndesi")
 
