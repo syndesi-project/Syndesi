@@ -18,6 +18,8 @@ from .protocols.modbus import (
 )
 from .protocols.raw import AsyncRaw, Raw
 from .protocols.scpi import SCPI, AsyncSCPI
+from .drivers.driver import Driver, SubDriver
+from .drivers.scpi_driver import SCPIDriver
 
 __all__ = [
     # Adapters
@@ -50,5 +52,9 @@ __all__ = [
     "Continuation",
     "FragmentSC",
     "Length",
-    "Total"
+    "Total",
+    # Drivers
+    "Driver",
+    "SubDriver",
+    "SCPIDriver"
 ]
