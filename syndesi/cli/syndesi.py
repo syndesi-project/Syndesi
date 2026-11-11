@@ -62,14 +62,13 @@ def main() -> None:
         elif command == SyndesiCommand.DRIVER:
             ...
         elif command == SyndesiCommand.UI:
-            if find_spec("dearpygui") is None:
+            if find_spec("PySide6") is None:
                 raise ImportError(
-                    "Missing optional dependency 'dearpygui'. Install with:\n"
+                    "Missing optional dependency 'PySide6'. Install with:\n"
                     "  python -m pip install syndesi[ui]"
                 )
-
             #pylint: disable=import-outside-toplevel
-            from syndesi.ui.ui import main as start_ui
+            from syndesi.ui.app import main as start_ui
 
             start_ui(args.remaining)
         else:
