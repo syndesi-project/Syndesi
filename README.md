@@ -1,7 +1,5 @@
 # Syndesi Python Implementation
 
-Syndesi description is available [here](https://github.com/syndesi-project/Syndesi/README.md)
-
 Syndesi is a modular Python framework designed to streamline communication and control of a wide range of electronic instruments and devices. By providing a unified abstraction layer for adapters, protocols, and device drivers, Syndesi enables seamless integration with test equipment such as multimeters, oscilloscopes, power supplies, UART/USB devices, and more. Its flexible architecture supports both high-level and low-level operations, making it ideal for automation, data acquisition, and custom device interfacing in laboratory, industrial, and research environments.
 
 ## Installation
@@ -26,9 +24,9 @@ The user can work with any of the three following layers :
 - Protocols : Encapsulated protocols (Delimited, Modbus, ...)
 - Drivers : Device or application specific commands
 
-### Adapters
+### Adapters : low-level communication
 
-The adapter allows the user to read and write raw data through IP, serial and VISA
+Available adapters : ``IP``, ``SerialPort``, ``VISA``
 
 ```python
 from syndesi import IP
@@ -47,28 +45,28 @@ arduino = SerialPort('/dev/ttyUSB0', baudrate=115200) # COMx on Windows
 arduino.query(b'get_temperature\n') # -> 20.5
 ```
 
-### Protocols
+### Protocols : Message formatting
 
-Protocols encapsulate and format data
+Available protocols : ``Raw``, ``Delimited``, ``SCPI``
 
 ```python
 from syndesi import IP, Delimited
 
 my_server = Delimited(IP('test.server.local', port=1234))
 
-my_server.query('Hello world\n') # -> Hello world (\n is removed by Delimited)
+my_server.query('Hello world') # -> Hello world (\n is both added and removed by Delimited)
 
 ```
 
-### Drivers
+### Drivers : Device-specific operations
 
-A driver only requires an adapter, the protocol (if used) is instanciated internally
+Official syndesi drivers are provided by the [syndesi-drivers](https://github.com/syndesi-project/Drivers) package
 
 ```python
-from syndesi_drivers.instruments.mutlimeters.siglent.SDM3055 import SDM3055
-from syndesi.adapters import IP
+from syndesi_drivers.test_and_measurement.multimeters.siglent_sdm3055 import SiglentSDM3055
+from syndesi import IP
 
-mm = SDM3055(IP("192.168.1.123"))
+mm = SiglentSDM3055(IP("192.168.1.123"))
 
 voltage = mm.measure_dc_voltage()
 ```
