@@ -162,6 +162,15 @@ class WriteCommand(Generic[DataT], Command[None]):
         self.frame = frame
 
 
+class _WriteDoneCommand(Command[None]):
+    """Internal : the future a backend returned from write() is done"""
+
+    def __init__(self, write: WriteCommand[Any], pending: Future[None]) -> None:
+        super().__init__()
+        self.write = write
+        self.pending = pending
+
+
 class SetTimeoutCommand(Command[None]):
     """Set the engine timeout"""
 
@@ -291,8 +300,13 @@ class AdapterBackend(Generic[DescriptorT, DataT], ABC):
         """
 
     @abstractmethod
-    def write(self, data: DataT) -> None:
-        """Write data to the target, entirely. Raises an AdapterError on failure"""
+    def write(self, data: DataT) -> Future[None] | None:
+        """
+        Write data to the target, entirely. Raises an AdapterError on failure
+
+        A backend that cannot write without waiting for another engine (a bridge)
+        returns a future instead : the write completes when it does
+        """
 
     @abstractmethod
     def read(self, fragment_timestamp: float) -> Fragment[DataT]:
@@ -651,6 +665,15 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
                 command.set_result(None)
             case WriteCommand():
                 self._write(command)
+            case _WriteDoneCommand():
+                done = command.pending
+                error = (
+                    AdapterWriteError("Write cancelled")
+                    if done.cancelled()
+                    else done.exception()
+                )
+                self._write_done(command.write, error)
+                command.set_result(None)
             case ReadCommand():
                 self._begin_read(command)
             case ClearBufferCommand():
@@ -766,9 +789,23 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
             return
         self._last_write_timestamp = time.time()
         try:
-            self._backend.write(command.frame.data)
+            pending = self._backend.write(command.frame.data)
         except AdapterError as e:
             command.set_exception(e)
+            return
+        if pending is None:
+            self._write_done(command, None)
+            return
+        # Completed on another thread : back to the reactor before touching the events
+        pending.add_done_callback(
+            lambda done: self._submit(_WriteDoneCommand(command, done))
+        )
+
+    def _write_done(
+        self, command: WriteCommand[DataT], error: BaseException | None
+    ) -> None:
+        if error is not None:
+            command.set_exception(error)
             return
         tracehub.emit_write_frame(str(self._backend.descriptor), command.frame)
         command.set_result(None)

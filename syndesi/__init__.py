@@ -24,6 +24,7 @@ from .protocols.modbus import (
 from .protocols.raw import AsyncRaw, Raw
 from .protocols.scpi import SCPI, AsyncSCPI
 from .drivers.driver import Driver, SubDriver
+from .bridges import I2C, SPI, I2CBridge, SerialBridge, SPIBridge
 from .drivers.scpi_driver import SCPIDriver
 
 __all__ = [
@@ -63,5 +64,11 @@ __all__ = [
     # Drivers
     "Driver",
     "SubDriver",
-    "SCPIDriver"
+    "SCPIDriver",
+    # Bridges
+    "I2C",
+    "SPI",
+    "I2CBridge",
+    "SPIBridge",
+    "SerialBridge",
 ]

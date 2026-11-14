@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import re
 import sys
+import time
+from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import cast
@@ -18,6 +20,7 @@ import serial  # type: ignore #pylint: disable=import-error
 from serial.serialutil import PortNotOpenError  # type: ignore #pylint: disable=import-error
 from serial.tools.list_ports import comports  # type: ignore #pylint: disable=import-error
 
+from ..bridges.bridge import SerialBridge
 from ..tools.errors import AdapterOpenError, AdapterReadError, AdapterWriteError
 from ..tools.others import DEFAULT, DefaultType
 from .adapter import Adapter, AsyncAdapter
@@ -229,6 +232,95 @@ class SerialPortBackend(AdapterBackend[SerialPortDescriptor, bytes]):
             raise AdapterReadError(f"Cannot read from {self.descriptor} : {e}") from e
 
 
+class BridgedSerialPortBackend(AdapterBackend[SerialPortDescriptor, bytes]):
+    """
+    Serial port provided by a bridge (custom board, serial server, ...)
+
+    Runs on the reactor, which must never wait for the bridge : the bridge may itself
+    wait for the reactor. So every call to the bridge is queued without waiting. Its
+    queue runs them in order, the configuration always before the writes that follow
+    the open
+
+    The reads are a ThreadedReader calling serial_read() in a loop, through the bridge
+
+    Parameters
+    ----------
+    bridge : SerialBridge
+    descriptor : SerialPortDescriptor
+    """
+
+    def __init__(self, bridge: SerialBridge, descriptor: SerialPortDescriptor) -> None:
+        super().__init__(descriptor)
+        self._bridge = bridge
+        self._reader: ThreadedReader[bytes] | None = None
+        self._configured: Future[None] | None = None
+
+    def selectable(self) -> HasFileno | None:
+        return None if self._reader is None else self._reader.selectable()
+
+    def open(self, timeout: float | None) -> None:
+        del timeout  # the bridge has its own
+        d = self.descriptor
+        if d.baudrate is None:
+            raise AdapterOpenError(f"Baudrate of {d} must be set before opening")
+        self._configured = self._bridge.run(
+            self._bridge.serial_configure, d.baudrate, d.bytesize, d.parity, d.stopbits
+        )
+        self._reader = ThreadedReader(
+            self._read_once, name=f"syndesi-serial-{self._bridge}"
+        )
+        self._reader.start()
+
+    def close(self) -> None:
+        if self._reader is not None:
+            self._reader.stop()
+            self._reader = None
+        self._configured = None
+
+    def write(self, data: bytes) -> Future[None]:
+        return self._bridge.run(self._write_on_bridge, self._configured, data)
+
+    def read(self, fragment_timestamp: float) -> Fragment[bytes]:
+        if self._reader is None:
+            raise AdapterReadError(f"{self.descriptor} is not open")
+        return self._reader.read(fragment_timestamp)
+
+    def reset_input_buffer(self) -> None:
+        """Nothing to drop, the bridge holds no buffer of its own"""
+
+    def flush_output(self) -> None:
+        """Nothing to wait for, a write only completes once the bridge has sent it"""
+
+    @property
+    def default_timeout(self) -> TimeoutType:
+        return 2.0
+
+    def _write_on_bridge(self, configured: Future[None] | None, data: bytes) -> None:
+        """Bridge thread : a port that couldn't be configured doesn't send anything"""
+        if configured is None:
+            raise AdapterWriteError(f"{self.descriptor} is not open")
+        error = configured.exception()
+        if error is not None:
+            raise AdapterWriteError(f"{self.descriptor} : configuration failed ({error})")
+        self._bridge.serial_write(data)
+
+    def _read_once(self) -> bytes | None:
+        """Reader thread : one serial_read() through the bridge, paced when idle"""
+        configured = self._configured
+        if configured is not None:
+            error = configured.exception()
+            if error is not None:
+                raise AdapterOpenError(f"{self.descriptor} : configuration failed ({error})")
+        start = time.monotonic()
+        period = self._bridge.SERIAL_POLL_PERIOD
+        data = self._bridge.run(self._bridge.serial_read, period).result()
+        if data:
+            return data
+        # Pause here, not on the bridge thread : the other users of the bridge go on
+        time.sleep(max(0.0, period - (time.monotonic() - start)))
+        return None
+
+
 def _is_selectable(port: serial.Serial) -> bool:
     """
     True if the reactor can watch this port directly
@@ -243,14 +335,23 @@ def _is_selectable(port: serial.Serial) -> bool:
         return False
 
 
+def _make_backend(
+    port: str | SerialBridge, descriptor: SerialPortDescriptor
+) -> SerialPortBackend | BridgedSerialPortBackend:
+    if isinstance(port, SerialBridge):
+        return BridgedSerialPortBackend(port, descriptor)
+    return SerialPortBackend(descriptor)
+
+
 class SerialPort(Adapter[SerialPortDescriptor, bytes]):
     """
     Serial adapter, reads and writes bytes
 
     Parameters
     ----------
-    port : str
-        Serial port (COMx, /dev/ttyUSBx or /dev/ttyACMx)
+    port : str or SerialBridge
+        Serial port (COMx, /dev/ttyUSBx or /dev/ttyACMx), or the bridge that provides
+        it (custom board, serial server, ...)
     baudrate : int or None
         None lets a protocol set its default with set_default_baudrate
     timeout : float, None or DEFAULT
@@ -267,7 +368,7 @@ class SerialPort(Adapter[SerialPortDescriptor, bytes]):
 
     def __init__(
         self,
-        port: str,
+        port: str | SerialBridge,
         baudrate: int | None = None,
         *,
         timeout: TimeoutParameterType = DEFAULT,
@@ -281,9 +382,10 @@ class SerialPort(Adapter[SerialPortDescriptor, bytes]):
         dsr_dtr: bool = False,
         auto_open: bool = True,
     ) -> None:
-        self._backend = SerialPortBackend(
+        self._backend = _make_backend(
+            port,
             SerialPortDescriptor(
-                port=port,
+                port=str(port),
                 baudrate=baudrate,
                 bytesize=bytesize,
                 stopbits=stopbits,
@@ -291,7 +393,7 @@ class SerialPort(Adapter[SerialPortDescriptor, bytes]):
                 rts_cts=rts_cts,
                 dsr_dtr=dsr_dtr,
                 xon_xoff=xon_xoff,
-            )
+            ),
         )
         super().__init__(
             self._backend,
@@ -335,7 +437,7 @@ class AsyncSerialPort(AsyncAdapter[SerialPortDescriptor, bytes]):
 
     def __init__(
         self,
-        port: str,
+        port: str | SerialBridge,
         baudrate: int | None = None,
         *,
         timeout: TimeoutParameterType = DEFAULT,
@@ -349,9 +451,10 @@ class AsyncSerialPort(AsyncAdapter[SerialPortDescriptor, bytes]):
         dsr_dtr: bool = False,
         auto_open: bool = True,
     ) -> None:
-        self._backend = SerialPortBackend(
+        self._backend = _make_backend(
+            port,
             SerialPortDescriptor(
-                port=port,
+                port=str(port),
                 baudrate=baudrate,
                 bytesize=bytesize,
                 stopbits=stopbits,
@@ -359,7 +462,7 @@ class AsyncSerialPort(AsyncAdapter[SerialPortDescriptor, bytes]):
                 rts_cts=rts_cts,
                 dsr_dtr=dsr_dtr,
                 xon_xoff=xon_xoff,
-            )
+            ),
         )
         super().__init__(
             self._backend,
