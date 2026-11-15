@@ -12,6 +12,8 @@ All the methods in the "Reactor interface" section run on the reactor thread and
 must not be called by the user. Everything else is thread safe
 """
 
+#pylint: disable=too-many-lines
+
 from __future__ import annotations
 
 import logging
@@ -23,7 +25,7 @@ from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
+from typing import Any, ClassVar, Generic, Protocol, TypeVar, runtime_checkable
 
 from syndesi.tools.others import DEFAULT, DefaultType
 
@@ -64,20 +66,34 @@ from .utils import Fragment, HasFileno, TimeoutParameterType, TimeoutType, nmin
 
 class Descriptor(ABC):
     """
-    Descriptor base class. A descriptor is a string to define the main parameters
-    of an adapter (ip address, port, baudrate, etc...)
+    Where an adapter talks to, written scheme:target
+
+        tcp:192.168.1.10:5025   serial:/dev/ttyUSB0:115200   i2c:/dev/i2c-1@0x48
+
+    The scheme names the kind of adapter, it is listed in SCHEMES. str() gives the
+    string, from_string() reads it back, and auto_adapter() builds the adapter of a
+    string. VISA is the exception : its resource strings are a standard of their own
     """
 
-    DETECTION_PATTERN = ""
+    SCHEMES: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self) -> None:
         return None
+
+    @classmethod
+    def split_scheme(cls, string: str) -> tuple[str, str]:
+        """Return the scheme and the target of a string, checking the scheme"""
+        scheme, separator, target = string.partition(":")
+        if not separator or scheme not in cls.SCHEMES:
+            expected = " or ".join(f"{s}:..." for s in cls.SCHEMES)
+            raise ValueError(f"Invalid descriptor : {string!r}, expected {expected}")
+        return scheme, target
 
     @staticmethod
     @abstractmethod
     def from_string(string: str) -> Descriptor:
         """
-        Create a Descriptor class from a string
+        Create a Descriptor from its string, the one str() returns
         """
 
     @abstractmethod
@@ -163,12 +179,7 @@ class WriteCommand(Generic[DataT], Command[None]):
 
 
 class _WriteDoneCommand(Command[None]):
-    """Internal : the future a backend returned from write() is done"""
-
-    def __init__(self, write: WriteCommand[Any], pending: Future[None]) -> None:
-        super().__init__()
-        self.write = write
-        self.pending = pending
+    """Internal : a future a backend returned from write() is done"""
 
 
 class SetTimeoutCommand(Command[None]):
@@ -408,6 +419,11 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         self._fragment_deadline: float | None = None
         self._pending_read: PendingRead[DataT] | None = None
         self._last_write_timestamp: float | None = None
+        # Writes completed by another thread (a bridge), oldest first, with the time
+        # they started. See _complete_writes
+        self._pending_writes: deque[tuple[WriteCommand[DataT], Future[None], float]] = (
+            deque()
+        )
         self._is_open = False
         # True until the first successful open or the first close : the next operation
         # that needs the target opens it. See the "Auto-open" rules in the docstring
@@ -592,6 +608,9 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
 
     def on_readable(self, now: float) -> None:
         """The backend has data available"""
+        # The answer to a write can be readable before the reactor got the news that the
+        # write is done : the write comes first, in the events as in the trace
+        self._complete_writes()
         try:
             fragment = self._backend.read(now)
         except AdapterError as e:
@@ -666,13 +685,7 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
             case WriteCommand():
                 self._write(command)
             case _WriteDoneCommand():
-                done = command.pending
-                error = (
-                    AdapterWriteError("Write cancelled")
-                    if done.cancelled()
-                    else done.exception()
-                )
-                self._write_done(command.write, error)
+                self._complete_writes()
                 command.set_result(None)
             case ReadCommand():
                 self._begin_read(command)
@@ -787,27 +800,44 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
                 self._not_open_error(AdapterWriteError("Adapter is not opened"))
             )
             return
-        self._last_write_timestamp = time.time()
+        start = time.time()
+        self._last_write_timestamp = start
         try:
             pending = self._backend.write(command.frame.data)
         except AdapterError as e:
             command.set_exception(e)
             return
         if pending is None:
-            self._write_done(command, None)
+            self._write_done(command, None, start)
             return
         # Completed on another thread : back to the reactor before touching the events
-        pending.add_done_callback(
-            lambda done: self._submit(_WriteDoneCommand(command, done))
-        )
+        self._pending_writes.append((command, pending, start))
+        pending.add_done_callback(lambda _: self._submit(_WriteDoneCommand()))
+
+    def _complete_writes(self) -> None:
+        """
+        Finish the pending writes whose future is done, in the order they were made
+
+        Called when a _WriteDoneCommand arrives, and before reading a fragment : a bus
+        completes the write before it hands over the answer (see BusBackend), so the
+        write is always finished first even if the reactor sees the answer before the
+        command
+        """
+        while self._pending_writes and self._pending_writes[0][1].done():
+            command, done, start = self._pending_writes.popleft()
+            error = (
+                AdapterWriteError("Write cancelled") if done.cancelled() else done.exception()
+            )
+            self._write_done(command, error, start)
 
     def _write_done(
-        self, command: WriteCommand[DataT], error: BaseException | None
+        self, command: WriteCommand[DataT], error: BaseException | None, start: float
     ) -> None:
         if error is not None:
             command.set_exception(error)
             return
-        tracehub.emit_write_frame(str(self._backend.descriptor), command.frame)
+        # Timestamped when the write started, like the response delay of its answer
+        tracehub.emit_write_frame(str(self._backend.descriptor), command.frame, start)
         command.set_result(None)
         self._emit(AdapterWriteEvent(command.frame))
 
@@ -815,6 +845,7 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
     # │ Reads │
     # └───────┘
 
+    #pylint: disable=too-many-return-statements
     def _begin_read(self, command: ReadCommand[DataT]) -> None:
         now = time.time()
 

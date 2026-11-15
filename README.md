@@ -26,7 +26,7 @@ The user can work with any of the three following layers :
 
 ### Adapters : low-level communication
 
-Available adapters : ``IP``, ``SerialPort``, ``VISA``
+Available adapters : ``IP``, ``SerialPort``, ``VISA``, ``I2C``, ``SPI``
 
 ```python
 from syndesi import IP
@@ -43,6 +43,18 @@ from syndesi import SerialPort
 
 arduino = SerialPort('/dev/ttyUSB0', baudrate=115200) # COMx on Windows
 arduino.query(b'get_temperature\n') # -> 20.5
+```
+
+I2C and SPI work on the machine's own bus (Linux) or on a bus provided by a bridge, the driver of a converter (MCP2221, custom board, ...)
+
+```python
+from syndesi import I2C, SPI
+
+sensor = I2C('/dev/i2c-1', address=0x48)
+sensor.transfer(b'\x00', read_length=2) # write the register, read 2 bytes
+
+flash = SPI('/dev/spidev0.0')
+flash.transfer(b'\x9f\x00\x00\x00') # -> 4 bytes received meanwhile
 ```
 
 ### Protocols : Message formatting

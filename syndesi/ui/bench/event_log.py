@@ -161,10 +161,11 @@ def describe_event(event: SyndesiEvent) -> tuple[str, str, EntryStyle, Category 
             label = "↓ frag*" if event.first else "↓ frag"
             return label, _short(event.fragment.data), gray, Category.FRAGMENT
         case AdapterFrameEvent():
+            # A frame without stop condition (I2C, SPI, ...) has no reason to show
             sc = event.frame.stop_condition
-            reason = "(error)" if sc is None else str(sc)
-            buffered = ", buffered" if event.buffered else ""
-            return "↓ frame", f"{_short(event.frame.data)} ({reason}{buffered})", gray, Category.FRAME
+            notes = ([] if sc is None else [str(sc)]) + (["buffered"] if event.buffered else [])
+            details = f" ({', '.join(notes)})" if notes else ""
+            return "↓ frame", f"{_short(event.frame.data)}{details}", gray, Category.FRAME
         case AdapterReadEvent():
             origin = " (buffer)" if event.from_buffer else ""
             return "← read", _short(event.frame.data) + origin, gray, Category.READ
@@ -212,12 +213,21 @@ class EventLogModel(QAbstractTableModel):
     def columnCount(self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()) -> int:  # noqa: B008
         return 0 if parent.isValid() else len(COLUMNS)
 
-    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
+    def headerData(
+        self,
+        section: int,
+        orientation: Qt.Orientation,
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ) -> Any:
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
             return COLUMNS[section]
         return None
 
-    def data(self, index: QModelIndex | QPersistentModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
+    def data(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ) -> Any:
         entry = self.entries[index.row()]
         column = index.column()
         if role == Qt.ItemDataRole.DisplayRole:

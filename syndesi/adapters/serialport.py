@@ -47,10 +47,14 @@ class Parity(StrEnum):
 @dataclass
 class SerialPortDescriptor(Descriptor):
     """
-    SerialPort descriptor that holds location (COMx or /dev/ttyx) and baudrate
+    Port and line settings of a serial port
+
+    Written serial:port:baudrate (serial:/dev/ttyUSB0:115200, serial:COM4:9600), the
+    baudrate is left out while it isn't known. port is the name of the bridge for a port
+    provided by one. Only the port and the baudrate are part of the string
     """
 
-    DETECTION_PATTERN = r"^(COM\d+|/dev[/\w\d]+):\d+$"
+    SCHEMES = ("serial",)
     port: str
     # baudrate can be None to allow for a protocol to set its default
     baudrate: int | None = None
@@ -63,13 +67,17 @@ class SerialPortDescriptor(Descriptor):
 
     @staticmethod
     def from_string(string: str) -> SerialPortDescriptor:
-        parts = string.split(":")
-        port = parts[0]
-        baudrate = int(parts[1])
-        return SerialPortDescriptor(port, baudrate)
+        _, target = SerialPortDescriptor.split_scheme(string)
+        port, separator, baudrate = target.rpartition(":")
+        if not separator or not baudrate.isdigit():
+            port, baudrate = target, ""
+        if not port:
+            raise ValueError(f"Invalid descriptor : {string!r}, expected serial:port:baudrate")
+        return SerialPortDescriptor(port, int(baudrate) if baudrate else None)
 
     def __str__(self) -> str:
-        return f"{self.port}:{self.baudrate}"
+        baudrate = "" if self.baudrate is None else f":{self.baudrate}"
+        return f"serial:{self.port}{baudrate}"
 
     def is_initialized(self) -> bool:
         return self.baudrate is not None

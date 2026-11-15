@@ -1,9 +1,16 @@
 """
-Bridges, drivers that provide a bus (I2C, SPI, serial) to the layers above them
+Bridges, drivers that provide a bus (I2C, SPI, serial) to the adapters above them
 """
 
 from .bridge import Bridge, I2CBridge, SerialBridge, SPIBridge
-from .i2c import I2C
-from .spi import SPI
+from .linux import LinuxI2C, LinuxSPI, SPISettings
 
-__all__ = ["Bridge", "I2CBridge", "SPIBridge", "SerialBridge", "I2C", "SPI"]
+__all__ = [
+    "Bridge",
+    "I2CBridge",
+    "SPIBridge",
+    "SerialBridge",
+    "LinuxI2C",
+    "LinuxSPI",
+    "SPISettings",
+]

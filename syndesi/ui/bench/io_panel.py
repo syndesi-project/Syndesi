@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
+    QSpinBox,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -32,6 +33,7 @@ from ...adapters.events import (
     AdapterFrameEvent,
     SyndesiEvent,
 )
+from ...adapters.i2c import I2C, AsyncI2C, I2CTransfer
 from ...protocols.protocol import (
     ProtocolBufferEvent,
     ProtocolFrameEvent,
@@ -144,8 +146,23 @@ class IOPanel(QWidget):
         query.clicked.connect(self.query)
         self.query_input.lineEdit().returnPressed.connect(self.query)  # type: ignore[union-attr]
         grid.addWidget(QLabel("Query"), 3, 0)
-        grid.addWidget(self.query_input, 3, 1)
         grid.addWidget(query, 3, 2)
+        # An I2C read is requested by the master : the query says how many bytes
+        self.read_length: QSpinBox | None = None
+        if isinstance(item.instance, (I2C, AsyncI2C)):
+            self.read_length = QSpinBox()
+            self.read_length.setRange(1, 65535)
+            self.read_length.setToolTip(
+                "Bytes read after the write, with a repeated start.\n"
+                "Leave the data empty for a plain read"
+            )
+            query_row = QHBoxLayout()
+            query_row.addWidget(self.query_input, 1)
+            query_row.addWidget(QLabel("read"))
+            query_row.addWidget(self.read_length)
+            grid.addLayout(query_row, 3, 1)
+        else:
+            grid.addWidget(self.query_input, 3, 1)
 
         read_row = QHBoxLayout()
         self.scope = QComboBox()
@@ -280,7 +297,8 @@ class IOPanel(QWidget):
         frames = self.buffer.frames()
         self.buffer_list.clear()
         for frame_id, timestamp, data in frames:
-            stamp = "" if timestamp is None else f"{timestamp - self.owner.log_view.model.start:+9.3f}  "
+            start = self.owner.log_view.model.start
+            stamp = "" if timestamp is None else f"{timestamp - start:+9.3f}  "
             text = "?" if timestamp is None else self._format(data)
             self.buffer_list.addItem(f"#{frame_id:<3} {stamp}{text}")
         if not frames:
@@ -341,6 +359,8 @@ class IOPanel(QWidget):
             self.owner.log_error(self.item, str(e))
             return
         self._remember(self.query_input)
+        if self.read_length is not None:
+            data = I2CTransfer(data, self.read_length.value())
         instance = self.item.instance
         timeout = self._timeout()
         self.owner.log(self.item, "→ write", repr(data), EntryStyle.WRITE, key=write_key(data))

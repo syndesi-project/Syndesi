@@ -97,7 +97,9 @@ class Connector(QWidget):
         painter.drawLine(x, top + 5, x, bottom - 5)
         painter.setBrush(color)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawPolygon(QPolygon([QPoint(x, top), QPoint(x - 4, top + 6), QPoint(x + 4, top + 6)]))
+        painter.drawPolygon(
+            QPolygon([QPoint(x, top), QPoint(x - 4, top + 6), QPoint(x + 4, top + 6)])
+        )
         painter.drawPolygon(
             QPolygon([QPoint(x, bottom), QPoint(x - 4, bottom - 6), QPoint(x + 4, bottom - 6)])
         )
@@ -170,7 +172,9 @@ class _DropTarget(QFrame):
 class SlotWidget(_DropTarget):
     """An empty slot, waiting for a component"""
 
-    def __init__(self, screen: StackScreen, parent_node: StackNode | None, spec: ParamSpec | None) -> None:
+    def __init__(
+        self, screen: StackScreen, parent_node: StackNode | None, spec: ParamSpec | None
+    ) -> None:
         super().__init__(screen)
         self.parent_node = parent_node
         self.spec = spec
@@ -200,9 +204,13 @@ class SlotWidget(_DropTarget):
         detail_label.setWordWrap(True)
         layout.addWidget(detail_label)
         compatible = [c for c in self.owner.visible_classes() if self.accepts_class(c)]
-        names = ", ".join(c.__name__ for c in compatible[:6]) + ("…" if len(compatible) > 6 else "")
+        names = ", ".join(c.__name__ for c in compatible[:6])
+        if len(compatible) > 6:
+            names += "…"
         if spec is not None:
-            choices = QLabel(f"e.g. {names}" if compatible else "Nothing in the library fits, load one")
+            choices = QLabel(
+                f"e.g. {names}" if compatible else "Nothing in the library fits, load one"
+            )
             choices.setObjectName("Muted")
             choices.setWordWrap(True)
             layout.addWidget(choices)
@@ -210,7 +218,8 @@ class SlotWidget(_DropTarget):
         self._refresh_state()
 
     def _refresh_state(self) -> None:
-        selected = self.owner.selected_slot == (self.parent_node, self.spec.name if self.spec else None)
+        slot = (self.parent_node, self.spec.name if self.spec else None)
+        selected = self.owner.selected_slot == slot
         self.setProperty("state", "selected" if selected else "")
         repolish(self)
 
@@ -481,7 +490,9 @@ class StackCanvas(QScrollArea):
                 layout.addWidget(
                     Connector("", _flow(internal), dashed=True), 0, Qt.AlignmentFlag.AlignHCenter
                 )
-                layout.addWidget(InternalCard(self.owner, internal), 0, Qt.AlignmentFlag.AlignHCenter)
+                layout.addWidget(
+                    InternalCard(self.owner, internal), 0, Qt.AlignmentFlag.AlignHCenter
+                )
             subdrivers = [c for c in item.children if c.role is Role.SUBDRIVER]
             if subdrivers:
                 classes = sorted({c.cls.__name__ for c in subdrivers})
@@ -505,7 +516,9 @@ class StackCanvas(QScrollArea):
                 flow = child.info.provides_label if child is not None else spec.type_label
                 column.addWidget(Connector(slot, flow), 0, Qt.AlignmentFlag.AlignHCenter)
                 if child is None:
-                    column.addWidget(SlotWidget(self.owner, node, spec), 0, Qt.AlignmentFlag.AlignHCenter)
+                    column.addWidget(
+                        SlotWidget(self.owner, node, spec), 0, Qt.AlignmentFlag.AlignHCenter
+                    )
                 else:
                     column.addWidget(self._node_view(child), 0, Qt.AlignmentFlag.AlignHCenter)
                 column.addStretch(1)
