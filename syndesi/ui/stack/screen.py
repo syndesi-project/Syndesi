@@ -157,7 +157,9 @@ class StackScreen(QWidget):
             return None
         return self.runtime.find(node.instance)
 
-    def fill_menu(self, menu: QMenu, accepts: Callable[[type], bool], action: Callable[[type], None]) -> None:
+    def fill_menu(
+        self, menu: QMenu, accepts: Callable[[type], bool], action: Callable[[type], None]
+    ) -> None:
         """Add the compatible classes to a menu, grouped by layer"""
         infos = [component_info(c) for c in self.visible_classes() if accepts(c)]
         for kind, name, _ in GROUPS:

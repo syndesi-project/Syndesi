@@ -88,7 +88,9 @@ class RuntimeTree:
         self._names[name] = count
         return name if count == 1 else f"{name}#{count}"
 
-    def _item(self, instance: Any, role: Role, path: str, parent: RuntimeItem | None) -> RuntimeItem:
+    def _item(
+        self, instance: Any, role: Role, path: str, parent: RuntimeItem | None
+    ) -> RuntimeItem:
         node = self._external.get(id(instance))
         if node is not None and role is not Role.TOP:
             role = Role.EXTERNAL

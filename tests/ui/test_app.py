@@ -197,3 +197,40 @@ def test_stylesheet_is_complete(app):
         for rule in ("QWidget#Panel", "QFrame#Card", "QPushButton#Primary", "QPushButton#Outline",
                      "QLabel#Badge", "QListView#Field"):
             assert rule in sheet, rule
+
+
+def test_i2c_query_with_read_length(app, monkeypatch):
+    """An I2C read needs its length : the query row of an I2C has a read field"""
+    from syndesi import I2C  # pylint: disable=import-outside-toplevel
+    from syndesi.bridges import linux  # pylint: disable=import-outside-toplevel
+
+    transfers = []
+
+    def ioctl(fd, request, argument):
+        messages = [argument.msgs[i] for i in range(argument.nmsgs)]
+        transfers.append([(m.addr, m.flags, m.len) for m in messages])
+        for m in messages:
+            if m.flags & linux._I2C_M_RD:
+                for j in range(m.len):
+                    m.buf[j] = 0xA0 + j
+
+    monkeypatch.setattr(linux, "_open_device", lambda path: os.open(os.devnull, os.O_RDONLY))
+    monkeypatch.setattr(linux, "_ioctl", ioctl)
+
+    window = MainWindow(Library.default())
+    stack = window.stack_screen
+    stack.fill_slot(None, None, I2C)
+    stack.root.values.update(bus="/dev/i2c-9", address=0x48)
+    stack.node_changed(stack.root)
+    assert "transfer(b'\\x00', read_length=1)" in stack.code.editor.toPlainText()
+    window.build()
+    test = window.test_screen
+    assert _wait(app, lambda: test.runtime is not None and not window.worker.busy)
+    io = test.panel(test.runtime.root).findChild(IOPanel)
+    io.format.setCurrentText("Hex")
+    io.query_input.setEditText("10")
+    io.read_length.setValue(2)
+    io.query()
+    assert _wait(app, lambda: "\\xa0\\xa1" in io.received.toPlainText())
+    assert transfers == [[(0x48, 0, 1), (0x48, linux._I2C_M_RD, 2)]]
+    window.close()

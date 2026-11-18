@@ -27,7 +27,11 @@ from .utils import Fragment, HasFileno, TimeoutParameterType
 @dataclass
 class IPDescriptor(Descriptor):
     """
-    IP descriptor that holds ip address and port
+    Address, port and transport of an IP target
+
+    Written tcp:address:port or udp:address:port, tcp-server:... and udp-server:... for
+    an IPServer. The port is left out while it isn't known, an IPv6 address goes in
+    brackets : tcp:[::1]:5025
     """
 
     class Transport(StrEnum):
@@ -52,7 +56,14 @@ class IPDescriptor(Descriptor):
                     return member  # type: ignore # TODO : Check this
             raise ValueError(f"{transport} is not a valid {cls.__name__}")
 
-    DETECTION_PATTERN = r"^(\d+\.\d+\.\d+\.\d+|[\w.]+):\d+:(UDP|TCP)(:server)?$"
+    # Each scheme and the transport and server fields it stands for
+    SCHEME_FIELDS = {
+        "tcp": (Transport.TCP, False),
+        "udp": (Transport.UDP, False),
+        "tcp-server": (Transport.TCP, True),
+        "udp-server": (Transport.UDP, True),
+    }
+    SCHEMES = tuple(SCHEME_FIELDS)
     address: str
     transport: Transport
     port: int | None = None
@@ -60,18 +71,28 @@ class IPDescriptor(Descriptor):
 
     @staticmethod
     def from_string(string: str) -> "IPDescriptor":
-        parts = string.split(":")
-        address = parts[0]
-        port = int(parts[1])
-        transport = IPDescriptor.Transport(parts[2])
-        server = len(parts) >= 4 and parts[3] == "server"
-
-        return IPDescriptor(address, transport, port, server)
+        scheme, target = IPDescriptor.split_scheme(string)
+        transport, server = IPDescriptor.SCHEME_FIELDS[scheme]
+        if target.startswith("["):
+            address, _, rest = target[1:].partition("]")
+            # Anything else than :port after the brackets is invalid, port "" says so
+            port = rest[1:] if rest.startswith(":") else (None if not rest else "")
+        else:
+            address, separator, port = target.rpartition(":")
+            if not separator:
+                address, port = target, None
+        if not address or port == "" or (port is not None and not port.isdigit()):
+            raise ValueError(f"Invalid descriptor : {string!r}, expected {scheme}:address:port")
+        return IPDescriptor(
+            address, transport, None if port is None else int(port), server=server
+        )
 
     def __str__(self) -> str:
-        return f"{self.address}:{self.port}:{self.Transport(self.transport).value}" + (
-            "(server)" if self.server else ""
-        )
+        fields = (self.Transport(self.transport), self.server)
+        scheme = next(s for s, f in self.SCHEME_FIELDS.items() if f == fields)
+        address = f"[{self.address}]" if ":" in self.address else self.address
+        port = "" if self.port is None else f":{self.port}"
+        return f"{scheme}:{address}{port}"
 
     def is_initialized(self) -> bool:
         """

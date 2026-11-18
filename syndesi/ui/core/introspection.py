@@ -513,7 +513,9 @@ def _resolve_hints(func: Callable[..., Any], owner: type | None) -> dict[str, An
     return hints
 
 
-def _list_suggestions(owner: type, spec: ParamSpec, first_str: bool) -> Callable[[], list[str]] | None:
+def _list_suggestions(
+    owner: type, spec: ParamSpec, first_str: bool
+) -> Callable[[], list[str]] | None:
     """
     A static method listing the values of the parameter : list_ports for 'port', or the
     only list_* method for the first text parameter (Visa.list_devices)

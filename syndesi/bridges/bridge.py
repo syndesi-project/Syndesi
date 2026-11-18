@@ -21,10 +21,22 @@ deliver the answers the bridge waits for. It also serializes the users of the br
 (several I2C addresses, a SerialPort, ...) without any lock
 
 The thread starts on the first call and stops when the bridge is garbage collected
+
+A bridge has a name, which appears in the descriptors of the adapters it provides
+(i2c:MyBoard@0x48) : the name of its class, followed by #2, #3, ... for the other
+instances alive at the same time. Every bridge takes a name keyword to choose it, without
+its author declaring it :
+
+    left, right = MyBoard(..., name="left"), MyBoard(..., name="right")
+
+The buses of the machine itself are bridges too (LinuxI2C, LinuxSPI) : the kernel is the
+converter, and an ioctl blocks for the whole transaction, so it belongs on this thread
 """
 
 from __future__ import annotations
 
+import functools
+import inspect
 import queue
 import threading
 import weakref
@@ -79,6 +91,40 @@ def _execute(task: _Task) -> None:
 # whose __init__ doesn't call super(), so Bridge.__init__ could be skipped
 _creation_lock = threading.Lock()
 
+# The names in use, so that a default name doesn't repeat one of them
+_names: weakref.WeakValueDictionary[str, Bridge] = weakref.WeakValueDictionary()
+
+
+def _accept_name(init: Callable[..., None]) -> Callable[..., None]:
+    """
+    Wrap the __init__ of a bridge so that it takes a name keyword
+
+    The signature shown (help, UI) is the original one plus name
+    """
+
+    @functools.wraps(init)
+    def __init__(self: Bridge, *args: Any, name: str | None = None, **kwargs: Any) -> None:
+        if name is not None:
+            self.set_bridge_name(name)
+        init(self, *args, **kwargs)
+
+    try:
+        signature = inspect.signature(init)
+    except (TypeError, ValueError):  # pragma: no cover - builtin __init__
+        return __init__
+    parameters = list(signature.parameters.values())
+    position = next(
+        (i for i, p in enumerate(parameters) if p.kind is p.VAR_KEYWORD), len(parameters)
+    )
+    parameters.insert(
+        position,
+        inspect.Parameter(
+            "name", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=str | None
+        ),
+    )
+    __init__.__signature__ = signature.replace(parameters=parameters)  # type: ignore[attr-defined]
+    return __init__
+
 
 class Bridge:
     """
@@ -86,6 +132,52 @@ class Bridge:
 
     Not used directly, inherit I2CBridge, SPIBridge or SerialBridge
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        init = cls.__dict__.get("__init__")
+        # A class whose __init__ already takes a name keeps it for itself
+        if init is not None and "name" not in inspect.signature(init).parameters:
+            # setattr : an assignment makes pylint believe Bridge has an __init__ that
+            # every bridge must call (super-init-not-called)
+            setattr(cls, "__init__", _accept_name(init))  # noqa: B010
+
+    @property
+    def bridge_name(self) -> str:
+        """
+        Name of the bridge, in the descriptors of its adapters
+
+        The class name by default, followed by #2, #3, ... if it is already used
+        """
+        name: str | None = self.__dict__.get("_bridge_name")
+        if name is not None:
+            return name
+        with _creation_lock:
+            name = self.__dict__.get("_bridge_name")
+            if name is None:
+                base = type(self).__name__
+                name, number = base, 1
+                while name in _names:
+                    number += 1
+                    name = f"{base}#{number}"
+                self._register_name(name)
+            return name
+
+    def set_bridge_name(self, name: str) -> None:
+        """
+        Choose the name of the bridge, before the adapters that use it are created
+
+        The name keyword of the constructor calls it
+        """
+        if not name:
+            raise ValueError("A bridge name can't be empty")
+        with _creation_lock:
+            self._register_name(name)
+
+    def _register_name(self, name: str) -> None:
+        """Under _creation_lock"""
+        self.__dict__["_bridge_name"] = name
+        _names[name] = self
 
     def run(
         self, function: Callable[..., ResultT], *args: Any
@@ -130,7 +222,7 @@ class Bridge:
             return worker
 
     def __str__(self) -> str:
-        return type(self).__name__
+        return self.bridge_name
 
 
 class I2CBridge(Bridge, ABC):

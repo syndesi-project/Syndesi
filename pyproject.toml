@@ -114,4 +114,8 @@ disable = [
     "R0801", # Similar lines
     "R0913", # Too many arguments
 ]
+# PySide6 is compiled : pylint only sees its names if it may import it
+extension-pkg-allow-list = ["PySide6", "shiboken6"]
+# Qt signals look like methods to astroid, which then misses their connect()
+generated-members = ["connect", "disconnect", "emit"]
     

@@ -180,7 +180,7 @@ class Trace:
 
         if self._time_mode == TimeMode.RELATIVE:
             relative_time = event.timestamp - self._first_event_timestamp
-            return f"{relative_time:+8.3f}s"
+            return f"{relative_time:+9.3f}s"
         if self._time_mode == TimeMode.ABSOLUTE:
             return f"{event.timestamp:.3f}s"
         raise ValueError(f"Invalid time mode : {self._time_mode}")
@@ -223,9 +223,13 @@ class Trace:
             fragments += [
                 Text("read  ←", style="bold dim"),
                 Text(f"{event.length:4d}B ", style="dim"),
-                Text(f"{event.message} "),
-                Text(f"({event.stop_condition_indicator})", style="dim"),
+                Text(event.message),
             ]
+            # A frame without stop condition (I2C, SPI, ...) has nothing to show
+            if event.stop_condition_indicator is not None:
+                fragments.append(
+                    Text(f" ({event.stop_condition_indicator})", style="dim")
+                )
             if not isnan(event.write_delta):
                 fragments.append(Text(f" {event.write_delta:+.3f}s", style="dim"))
         else:
@@ -681,7 +685,10 @@ def main(argv: list[str] | None = None) -> None:
 
     # Filtering
     parser.add_argument(
-        "--filter", default="*", type=str, help="Filter which adapters are displayed"
+        "--filter",
+        default="*",
+        type=str,
+        help="Filter which adapters are displayed, by descriptor : 'i2c:*', 'tcp:*:5025'",
     )
 
     # Time
