@@ -91,7 +91,7 @@ class Bridge:
         self, function: Callable[..., ResultT], *args: Any
     ) -> Future[ResultT]:
         """
-        Run function(*args) on the bridge thread and return its future
+        Run ``function(*args)`` on the bridge thread and return its future
 
         Called from the bridge thread itself (a bridge method using another one), the
         function runs right away instead : waiting for its own queue would never end

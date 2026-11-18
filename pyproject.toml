@@ -44,6 +44,7 @@ syndesi-trace = "syndesi.cli.syndesi_trace:main"
 dev = [
     "bandit>=1.9.4",
     "black>=26.10.0",
+    "furo>=2025.12.19",
     "isort>=9.0.2",
     "mypy>=2.4.0",
     "pylint>=4.1.2",
@@ -53,6 +54,10 @@ dev = [
     "pytest-xdist>=3.8.0",
     "pyvisa>=1.16.2",
     "ruff>=0.16.10",
+    "sphinx>=9.0.4",
+    "sphinx-autodoc-typehints>=3.6.1",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-design>=0.8.0",
     "twine>=7.0.0",
 ]
 

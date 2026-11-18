@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 40" role="img" aria-label="Syndesi">
+  <rect x="2" y="7" width="30" height="7" rx="3.5" fill="#b48cfa"/>
+  <rect x="2" y="16.5" width="30" height="7" rx="3.5" fill="#f6a23b"/>
+  <rect x="2" y="26" width="30" height="7" rx="3.5" fill="#38bdf8"/>
+  <text x="44" y="29" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif"
+        font-size="25" font-weight="700" letter-spacing="-0.5" fill="#e6e8ec">syndesi</text>
+</svg>
