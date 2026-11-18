@@ -33,7 +33,7 @@ class SCPIDriver(Driver):
     # Standard SCPI commands
     def get_identification(self) -> str:
         """
-        Return identification returned by '*IDN?'
+        Return identification returned by ``*IDN?``
 
         Returns
         -------

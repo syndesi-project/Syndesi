@@ -132,17 +132,8 @@ class _TraceHub:
     _udp_addr = (DEFAULT_MULTICAST_GROUP, DEFAULT_MULTICAST_PORT)
 
     TRUNCATION_TERMINATION = "..."
-    # CHARACTERS_REPLACEMENT = {
-    #     '\n' : '\\n',
-    #     '\r' : '\\r',
-    #     '\t' : '\t',
-
-    # }
 
     def __init__(self) -> None:
-        # self._udp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
-        # self._udp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
-
         self._udp_sock = socket.socket(
             socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
         )
@@ -195,10 +186,10 @@ class _TraceHub:
         """
         Emit a fragment trace event
         """
-        if isinstance(fragment.data, bytes):
+        if fragment.data.__class__ is bytes: # Only bytes, no subclass of bytes
             message = self._format_bytes(fragment.data)
         else:
-            message = self._format_generic(str(fragment.data))
+            message = self._format_generic(repr(fragment.data))
 
         self._emit_event(
             FragmentEvent(
@@ -232,10 +223,10 @@ class _TraceHub:
         else:
             sc_indicator = STOP_CONDITION_INDICATOR[frame.stop_condition.type]
 
-        if isinstance(frame.data, bytes):
+        if frame.data.__class__ is bytes: # Only bytes, no subclass of bytes
             message = self._format_bytes(frame.data)
         else:
-            message = self._format_generic(str(frame.data))
+            message = self._format_generic(repr(frame.data))
 
         self._emit_event(
             ReadEvent(
@@ -248,17 +239,20 @@ class _TraceHub:
             )
         )
 
-    def emit_write_frame(self, descriptor: str, frame: WriteFrame[Any]) -> None:
-        """Send a write frame to clients"""
-        if isinstance(frame.data, bytes):
+    def emit_write_frame(
+        self, descriptor: str, frame: WriteFrame[Any], timestamp: float
+    ) -> None:
+        """Send a write frame to clients, timestamp is when the write started"""
+
+        if frame.data.__class__ is bytes: # Only bytes, no subclass of bytes
             message = self._format_bytes(frame.data)
         else:
-            message = self._format_generic(str(frame.data))
+            message = self._format_generic(repr(frame.data))
 
         self._emit_event(
             WriteEvent(
                 descriptor=descriptor,
-                timestamp=time.time(),
+                timestamp=timestamp,
                 message=message,
                 length=self._data_length(frame.data),
             )
@@ -267,18 +261,10 @@ class _TraceHub:
     def _emit_event(self, ev: TraceEvent) -> None:
         """Send a trace event to clients"""
         d = asdict(ev)
-        # meta = d.setdefault("meta", {})
-        # if isinstance(meta, dict):
-        #     meta.setdefault("pid", os.getpid())
 
         payload = json.dumps(d, separators=(",", ":"), ensure_ascii=False).encode(
             "utf-8"
         )
-
-        # if len(payload) > self._udp_max:
-        #     if isinstance(meta, dict):
-        #         meta["truncated"] = True
-        #     payload = payload[: self._udp_max]
 
         try:
             self._udp_sock.sendto(payload, self._udp_addr)

@@ -145,8 +145,11 @@ class _PaletteDelegate(QStyledItemDelegate):
         painter.setFont(font)
         painter.setPen(main)
         bold_metrics = painter.fontMetrics()
-        name_rect = QRect(text_rect.left(), text_rect.top(), text_rect.width(), bold_metrics.height())
-        painter.drawText(name_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
+        name_rect = QRect(
+            text_rect.left(), text_rect.top(), text_rect.width(), bold_metrics.height()
+        )
+        left_centered = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        painter.drawText(name_rect, left_centered, text)
 
         tag = _tag(info, self._library)
         if tag:
@@ -169,12 +172,15 @@ class _PaletteDelegate(QStyledItemDelegate):
         painter.setFont(small)
         painter.setPen(muted)
         summary_rect = QRect(
-            text_rect.left(), name_rect.bottom() + 2, text_rect.width(), painter.fontMetrics().height()
+            text_rect.left(),
+            name_rect.bottom() + 2,
+            text_rect.width(),
+            painter.fontMetrics().height(),
         )
         summary = painter.fontMetrics().elidedText(
             info.summary or "", Qt.TextElideMode.ElideRight, summary_rect.width()
         )
-        painter.drawText(summary_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, summary)
+        painter.drawText(summary_rect, left_centered, summary)
         painter.restore()
 
     @staticmethod
