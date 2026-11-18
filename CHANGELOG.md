@@ -12,3 +12,4 @@
 | 0.7.5   | 2026-11-08 | Change auto_open behaviour and add Adapter to \_\_init\_\_.py |
 | 0.7.6   | 2026-11-08 | Fix merge bug                                                 |
 | 0.8.0   | 2026-11-11 | New PySide6 UI                                                |
+| 0.9.0   | 2026-11-18 | Bridges, ui fixes and documentation                           |
