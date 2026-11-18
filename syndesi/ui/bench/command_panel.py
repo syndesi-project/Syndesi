@@ -117,7 +117,9 @@ class CommandPanel(QWidget):
         for command in self.commands:
             if text and text not in command.name.lower() and text not in command.summary.lower():
                 continue
-            group = f"{command.owner.__name__} (library)" if command.is_framework else command.owner.__name__
+            group = command.owner.__name__
+            if command.is_framework:
+                group += " (library)"
             if group != owner:
                 owner = group
                 header = QListWidgetItem(group.upper())
@@ -132,7 +134,10 @@ class CommandPanel(QWidget):
                 self.list.addItem(header)
             entry = QListWidgetItem(command.name)
             entry.setData(Qt.ItemDataRole.UserRole, command)
-            entry.setToolTip(command.signature + ("\n\n" + command.summary if command.summary else ""))
+            tooltip = command.signature
+            if command.summary:
+                tooltip += "\n\n" + command.summary
+            entry.setToolTip(tooltip)
             self.list.addItem(entry)
             first = first or entry
         if first is not None:

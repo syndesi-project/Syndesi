@@ -1,0 +1,384 @@
+/* Syndesi documentation, on top of Furo
+ *
+ * Same tokens as the GUI (syndesi/ui/style/theme.py) : indigo accent, and one color
+ * per layer, adapter (sky), protocol (amber), driver (violet)
+ */
+
+:root {
+  --sy-adapter: #0b8fd0;
+  --sy-protocol: #d97a06;
+  --sy-driver: #8b4fe8;
+  --sy-accent: #3d5ef0;
+  --sy-radius: 12px;
+  --sy-muted: #667080;
+  --sy-card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) {
+    --sy-adapter: #38bdf8;
+    --sy-protocol: #f6a23b;
+    --sy-driver: #b48cfa;
+    --sy-accent: #8ba0ff;
+    --sy-muted: #8d94a0;
+    --sy-card-shadow: none;
+  }
+}
+
+body[data-theme="dark"] {
+  --sy-adapter: #38bdf8;
+  --sy-protocol: #f6a23b;
+  --sy-driver: #b48cfa;
+  --sy-accent: #8ba0ff;
+  --sy-muted: #8d94a0;
+  --sy-card-shadow: none;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
+
+body {
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+h1 {
+  font-size: 2.1em;
+  letter-spacing: -0.025em;
+}
+
+.sidebar-tree .caption,
+.sidebar-tree :not(.caption) > .caption-text {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+/* ── Code ───────────────────────────────────────────────────────────────── */
+
+div.highlight,
+.highlight pre {
+  border-radius: 10px;
+}
+
+div[class*="highlight-"] {
+  margin: 1rem 0;
+}
+
+code.literal {
+  border-radius: 5px;
+  padding: 0.1em 0.35em;
+  font-size: 0.84em;
+}
+
+.code-block-caption {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--sy-muted);
+  letter-spacing: 0.02em;
+}
+
+/* Output of an example, under its code */
+.sy-output div.highlight {
+  background: transparent !important;
+  border: 1px dashed var(--color-background-border);
+}
+
+.sy-output div.highlight pre {
+  color: var(--sy-muted);
+  font-size: 0.82em;
+}
+
+/* ── Hero (landing page) ────────────────────────────────────────────────── */
+
+.sy-hero {
+  margin: 0.5rem 0 2.5rem;
+}
+
+.sy-hero h1 {
+  display: none;
+}
+
+.sy-hero-title {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 750;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  margin: 0 0 1rem;
+}
+
+.sy-hero-title .sy-gradient {
+  background: linear-gradient(90deg, var(--sy-adapter), var(--sy-accent) 45%, var(--sy-driver));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.sy-hero-lead {
+  font-size: 1.15rem;
+  line-height: 1.6;
+  color: var(--sy-muted);
+  max-width: 38rem;
+  margin: 0 0 1.5rem;
+}
+
+.sy-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.sy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.92rem;
+  text-decoration: none !important;
+  border: 1px solid var(--color-background-border);
+  color: var(--color-foreground-primary) !important;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.sy-btn:hover {
+  border-color: var(--sy-accent);
+}
+
+.sy-btn-primary {
+  background: var(--sy-accent);
+  border-color: var(--sy-accent);
+  color: #fff !important;
+}
+
+.sy-btn-primary:hover {
+  filter: brightness(1.08);
+}
+
+.sy-install {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-stack--monospace);
+  font-size: 0.88rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-background-border);
+}
+
+.sy-install::before {
+  content: "$";
+  color: var(--sy-muted);
+}
+
+/* ── Layer stack diagram ────────────────────────────────────────────────── */
+
+.sy-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 1.5rem 0 2rem;
+  font-size: 0.9rem;
+}
+
+.sy-layer {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--sy-radius);
+  border: 1px solid var(--color-background-border);
+  border-left: 4px solid var(--sy-layer);
+  background: linear-gradient(90deg,
+      color-mix(in srgb, var(--sy-layer) 9%, transparent),
+      transparent 70%);
+}
+
+.sy-layer-name {
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sy-layer);
+}
+
+.sy-layer-items {
+  font-family: var(--font-stack--monospace);
+  font-size: 0.85rem;
+}
+
+.sy-layer-type {
+  font-size: 0.78rem;
+  color: var(--sy-muted);
+  white-space: nowrap;
+}
+
+.sy-layer.sy-driver { --sy-layer: var(--sy-driver); }
+.sy-layer.sy-protocol { --sy-layer: var(--sy-protocol); }
+.sy-layer.sy-adapter { --sy-layer: var(--sy-adapter); }
+
+.sy-device {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--sy-muted);
+  padding-top: 0.2rem;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 40em) {
+  .sy-layer {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}
+
+/* Inline layer badges : :sy-adapter:`IP` style roles are rendered as spans */
+.sy-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  vertical-align: middle;
+  color: var(--sy-layer);
+  background: color-mix(in srgb, var(--sy-layer) 13%, transparent);
+}
+
+.sy-badge.sy-driver { --sy-layer: var(--sy-driver); }
+.sy-badge.sy-protocol { --sy-layer: var(--sy-protocol); }
+.sy-badge.sy-adapter { --sy-layer: var(--sy-adapter); }
+
+/* ── Cards (sphinx-design) ──────────────────────────────────────────────── */
+
+.sd-card {
+  border-radius: var(--sy-radius) !important;
+  border: 1px solid var(--color-background-border) !important;
+  background: var(--color-background-primary) !important;
+  box-shadow: var(--sy-card-shadow) !important;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.sd-card.sd-card-hover:hover,
+a.sd-stretched-link:hover ~ * {
+  border-color: var(--sy-accent) !important;
+  transform: translateY(-1px);
+}
+
+.sd-card-title {
+  font-weight: 650 !important;
+  font-size: 1.02rem !important;
+  margin-bottom: 0.35rem !important;
+}
+
+.sd-card-body {
+  font-size: 0.92rem;
+}
+
+.sd-card-body p {
+  color: var(--sy-muted);
+  margin-bottom: 0;
+}
+
+.sd-card-title .sy-icon {
+  margin-right: 0.35rem;
+}
+
+/* Section cards on the landing page : colored top edge */
+.sy-section-card.sd-card {
+  border-top: 3px solid var(--sy-accent) !important;
+}
+
+/* Tabs : sync / async */
+.sd-tab-set > label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.9rem 0.45rem;
+}
+
+.sd-tab-set > input:checked + label {
+  border-color: var(--sy-accent);
+  color: var(--sy-accent);
+}
+
+.sd-tab-content {
+  box-shadow: none;
+  padding-top: 0.25rem;
+}
+
+/* ── Tour (feature gallery) ─────────────────────────────────────────────── */
+
+.sy-tour .sd-card-body div[class*="highlight-"] {
+  margin: 0.6rem 0 0;
+}
+
+.sy-tour .sd-card-body .highlight pre {
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.sy-tour .sd-card-footer {
+  font-size: 0.82rem;
+  border-top: 1px solid var(--color-background-border);
+  background: transparent;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+
+table.docutils {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--color-background-border);
+  box-shadow: none;
+  font-size: 0.9rem;
+}
+
+table.docutils th {
+  font-weight: 600;
+  background: var(--color-background-secondary);
+}
+
+table.docutils td,
+table.docutils th {
+  border-left: 0;
+  border-right: 0;
+}
+
+/* ── Admonitions ────────────────────────────────────────────────────────── */
+
+.admonition {
+  border-radius: 10px;
+  box-shadow: none;
+  border: 1px solid var(--color-background-border);
+  border-left-width: 4px;
+  font-size: 0.92rem;
+}
+
+.admonition > .admonition-title {
+  font-weight: 600;
+}
+
+/* ── API reference ──────────────────────────────────────────────────────── */
+
+dl.py.class > dt,
+dl.py.function > dt,
+dl.py.exception > dt {
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  background: var(--color-background-secondary);
+  border-left: 3px solid var(--sy-accent);
+}
+
+dl.py.method > dt,
+dl.py.property > dt,
+dl.py.attribute > dt {
+  border-radius: 6px;
+}
