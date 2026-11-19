@@ -26,9 +26,11 @@ from .introspection import (
 
 def _builtin_classes() -> list[type]:
     # pylint: disable=import-outside-toplevel
+    from ...adapters.i2c import I2C, AsyncI2C
     from ...adapters.ip import IP, AsyncIP
     from ...adapters.ipserver import AsyncIPServer, IPServer
     from ...adapters.serialport import AsyncSerialPort, SerialPort
+    from ...adapters.spi import SPI, AsyncSPI
     from ...adapters.visa import AsyncVisa, Visa
     from ...drivers.scpi_driver import SCPIDriver
     from ...protocols.delimited import AsyncDelimited, Delimited
@@ -41,10 +43,14 @@ def _builtin_classes() -> list[type]:
         SerialPort,
         Visa,
         IPServer,
+        I2C,
+        SPI,
         AsyncIP,
         AsyncSerialPort,
         AsyncVisa,
         AsyncIPServer,
+        AsyncI2C,
+        AsyncSPI,
         Raw,
         Delimited,
         SCPI,

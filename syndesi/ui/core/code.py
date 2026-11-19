@@ -13,6 +13,7 @@ import keyword
 import re
 from typing import Any
 
+from ...adapters.i2c import I2C, AsyncI2C
 from ...adapters.stop_conditions import (
     Continuation,
     FragmentSC,
@@ -139,6 +140,8 @@ def _usage_hint(root: StackNode, variable: str) -> str:
     if root.kind is Kind.DRIVER:
         return f"{prefix}{variable}.open()"
     if root.kind in (Kind.ADAPTER, Kind.PROTOCOL):
+        if issubclass(root.cls, (I2C, AsyncI2C)):
+            return f"print({prefix}{variable}.transfer(b'\\x00', read_length=1))"
         payload = root.info.provides
         if payload is str:
             return f"print({prefix}{variable}.query('*IDN?'))"

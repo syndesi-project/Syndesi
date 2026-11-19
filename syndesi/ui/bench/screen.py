@@ -128,7 +128,9 @@ class TestScreen(QWidget):
         busy = QLabel("")
         busy.setObjectName("Muted")
         toolbar.addWidget(busy)
-        self.worker.busy_changed.connect(lambda working: busy.setText("working…" if working else ""))
+        self.worker.busy_changed.connect(
+            lambda working: busy.setText("working…" if working else "")
+        )
         return toolbar
 
     def _objects(self) -> QWidget:

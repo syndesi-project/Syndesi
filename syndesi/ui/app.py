@@ -116,7 +116,9 @@ class MainWindow(QMainWindow):
         # Only the buttons that make sense on the screen shown, see _update_steps
         self.to_test_button = _nav_button("Back to test", "arrow-right", "Outline")
         self.to_test_button.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.to_test_button.setToolTip("Go back to the stack as it was built, without rebuilding it")
+        self.to_test_button.setToolTip(
+            "Go back to the stack as it was built, without rebuilding it"
+        )
         self.to_test_button.clicked.connect(lambda: self.show_step(1))
         self.build_button = _nav_button("Build && test", "play", "Primary")
         self.build_button.setToolTip("Build the stack and test it (F5)")

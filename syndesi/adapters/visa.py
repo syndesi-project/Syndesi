@@ -67,7 +67,7 @@ class VisaDescriptor(Descriptor):
     - PXI (Modular instrument chassis) ``PXI0::14::INSTR``
     """
 
-    DETECTION_PATTERN = (
+    RESOURCE_PATTERN = (
         r"^([A-Z]+)(\d*|\/[^:]+)?::([^:]+)(?:::([^:]+))?"
         + "(?:::([^:]+))?(?:::([^:]+))?::(INSTR|SOCKET)$"
     )
@@ -88,7 +88,7 @@ class VisaDescriptor(Descriptor):
 
     @staticmethod
     def from_string(string: str) -> VisaDescriptor:
-        if re.match(VisaDescriptor.DETECTION_PATTERN, string):
+        if re.match(VisaDescriptor.RESOURCE_PATTERN, string):
             return VisaDescriptor(descriptor=string)
         raise ValueError(f"Could not parse descriptor : {string}")
 

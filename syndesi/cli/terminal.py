@@ -17,10 +17,12 @@ from syndesi.adapters.adapter import Adapter
 from syndesi.adapters.events import AdapterClosedEvent, AdapterFrameEvent, SyndesiEvent
 from syndesi.adapters.stop_conditions import FragmentSC
 
+from ..adapters.i2c import I2C, I2CTransfer
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
+from ..adapters.spi import SPI
 from ..adapters.visa import Visa
-from ..tools.errors import AdapterOpenError
+from ..tools.errors import AdapterError, AdapterOpenError
 from .console import Shell
 
 HISTORY_FILE_NAME = "syndesi"
@@ -49,6 +51,8 @@ class AdapterType(Enum):
     IP = "ip"
     SERIAL = "serial"
     VISA = "visa"
+    I2C = "i2c"
+    SPI = "spi"
 
 
 class SpecialLineEnding(Enum):
@@ -122,29 +126,12 @@ def parse_termination_argument(arg: str | None) -> bytes:
         raw_arg = raw_arg.replace(source, dest)
     return raw_arg
 
-class ListSerialPortsAction(argparse.Action):
-    """List serial ports action"""
+class ListAction(argparse.Action):
+    """
+    Print what const() lists (serial ports, I2C buses, ...) and exit
 
-    #nargs = 0
-    const = True
-    default = False
-    required = False
-    # def __init__(self,
-    #              option_strings : Sequence[str],
-    #              dest : str,
-    #              default : bool = False,
-    #              required : bool = False,
-    #              help : Any | None = None
-    #     ) -> None:
-    #     super().__init__(
-    #         option_strings=option_strings,
-    #         dest=dest,
-    #         nargs=0,
-    #         const=True,
-    #         default=default,
-    #         required=required,
-    #         help=help,
-    #     )
+    Added with nargs=0 and const set to the function that lists
+    """
 
     def __call__(
         self,
@@ -153,9 +140,8 @@ class ListSerialPortsAction(argparse.Action):
         values: str | Sequence[str] | None,
         option_string: str | None = None,
     ) -> None:
-        ports = SerialPort.list_ports()
-        for port in ports:
-            print(f"{port}")
+        for item in self.const():
+            print(f"{item}")
         parser.exit()
 
 class Terminal:
@@ -165,7 +151,7 @@ class Terminal:
 
     DEFAULT_TERMINATION = "\n"
 
-    # pylint: disable=too-many-statements too-many-branches
+    # pylint: disable=too-many-statements too-many-branches too-many-locals
     def __init__(self, input_arguments: list[str]) -> None:
         logging.basicConfig(level=logging.CRITICAL + 1)
         self._parser = argparse.ArgumentParser(prog="syndesi term")
@@ -199,11 +185,53 @@ class Terminal:
         )
         serialport_parser.add_argument(
             "--list",
-            action=ListSerialPortsAction,
+            action=ListAction,
             nargs=0,
+            const=SerialPort.list_ports,
             default=False,
             help="List available serial ports",
         )
+        # I2C and SPI, native buses only : a bridge is a driver, written in python
+        i2c_parser = adapter_parsers.add_parser(
+            AdapterType.I2C.value,
+            help="I2C Adapter (Linux)",
+            parents=[common],
+            description="Each line is written to the device, followed by a read of "
+            "--read bytes with a repeated start",
+        )
+        i2c_parser.add_argument("bus", type=str, help="/dev/i2c-N")
+        i2c_parser.add_argument(
+            "address", type=lambda x: int(x, 0), help="7-bit address, 0x48 or 72"
+        )
+        i2c_parser.add_argument(
+            "-r",
+            "--read",
+            type=int,
+            default=0,
+            help="Bytes to read after each write, 0 to only write",
+        )
+        spi_parser = adapter_parsers.add_parser(
+            AdapterType.SPI.value,
+            help="SPI Adapter (Linux)",
+            parents=[common],
+            description="Each line is sent to the device, the bytes received meanwhile "
+            "are printed",
+        )
+        spi_parser.add_argument("device", type=str, help="/dev/spidevB.C")
+        for parser, lister, what in (
+            (i2c_parser, I2C.list_buses, "I2C buses"),
+            (spi_parser, SPI.list_buses, "SPI devices"),
+        ):
+            parser.add_argument(
+                "--list",
+                action=ListAction,
+                nargs=0,
+                const=lister,
+                default=False,
+                help=f"List available {what}",
+            )
+            # Binary buses : hex and no termination, unless asked otherwise
+            parser.set_defaults(term="", format=Format.HEX.value)
         # VISA
         visa_parser = adapter_parsers.add_parser(
             AdapterType.VISA.value, help="VISA Adapter", parents=[common]
@@ -224,6 +252,7 @@ class Terminal:
             timeout = timeout_arg
 
         self.adapter: Adapter[Any, Any]
+        self._read_length = 0
         # Create the adapter
         adapter = AdapterType(args.adapter)
         if adapter == AdapterType.IP:
@@ -251,6 +280,13 @@ class Terminal:
                 auto_open=False,
                 stop_conditions=FragmentSC()
             )
+        elif adapter == AdapterType.I2C:
+            if args.read < 0:
+                raise ValueError(f"Invalid read length : {args.read}")
+            self._read_length = args.read
+            self.adapter = I2C(args.bus, args.address, timeout=timeout, auto_open=False)
+        elif adapter == AdapterType.SPI:
+            self.adapter = SPI(args.device, timeout=timeout, auto_open=False)
 
         self._termination = parse_termination_argument(args.term)
 
@@ -325,7 +361,13 @@ class Terminal:
         except ValueError:
             self.shell.print(f"Cannot parse '{command}'", Shell.Style.ERROR)
         else:
-            self.adapter.write(data + self._termination)
+            data += self._termination
+            if self._read_length:
+                data = I2CTransfer(data, self._read_length)
+            try:
+                self.adapter.write(data)
+            except AdapterError as e:
+                self.shell.print(str(e), Shell.Style.ERROR)
 
     def on_frame(self, data : bytes) -> None:
         """On reception of adapter frame data"""

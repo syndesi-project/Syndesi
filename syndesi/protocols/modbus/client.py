@@ -268,34 +268,25 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         word_order: Endian | str = Endian.BIG,
     ) -> ModbusMultiRegisterValue:
         """
-        Read an integer, a float, or a string over multiple registers
+        Read a value spread over several holding registers
 
         Parameters
         ----------
         address : int
             Address of the first register
         n_registers : int
-            Number of registers (half the number of bytes)
-        value_type : str
-            Type to which the value will be cast
-                'int' : signed integer
-                'uint' : unsigned integer
-                'float' : float or double
-                'string' : string
-                'array' : Bytes array
-            Each type will be adapted based on the number of bytes (_bytes parameter)
-        byte_order : str
-            Byte order, 'big' means the high bytes will come first, 'little' means the low bytes
-            will come first
-            Byte order inside a register (2 bytes) is always big as per
-            Modbus specification (4.2 Data Encoding)
-        encoding : str
-            String encoding (if used). UTF-8 by default
-        padding : int | None
-            String padding, None to return the raw string
+            Number of registers, half the number of bytes
+        byte_order : Endian or str
+            Order of the bytes inside each register, 'big' by default
+        word_order : Endian or str
+            Order of the registers, 'big' (first register holds the high word) by
+            default
+
         Returns
         -------
-        data : any
+        value : ModbusMultiRegisterValue
+            Convert it with to_int(), to_uint(), to_float(), to_string() or
+            to_array()
         """
         # Read N registers
         registers = self.read_holding_registers(
@@ -310,35 +301,15 @@ class Modbus(Protocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         self, address: int, value: ModbusMultiRegisterValue
     ) -> None:
         """
-        Write an integer, a float, or a string over multiple registers
+        Write a value spread over several holding registers
 
         Parameters
         ----------
         address : int
             Address of the first register
-        n_registers : int
-            Number of registers (half the number of bytes)
-        value_type : str | bytes | int
-            Type to which the value will be cast
-                'int' : signed integer
-                'uint' : unsigned integer
-                'float' : float or double
-                'string' : string
-                'array' : Bytes array
-        value : any
-            The value to write, can be any of the following : str, int, float, str, bytearray
-        byte_order : str
-            Byte order, 'big' means the high bytes will come first, 'little' means the low
-            bytes will come first
-            Byte order inside a register (2 bytes) is always big as per
-            Modbus specification (4.2 Data Encoding)
-        encoding : str
-            String encoding (if used)
-        padding : int
-            Padding in case the value (str / bytes) is not long enough
-        Returns
-        -------
-        data : any
+        value : ModbusMultiRegisterValue
+            Built with from_int(), from_uint(), from_float(), from_string() or
+            from_array(), which also set its byte and word order
         """
         registers = value.to_registers()
         self.write_multiple_registers(start_address=address, values=registers)
@@ -1109,34 +1080,25 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         word_order: Endian | str = Endian.BIG,
     ) -> ModbusMultiRegisterValue:
         """
-        Asynchronously read an integer, a float, or a string over multiple registers
+        Asynchronously read a value spread over several holding registers
 
         Parameters
         ----------
         address : int
             Address of the first register
         n_registers : int
-            Number of registers (half the number of bytes)
-        value_type : str
-            Type to which the value will be cast
-                'int' : signed integer
-                'uint' : unsigned integer
-                'float' : float or double
-                'string' : string
-                'array' : Bytes array
-            Each type will be adapted based on the number of bytes (_bytes parameter)
-        byte_order : str
-            Byte order, 'big' means the high bytes will come first, 'little' means the low bytes
-            will come first
-            Byte order inside a register (2 bytes) is always big as per
-            Modbus specification (4.2 Data Encoding)
-        encoding : str
-            String encoding (if used). UTF-8 by default
-        padding : int | None
-            String padding, None to return the raw string
+            Number of registers, half the number of bytes
+        byte_order : Endian or str
+            Order of the bytes inside each register, 'big' by default
+        word_order : Endian or str
+            Order of the registers, 'big' (first register holds the high word) by
+            default
+
         Returns
         -------
-        data : any
+        value : ModbusMultiRegisterValue
+            Convert it with to_int(), to_uint(), to_float(), to_string() or
+            to_array()
         """
         # Read N registers
         registers = await self.read_holding_registers(
@@ -1151,35 +1113,15 @@ class AsyncModbus(AsyncProtocol[ModbusBackend, bytes, ModbusSDU], ModbusCommon):
         self, address: int, value: ModbusMultiRegisterValue
     ) -> None:
         """
-        Asynchronously write an integer, a float, or a string over multiple registers
+        Asynchronously write a value spread over several holding registers
 
         Parameters
         ----------
         address : int
             Address of the first register
-        n_registers : int
-            Number of registers (half the number of bytes)
-        value_type : str | bytes | int
-            Type to which the value will be cast
-                'int' : signed integer
-                'uint' : unsigned integer
-                'float' : float or double
-                'string' : string
-                'array' : Bytes array
-        value : any
-            The value to write, can be any of the following : str, int, float, str, bytearray
-        byte_order : str
-            Byte order, 'big' means the high bytes will come first, 'little' means the low
-            bytes will come first
-            Byte order inside a register (2 bytes) is always big as per
-            Modbus specification (4.2 Data Encoding)
-        encoding : str
-            String encoding (if used)
-        padding : int
-            Padding in case the value (str / bytes) is not long enough
-        Returns
-        -------
-        data : any
+        value : ModbusMultiRegisterValue
+            Built with from_int(), from_uint(), from_float(), from_string() or
+            from_array(), which also set its byte and word order
         """
         registers = value.to_registers()
         await self.write_multiple_registers(start_address=address, values=registers)

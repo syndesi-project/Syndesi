@@ -405,7 +405,9 @@ class FieldEditor(QWidget):
             self._default_box.setChecked(True)
         elif spec.has_default and default is None and self._none_box is not None:
             self._none_box.setChecked(True)
-        if spec.field_type is FieldType.STOP_CONDITIONS and isinstance(self._editor, StopConditionsEditor):
+        if spec.field_type is FieldType.STOP_CONDITIONS and isinstance(
+            self._editor, StopConditionsEditor
+        ):
             self._editor.set_value([Termination(b"\n")])
 
     def _boxes_changed(self) -> None:
@@ -529,7 +531,9 @@ class ParamForm(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         layout.setRowWrapPolicy(
-            QFormLayout.RowWrapPolicy.WrapAllRows if labels_above else QFormLayout.RowWrapPolicy.WrapLongRows
+            QFormLayout.RowWrapPolicy.WrapAllRows
+            if labels_above
+            else QFormLayout.RowWrapPolicy.WrapLongRows
         )
         layout.setVerticalSpacing(10 if labels_above else 6)
         layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
