@@ -84,6 +84,54 @@ afterwards adopts the default timeout of the driver:
        adapter.set_default_timeout(5)
        self._prot = Delimited(adapter)
 
+Accept what the user writes
+---------------------------
+
+Ranges, functions, speeds… A device wants one exact value, a user writes ``2``,
+``"2V"`` or ``"2 v"``. A ``FlexibleEnum`` member is the value sent to the device,
+followed by the values it accepts:
+
+.. code-block:: python
+
+   from syndesi import FlexibleEnum, SCPIDriver
+
+   class VoltageRange(FlexibleEnum):
+       _200mV = "0.2", 0.2, "200mV"
+       _2V = "2", 2, "2V"
+       _20V = "20", 20, "20V"
+       AUTO = "AUTO"
+
+   class Multimeter(SCPIDriver):
+       def set_voltage_range(self, voltage_range: VoltageRange | str | float) -> None:
+           self._prot.write(f"VOLT:RANG {VoltageRange(voltage_range)}")
+
+       def voltage_range(self) -> VoltageRange:
+           # The device replies '+2.000000E-01' : a number, it matches 0.2
+           return VoltageRange(self._prot.query("VOLT:RANG?"))
+       ...
+
+.. code-block:: python
+
+   dmm.set_voltage_range("200 mV")   # VOLT:RANG 0.2
+   dmm.set_voltage_range(20)         # VOLT:RANG 20
+   dmm.set_voltage_range("auto")     # VOLT:RANG AUTO
+   dmm.set_voltage_range(15)
+   # ValueError: 15 is not a VoltageRange, use one of : 200mV, 2V, 20V, AUTO
+
+A member accepts:
+
+- its value out, its name and the values listed after the value out
+- text without spaces, and without case when that leaves only one member: ``"2mΩ"``
+  and ``"2MΩ"`` can both be members, the case then tells them apart
+- numbers, and numeric text such as the replies of the device
+
+Pass ``case_sensitive=True`` to match text only with its exact case. Two members
+accepting the same value raise a ``TypeError`` as soon as the class is defined.
+
+A member is a ``str``, its value out: ``f"{member}"`` is what the device wants, and
+``member.label`` (its first accepted text) is what people read. The graphical bench
+lists the labels in a drop-down.
+
 Split a device into parts
 -------------------------
 
