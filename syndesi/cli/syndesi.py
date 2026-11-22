@@ -11,18 +11,19 @@ import sys
 from enum import Enum
 from importlib.util import find_spec
 
-from .terminal import Terminal
-
 from .. import __version__
+from .terminal import Terminal
 
 
 class SyndesiCommand(Enum):
     """
     Syndesi script commands enum
     """
+
     TERMINAL = "term"
     DRIVER = "driver"
     UI = "ui"
+
 
 def main() -> None:
     """
@@ -69,7 +70,7 @@ def main() -> None:
                     "with :\n"
                     '    python -m pip install "syndesi[ui]"'
                 )
-            #pylint: disable=import-outside-toplevel
+            # pylint: disable=import-outside-toplevel
             from syndesi.ui.app import main as start_ui
 
             start_ui(args.remaining)

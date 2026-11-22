@@ -51,7 +51,9 @@ class Worker(QObject):
         self._done.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
         # Created by the thread, which owns it
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._thread = threading.Thread(target=self._run, name="syndesi-ui", daemon=True)
+        self._thread = threading.Thread(
+            target=self._run, name="syndesi-ui", daemon=True
+        )
         self._thread.start()
 
     @property
@@ -59,7 +61,9 @@ class Worker(QObject):
         """True while calls are waiting or running"""
         return self._pending > 0
 
-    def submit(self, function: Callable[[], Any], on_done: Callback | None = None) -> None:
+    def submit(
+        self, function: Callable[[], Any], on_done: Callback | None = None
+    ) -> None:
         """
         Run function on the worker thread, then on_done(result, error) on the GUI thread
         """
@@ -111,7 +115,9 @@ class Worker(QObject):
                 self._done.emit(job.on_done, result, error)
         loop.close()
 
-    def _dispatch(self, on_done: Callback | None, result: Any, error: BaseException | None) -> None:
+    def _dispatch(
+        self, on_done: Callback | None, result: Any, error: BaseException | None
+    ) -> None:
         self._pending = max(0, self._pending - 1)
         if self._pending == 0:
             self.busy_changed.emit(False)
@@ -119,7 +125,9 @@ class Worker(QObject):
             on_done(result, error)
 
 
-def _run_to_completion(loop: asyncio.AbstractEventLoop, function: Callable[[], Any]) -> Any:
+def _run_to_completion(
+    loop: asyncio.AbstractEventLoop, function: Callable[[], Any]
+) -> Any:
     result = function()
     if inspect.isawaitable(result):
         result = loop.run_until_complete(_await(result))

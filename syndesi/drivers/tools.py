@@ -85,7 +85,9 @@ class FlexibleEnum(StrEnum):
         member._accepted = accepted
         return member
 
-    def __init_subclass__(cls, *, case_sensitive: bool = False, **kwargs: object) -> None:
+    def __init_subclass__(
+        cls, *, case_sensitive: bool = False, **kwargs: object
+    ) -> None:
         super().__init_subclass__(**kwargs)
         cls._case_sensitive = case_sensitive
         # A value accepted by two members is a typo : say it when the class is written
@@ -133,10 +135,13 @@ class FlexibleEnum(StrEnum):
                 f"({cls.__name__}) : write it with its case"
             )
         raise ValueError(
-            f"{value!r} is not a {cls.__name__}, use one of : " + ", ".join(m.label for m in cls)
+            f"{value!r} is not a {cls.__name__}, use one of : "
+            + ", ".join(m.label for m in cls)
         )
 
     @classmethod
     def _matching(cls, test: Callable[[str], bool]) -> list[Self]:
         """Members with an accepted text that passes test, in definition order"""
-        return [m for m in cls if any(isinstance(v, str) and test(v) for v in m._accepts())]
+        return [
+            m for m in cls if any(isinstance(v, str) and test(v) for v in m._accepts())
+        ]

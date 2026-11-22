@@ -27,17 +27,19 @@ from .console import Shell
 
 HISTORY_FILE_NAME = "syndesi"
 
+
 class Format(Enum):
     """
     Display format
     """
+
     RAW = "raw"
     HEX = "hex"
     BYTES = "bytes"
 
 
 FORMAT_DESCRIPTION = {
-    Format.RAW : "Raw text, no substitutions",
+    Format.RAW: "Raw text, no substitutions",
     Format.BYTES: "Use Python bytes display syntax",
     Format.HEX: "Hex bytes either space separated or joined",
 }
@@ -64,11 +66,13 @@ class SpecialLineEnding(Enum):
     LF = "lf"
     CRLF = "crlf"
 
+
 LINE_ENDING_CHARS = {
     SpecialLineEnding.CR: b"\r",
     SpecialLineEnding.LF: b"\n",
     SpecialLineEnding.CRLF: b"\r\n",
 }
+
 
 def hex2array(raw: str) -> bytes:
     """
@@ -87,6 +91,7 @@ def hex2array(raw: str) -> bytes:
         raise ValueError(f"Cannot parse hex string : {raw}") from err
     return array
 
+
 def array2hex(array: bytes) -> str:
     """
     Convert bytes to hex string
@@ -94,26 +99,25 @@ def array2hex(array: bytes) -> str:
     """
     return " ".join([f"{x:02X}" for x in array])
 
-def bytes_format_encode(text : str) -> bytes:
+
+def bytes_format_encode(text: str) -> bytes:
     """Convert string in python's bytes format to bytes"""
     output = ast.literal_eval(f"b'{text}'")
     if not isinstance(output, bytes):
         raise ValueError(f"Could not encode '{text}'")
     return output
 
-def bytes_format_decode(data : bytes) -> str:
+
+def bytes_format_decode(data: bytes) -> str:
     """Convert bytes object to string representation using python's bytes formatting"""
     return str(data)[2:-1]
+
 
 def parse_termination_argument(arg: str | None) -> bytes:
     """
     Convert line termination argument to a real \\n or \\r character
     """
-    replace_list = [
-        (b'\\n', b'\n'),
-        (b'\\r', b'\r'),
-        (b'\\t', b'\t')
-    ]
+    replace_list = [(b"\\n", b"\n"), (b"\\r", b"\r"), (b"\\t", b"\t")]
     if arg is None:
         return b""
     # Return a special line end char if it corresponds
@@ -121,10 +125,11 @@ def parse_termination_argument(arg: str | None) -> bytes:
         if arg == s.value:
             return t
     # Otherwise, encode and parse "\\n" -> "\n"
-    raw_arg = arg.encode('utf-8')
+    raw_arg = arg.encode("utf-8")
     for source, dest in replace_list:
         raw_arg = raw_arg.replace(source, dest)
     return raw_arg
+
 
 class ListAction(argparse.Action):
     """
@@ -154,6 +159,7 @@ class ListAction(argparse.Action):
                 print(item)
         parser.exit()
 
+
 class Terminal:
     """
     Adapter shell, allows direct communication with an adapter
@@ -181,9 +187,7 @@ class Terminal:
         )
         ip_parser.add_argument("address", type=str)
         ip_parser.add_argument("port", type=int)
-        ip_parser.add_argument(
-            "--protocol", choices=["TCP", "UDP"], default="TCP"
-        )
+        ip_parser.add_argument("--protocol", choices=["TCP", "UDP"], default="TCP")
         # SerialPort
         serialport_parser = adapter_parsers.add_parser(
             AdapterType.SERIAL.value, help="SerialPort Adapter", parents=[common]
@@ -272,7 +276,7 @@ class Terminal:
                 transport=args.protocol,
                 timeout=timeout,
                 auto_open=False,
-                stop_conditions=FragmentSC()
+                stop_conditions=FragmentSC(),
             )
         elif adapter == AdapterType.SERIAL:
             self.adapter = SerialPort(
@@ -281,14 +285,14 @@ class Terminal:
                 timeout=timeout,
                 rts_cts=args.rtscts,
                 auto_open=False,
-                stop_conditions=FragmentSC()
+                stop_conditions=FragmentSC(),
             )
         elif adapter == AdapterType.VISA:
             self.adapter = Visa(
                 descriptor=args.descriptor,
                 timeout=timeout,
                 auto_open=False,
-                stop_conditions=FragmentSC()
+                stop_conditions=FragmentSC(),
             )
         elif adapter == AdapterType.I2C:
             if args.read < 0:
@@ -328,7 +332,7 @@ class Terminal:
             "--term",
             required=False,
             default=SpecialLineEnding.LF.value,
-            help="Termination, cr, lf, crlf or a custom string. Ignored with hex format"
+            help="Termination, cr, lf, crlf or a custom string. Ignored with hex format",
         )
         group.add_argument(
             "-f",
@@ -345,7 +349,7 @@ class Terminal:
 
         try:
             self.adapter.open()
-            #self.protocol.open()
+            # self.protocol.open()
         except AdapterOpenError as e:
             self.shell.print(str(e), Shell.Style.ERROR)
         else:
@@ -365,7 +369,7 @@ class Terminal:
             elif self._format == Format.BYTES:
                 data = bytes_format_encode(command)
             elif self._format == Format.RAW:
-                data = command.encode('utf-8')
+                data = command.encode("utf-8")
             else:
                 raise RuntimeError("Invalid format")
         except ValueError:
@@ -379,7 +383,7 @@ class Terminal:
             except AdapterError as e:
                 self.shell.print(str(e), Shell.Style.ERROR)
 
-    def on_frame(self, data : bytes) -> None:
+    def on_frame(self, data: bytes) -> None:
         """On reception of adapter frame data"""
 
         if self._format == Format.HEX:
@@ -387,7 +391,7 @@ class Terminal:
         elif self._format == Format.BYTES:
             text = bytes_format_decode(data)
         elif self._format == Format.RAW:
-            text = data.decode('utf-8')
+            text = data.decode("utf-8")
         else:
             raise RuntimeError("Invalid format")
 

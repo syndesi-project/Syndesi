@@ -204,7 +204,9 @@ class _PaletteDelegate(QStyledItemDelegate):
         self._library = library
 
     # pylint: disable=too-many-statements, too-many-locals
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: Any) -> None:
+    def paint(
+        self, painter: QPainter, option: QStyleOptionViewItem, index: Any
+    ) -> None:
         data = index.data(Qt.ItemDataRole.UserRole)
         self.initStyleOption(option, index)
         t = theme()
@@ -212,7 +214,11 @@ class _PaletteDelegate(QStyledItemDelegate):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         group = _group_kind(data)
         category = _category_title(data)
-        if group is not None or category is not None or not isinstance(data, ComponentInfo):
+        if (
+            group is not None
+            or category is not None
+            or not isinstance(data, ComponentInfo)
+        ):
             if group is not None:
                 self._paint_group(painter, option, group)
             elif category is not None:
@@ -223,7 +229,9 @@ class _PaletteDelegate(QStyledItemDelegate):
         text = option.text
         option.text = ""
         style = option.widget.style() if option.widget else QApplication.style()
-        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, option, painter, option.widget)
+        style.drawControl(
+            QStyle.ControlElement.CE_ItemViewItem, option, painter, option.widget
+        )
         enabled = bool(option.state & QStyle.StateFlag.State_Enabled)
         rect = option.rect.adjusted(10, 5, -8, -5)
 
@@ -257,8 +265,12 @@ class _PaletteDelegate(QStyledItemDelegate):
             painter.setFont(small)
             tag_metrics = painter.fontMetrics()
             x = name_rect.left() + bold_metrics.horizontalAdvance(text) + 8
-            tag_rect = QRect(x, name_rect.top() + 2, tag_metrics.horizontalAdvance(tag) + 10,
-                             name_rect.height() - 4)
+            tag_rect = QRect(
+                x,
+                name_rect.top() + 2,
+                tag_metrics.horizontalAdvance(tag) + 10,
+                name_rect.height() - 4,
+            )
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(t.hover)
             painter.drawRoundedRect(tag_rect, 4, 4)
@@ -282,7 +294,9 @@ class _PaletteDelegate(QStyledItemDelegate):
         painter.restore()
 
     @staticmethod
-    def _paint_group(painter: QPainter, option: QStyleOptionViewItem, kind: Kind) -> None:
+    def _paint_group(
+        painter: QPainter, option: QStyleOptionViewItem, kind: Kind
+    ) -> None:
         t = theme()
         name, description = next((n, d) for k, n, d in GROUPS if k is kind)
         rect = option.rect.adjusted(10, 8, -8, 0)
@@ -293,7 +307,9 @@ class _PaletteDelegate(QStyledItemDelegate):
         painter.setFont(font)
         painter.setPen(t.kind(kind))
         title = name.upper()
-        painter.drawText(rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, title)
+        painter.drawText(
+            rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, title
+        )
         x = painter.fontMetrics().horizontalAdvance(title) + 8
         font = QFont(option.font)
         font.setPointSizeF(font.pointSizeF() * 0.85)
@@ -302,8 +318,11 @@ class _PaletteDelegate(QStyledItemDelegate):
         description = painter.fontMetrics().elidedText(
             description, Qt.TextElideMode.ElideRight, max(rect.width() - x, 0)
         )
-        painter.drawText(rect.adjusted(x, 0, 0, 0),
-                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, description)
+        painter.drawText(
+            rect.adjusted(x, 0, 0, 0),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            description,
+        )
 
     @staticmethod
     def _paint_category(
@@ -471,7 +490,9 @@ class Palette(QWidget):  # pylint: disable=too-many-instance-attributes
         self.empty.setObjectName("Muted")
         self.empty.setWordWrap(True)
         self.empty.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        self.empty.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.empty.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+        )
         self.empty.setContentsMargins(6, 10, 6, 6)
         self.body = QStackedWidget()
         self.body.addWidget(self.tree)
@@ -501,7 +522,9 @@ class Palette(QWidget):  # pylint: disable=too-many-instance-attributes
         if collection in self._collections:
             self.tabs.setCurrentIndex(self._collections.index(collection))
 
-    def set_filter(self, accepts: Callable[[type], bool] | None, hint: str = "") -> None:
+    def set_filter(
+        self, accepts: Callable[[type], bool] | None, hint: str = ""
+    ) -> None:
         """
         Disable the classes a selected slot doesn't accept
 
@@ -533,7 +556,9 @@ class Palette(QWidget):  # pylint: disable=too-many-instance-attributes
     def _ordered(self) -> list[Collection]:
         """Syndesi first, then the packages and folders in loading order, Files last"""
         files = [c for c in self.library.collections if c.kind is CollectionKind.FILES]
-        others = [c for c in self.library.collections if c.kind is not CollectionKind.FILES]
+        others = [
+            c for c in self.library.collections if c.kind is not CollectionKind.FILES
+        ]
         return others + [c for c in files if c.classes]
 
     def _sync_tabs(self) -> None:
@@ -562,7 +587,10 @@ class Palette(QWidget):  # pylint: disable=too-many-instance-attributes
     def _visible(self, info: ComponentInfo) -> bool:
         """Shown with the current API (sync or async) and search"""
         text = self.search.text().lower()
-        if info.kind not in (Kind.DRIVER, Kind.SUBDRIVER) and info.is_async != self.async_api:
+        if (
+            info.kind not in (Kind.DRIVER, Kind.SUBDRIVER)
+            and info.is_async != self.async_api
+        ):
             return False
         return not text or text in info.name.lower() or text in info.summary.lower()
 
@@ -607,11 +635,19 @@ class Palette(QWidget):  # pylint: disable=too-many-instance-attributes
             sections = []
             for category in categories:
                 infos = sorted(
-                    (i for i in members if collection.categories.get(i.cls, "") == category),
+                    (
+                        i
+                        for i in members
+                        if collection.categories.get(i.cls, "") == category
+                    ),
                     key=lambda i: (_KIND_ORDER[i.kind], i.name.lower()),
                 )
                 sections.append(
-                    (_CATEGORY + _category_label(collection, category), str(len(infos)), infos)
+                    (
+                        _CATEGORY + _category_label(collection, category),
+                        str(len(infos)),
+                        infos,
+                    )
                 )
 
         for data, text, infos in sections:
@@ -634,7 +670,9 @@ class Palette(QWidget):  # pylint: disable=too-many-instance-attributes
 
         if not self.tree.topLevelItemCount():
             self.empty.setText(
-                "Nothing matches the search here." if self.search.text() else "Nothing to show."
+                "Nothing matches the search here."
+                if self.search.text()
+                else "Nothing to show."
             )
             self.body.setCurrentWidget(self.empty)
 
@@ -657,8 +695,12 @@ class Palette(QWidget):  # pylint: disable=too-many-instance-attributes
             return
         text = []
         if collection.errors:
-            text.append("These modules couldn't be imported, their classes are missing :\n")
-            text += [f"{name}\n    {error}\n" for name, error in collection.errors.items()]
+            text.append(
+                "These modules couldn't be imported, their classes are missing :\n"
+            )
+            text += [
+                f"{name}\n    {error}\n" for name, error in collection.errors.items()
+            ]
         if collection.skipped:
             text.append(
                 "These files weren't imported : they run code when imported (a script) "
@@ -739,7 +781,9 @@ class Palette(QWidget):  # pylint: disable=too-many-instance-attributes
         return classes
 
     def _load_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Load components", "", "Python files (*.py)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load components", "", "Python files (*.py)"
+        )
         if path:
             self.load(path)
 

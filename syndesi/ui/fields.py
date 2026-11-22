@@ -127,7 +127,11 @@ def format_value(value: Any) -> str:
         return choice_text(value)
     if isinstance(value, StopCondition):
         return str(value)
-    if isinstance(value, list) and value and all(isinstance(v, StopCondition) for v in value):
+    if (
+        isinstance(value, list)
+        and value
+        and all(isinstance(v, StopCondition) for v in value)
+    ):
         return ", ".join(str(v) for v in value)
     return repr(value)
 
@@ -139,7 +143,9 @@ def expression_namespace() -> dict[str, Any]:
     from syndesi.protocols import modbus
 
     namespace: dict[str, Any] = {}
-    namespace.update({n: getattr(modbus, n) for n in dir(modbus) if not n.startswith("_")})
+    namespace.update(
+        {n: getattr(modbus, n) for n in dir(modbus) if not n.startswith("_")}
+    )
     namespace.update({n: getattr(syndesi, n) for n in syndesi.__all__})
     namespace["DEFAULT"] = DEFAULT
     return namespace
@@ -285,6 +291,7 @@ class StopConditionsEditor(QWidget):
 # │ Fields │
 # └────────┘
 
+
 class FieldEditor(QWidget):
     """Editor of one parameter"""
 
@@ -306,7 +313,9 @@ class FieldEditor(QWidget):
         self._default_box: QCheckBox | None = None
         if spec.allows_default:
             self._default_box = QCheckBox("Default")
-            self._default_box.setToolTip("Let the component choose (the parameter isn't passed)")
+            self._default_box.setToolTip(
+                "Let the component choose (the parameter isn't passed)"
+            )
             boxes.addWidget(self._default_box)
         # Checked : None is passed
         self._none_box: QCheckBox | None = None
@@ -538,7 +547,11 @@ class ParamForm(QWidget):
     changed = Signal()
 
     def __init__(
-        self, params: list[ParamSpec], *, show_docs: bool = True, labels_above: bool = False
+        self,
+        params: list[ParamSpec],
+        *,
+        show_docs: bool = True,
+        labels_above: bool = False,
     ) -> None:
         super().__init__()
         self.editors: dict[str, FieldEditor] = {}
@@ -551,7 +564,9 @@ class ParamForm(QWidget):
             else QFormLayout.RowWrapPolicy.WrapLongRows
         )
         layout.setVerticalSpacing(10 if labels_above else 6)
-        layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
         for spec in params:
             if spec.is_slot or spec.hidden:
                 continue

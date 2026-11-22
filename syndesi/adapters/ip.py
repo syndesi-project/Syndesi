@@ -83,7 +83,9 @@ class IPDescriptor(Descriptor):
             if not separator:
                 address, port = target, None
         if not address or port == "" or (port is not None and not port.isdigit()):
-            raise ValueError(f"Invalid descriptor : {string!r}, expected {scheme}:address:port")
+            raise ValueError(
+                f"Invalid descriptor : {string!r}, expected {scheme}:address:port"
+            )
         return IPDescriptor(
             address, transport, None if port is None else int(port), server=server
         )
@@ -177,7 +179,9 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
             s.connect((self.descriptor.address, self.descriptor.port))
         except OSError as e:  # ConnectionRefusedError, TimeoutError, gaierror included
             s.close()
-            raise AdapterOpenError(_open_error_message(self.descriptor, e, timeout)) from None
+            raise AdapterOpenError(
+                _open_error_message(self.descriptor, e, timeout)
+            ) from None
 
         # We only set the socket on success to prevent the worker thread
         # from sending events before the adapter is opened
@@ -274,7 +278,7 @@ class IP(Adapter[IPDescriptor, bytes]):
                 address,
                 IPDescriptor.Transport(transport.upper()),
                 port,
-                server=is_server
+                server=is_server,
             ),
             sock,
         )

@@ -379,7 +379,7 @@ class InteractiveTrace(Trace):
         self._scroll_offset: int = 0
         self._auto_follow: bool = True
 
-    #pylint: disable=too-many-branches
+    # pylint: disable=too-many-branches
     def _handle_key(self, token: str) -> bool:
         # returns False to quit
         token = token.strip()
@@ -533,7 +533,7 @@ class _TerminalRawMode:
         self._old: list[Any] | None = None
 
     def __enter__(self) -> _TerminalRawMode:
-        #pylint: disable=possibly-used-before-assignment
+        # pylint: disable=possibly-used-before-assignment
         if os.name != "posix":
             return self
         try:

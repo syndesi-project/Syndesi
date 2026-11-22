@@ -42,7 +42,14 @@ from ..core.introspection import (
     io_payload_type,
     returned_components,
 )
-from ..core.runtime import Role, RuntimeItem, RuntimeTree, describe, is_endpoint, open_targets
+from ..core.runtime import (
+    Role,
+    RuntimeItem,
+    RuntimeTree,
+    describe,
+    is_endpoint,
+    open_targets,
+)
 from ..style.icons import set_icon
 from ..style.theme import EntryStyle
 from ..style.widgets import kind_badge, panel, set_tone, type_chip
@@ -63,6 +70,7 @@ def _role_text(item: RuntimeItem) -> str:
         Role.SUBDRIVER: f"Sub-driver of {parent} : <code>{item.path}</code>",
         Role.RETURNED: f"Returned by <code>{item.path}</code> of {parent}",
     }[item.role]
+
 
 # pylint: disable=too-many-instance-attributes
 class TestScreen(QWidget):
@@ -171,7 +179,7 @@ class TestScreen(QWidget):
             item=runtime.root,
             label="✓ built",
             data=describe(runtime.root.instance),
-            style=EntryStyle.INFO
+            style=EntryStyle.INFO,
         )
         for item in runtime.walk():
             self._relay.listen(item)
@@ -227,7 +235,9 @@ class TestScreen(QWidget):
         title.setObjectName("Heading")
         header.addWidget(title)
         if item.kind in (Kind.ADAPTER, Kind.PROTOCOL):
-            header.addWidget(type_chip(f"provides {component_info(item.cls).provides_label}"))
+            header.addWidget(
+                type_chip(f"provides {component_info(item.cls).provides_label}")
+            )
         role = QLabel(_role_text(item))
         role.setObjectName("Muted")
         header.addWidget(role)
@@ -239,10 +249,15 @@ class TestScreen(QWidget):
         tabs = QTabWidget()
         commands = commands_of(item.cls)
         payload = io_payload_type(item.cls)
-        command_tab = (CommandPanel(self, item, commands), f"Commands ({len(commands)})")
+        command_tab = (
+            CommandPanel(self, item, commands),
+            f"Commands ({len(commands)})",
+        )
         io_tab = (IOPanel(self, item, payload), "I/O") if payload is not None else None
         driver = item.kind in (Kind.DRIVER, Kind.SUBDRIVER)
-        for tab in ([command_tab, io_tab] if driver or io_tab is None else [io_tab, command_tab]):
+        for tab in (
+            [command_tab, io_tab] if driver or io_tab is None else [io_tab, command_tab]
+        ):
             if tab is not None:
                 tabs.addTab(*tab)
         tabs.addTab(StatePanel(self, item), "State")
@@ -265,12 +280,27 @@ class TestScreen(QWidget):
         self.tree.retheme()
 
     # Calls
-    def log(self, *, item: RuntimeItem, label: str, data: str, style: EntryStyle,
-            timestamp: float | None = None, key: str = "") -> None:
+    def log(
+        self,
+        *,
+        item: RuntimeItem,
+        label: str,
+        data: str,
+        style: EntryStyle,
+        timestamp: float | None = None,
+        key: str = "",
+    ) -> None:
         """Add a main row, key : see LogEntry.key"""
         self.log_view.add(
-            LogEntry(time.time() if timestamp is None else timestamp, item.label, item.kind,
-                     label, data, style, key=key)
+            LogEntry(
+                time.time() if timestamp is None else timestamp,
+                item.label,
+                item.kind,
+                label,
+                data,
+                style,
+                key=key,
+            )
         )
 
     def log_error(self, item: RuntimeItem, message: str) -> None:
@@ -297,13 +327,21 @@ class TestScreen(QWidget):
             if generation != self._generation:
                 return
             if error is not None:
-                self.log(item=item, label=failure, data=error_text(error), style=failure_style)
+                self.log(
+                    item=item,
+                    label=failure,
+                    data=error_text(error),
+                    style=failure_style,
+                )
                 if on_error is not None:
                     on_error(error)
                 return
             if on_result is not None:
                 on_result(result)
-            if self.runtime is not None and self.runtime.find(item.instance) is not None:
+            if (
+                self.runtime is not None
+                and self.runtime.find(item.instance) is not None
+            ):
                 for new in self.runtime.refresh(item):
                     self._add(new)
 
@@ -314,14 +352,16 @@ class TestScreen(QWidget):
         if self.runtime is None:
             return
         for found in returned_components(value):
-            new = self.runtime.add(found.instance, Role.RETURNED, call_text + found.path, item)
+            new = self.runtime.add(
+                found.instance, Role.RETURNED, call_text + found.path, item
+            )
             if new is not None:
                 self._add(new)
                 self.log(
                     item=item,
                     label="+ object",
                     data=f"{new.label} added to the objects",
-                    style=EntryStyle.INFO
+                    style=EntryStyle.INFO,
                 )
 
     def open(self) -> None:
@@ -338,7 +378,12 @@ class TestScreen(QWidget):
         targets = open_targets(self.runtime)
         for target in targets:
             item = self.runtime.find(target) or self.runtime.root
-            self.log(item=item, label="▶ command", data=f"{action}()", style=EntryStyle.COMMAND)
+            self.log(
+                item=item,
+                label="▶ command",
+                data=f"{action}()",
+                style=EntryStyle.COMMAND,
+            )
 
         def job() -> None:
             for target in targets:

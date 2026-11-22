@@ -103,7 +103,9 @@ def _accept_name(init: Callable[..., None]) -> Callable[..., None]:
     """
 
     @functools.wraps(init)
-    def __init__(self: Bridge, *args: Any, name: str | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self: Bridge, *args: Any, name: str | None = None, **kwargs: Any
+    ) -> None:
         if name is not None:
             self.set_bridge_name(name)
         init(self, *args, **kwargs)
@@ -114,7 +116,8 @@ def _accept_name(init: Callable[..., None]) -> Callable[..., None]:
         return __init__
     parameters = list(signature.parameters.values())
     position = next(
-        (i for i, p in enumerate(parameters) if p.kind is p.VAR_KEYWORD), len(parameters)
+        (i for i, p in enumerate(parameters) if p.kind is p.VAR_KEYWORD),
+        len(parameters),
     )
     parameters.insert(
         position,
@@ -179,9 +182,7 @@ class Bridge:
         self.__dict__["_bridge_name"] = name
         _names[name] = self
 
-    def run(
-        self, function: Callable[..., ResultT], *args: Any
-    ) -> Future[ResultT]:
+    def run(self, function: Callable[..., ResultT], *args: Any) -> Future[ResultT]:
         """
         Run ``function(*args)`` on the bridge thread and return its future
 

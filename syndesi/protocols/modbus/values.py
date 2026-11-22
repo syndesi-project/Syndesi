@@ -36,6 +36,7 @@ class ModbusMultiRegisterValue:
     """
     A wrapper for a multi-register modbus value
     """
+
     _buffer: bytes
 
     # Formats based on the number of registers (half the number of bytes)
@@ -226,10 +227,8 @@ class ModbusMultiRegisterValue:
     ) -> ModbusMultiRegisterValue:
         """Create a multi-register value from an array"""
         if len(array) != 2 * n_registers:
-            raise ValueError(
-                f"Cannot fit '{array!r}' ({len(array)}) into \
-                    {n_registers} registers ({2*n_registers})"
-            )
+            raise ValueError(f"Cannot fit '{array!r}' ({len(array)}) into \
+                    {n_registers} registers ({2*n_registers})")
         return ModbusMultiRegisterValue(
             array, word_order=word_order, byte_order=byte_order
         )

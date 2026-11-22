@@ -308,7 +308,9 @@ class LinuxSPI(SPIBridge):
         if settings.mode is not None:
             _ioctl(fd, _SPI_IOC_WR_MODE, ctypes.c_uint8(settings.mode))
         if settings.bits_per_word is not None:
-            _ioctl(fd, _SPI_IOC_WR_BITS_PER_WORD, ctypes.c_uint8(settings.bits_per_word))
+            _ioctl(
+                fd, _SPI_IOC_WR_BITS_PER_WORD, ctypes.c_uint8(settings.bits_per_word)
+            )
         if settings.speed_hz is not None:
             _ioctl(fd, _SPI_IOC_WR_MAX_SPEED_HZ, ctypes.c_uint32(settings.speed_hz))
 

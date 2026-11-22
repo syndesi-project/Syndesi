@@ -72,7 +72,9 @@ def _rgba(color: QColor, alpha: float) -> str:
 @cache
 def _stylesheet_template() -> str:
     """style.qss, $name being the tokens filled in by Theme.stylesheet"""
-    return (resources.files("syndesi.ui.style") / "style.qss").read_text(encoding="utf-8")
+    return (resources.files("syndesi.ui.style") / "style.qss").read_text(
+        encoding="utf-8"
+    )
 
 
 # pylint: disable=too-many-public-methods
@@ -283,8 +285,6 @@ class Theme:
         return palette
 
 
-
-
 _THEME: Theme | None = None
 _FONTS_LOADED = False
 
@@ -311,6 +311,7 @@ class ThemeEvents(QObject):
     """Emits changed when the theme is switched while the application runs"""
 
     changed = Signal()
+
 
 _EVENTS: ThemeEvents | None = None
 

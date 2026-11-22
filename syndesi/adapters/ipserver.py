@@ -39,9 +39,12 @@ class Client:
 
 DEFAULT_BACKLOG = 5
 
-ClientTypeT = TypeVar("ClientTypeT", bound=IP|AsyncIP)
+ClientTypeT = TypeVar("ClientTypeT", bound=IP | AsyncIP)
 
-class IPServerBackendCommon(Generic[ClientTypeT], AdapterBackend[IPDescriptor, ClientTypeT]):
+
+class IPServerBackendCommon(
+    Generic[ClientTypeT], AdapterBackend[IPDescriptor, ClientTypeT]
+):
     """
     Listens on an address and accepts connections
 
@@ -54,8 +57,8 @@ class IPServerBackendCommon(Generic[ClientTypeT], AdapterBackend[IPDescriptor, C
     def __init__(
         self,
         descriptor: IPDescriptor,
-        stop_conditions : list[StopCondition],
-        backlog: int
+        stop_conditions: list[StopCondition],
+        backlog: int,
     ) -> None:
         super().__init__(descriptor)
         self._socket: socket.socket | None = None
@@ -104,11 +107,7 @@ class IPServerBackendCommon(Generic[ClientTypeT], AdapterBackend[IPDescriptor, C
             sock, (address, port) = self._socket.accept()
         except OSError as e:
             raise AdapterReadError(f"Cannot accept on {self.descriptor} : {e}") from e
-        return Client(
-                address=address,
-                port=port,
-                socket=sock
-            )
+        return Client(address=address, port=port, socket=sock)
 
     def write(self, data: ClientTypeT) -> None:
         raise AdapterWriteError(
@@ -122,11 +121,12 @@ class IPServerBackendCommon(Generic[ClientTypeT], AdapterBackend[IPDescriptor, C
         return None
 
     @abstractmethod
-    def read(self, fragment_timestamp: float) -> Fragment[ClientTypeT]:
-        ...
+    def read(self, fragment_timestamp: float) -> Fragment[ClientTypeT]: ...
+
 
 class IPServerBackend(IPServerBackendCommon[IP]):
     """IPServer backend for sync implementation"""
+
     def read(self, fragment_timestamp: float) -> Fragment[IP]:
         client = self._get_client()
         fragment = Fragment(
@@ -134,14 +134,16 @@ class IPServerBackend(IPServerBackendCommon[IP]):
                 address=client.address,
                 port=client.port,
                 sock=client.socket,
-                stop_conditions=self._stop_conditions
+                stop_conditions=self._stop_conditions,
             ),
-            timestamp=fragment_timestamp
+            timestamp=fragment_timestamp,
         )
         return fragment
 
+
 class AsyncIPServerBackend(IPServerBackendCommon[AsyncIP]):
     """IPServer backend for async implementation"""
+
     def read(self, fragment_timestamp: float) -> Fragment[AsyncIP]:
         client = self._get_client()
         return Fragment(
@@ -149,10 +151,11 @@ class AsyncIPServerBackend(IPServerBackendCommon[AsyncIP]):
                 address=client.address,
                 port=client.port,
                 sock=client.socket,
-                stop_conditions=self._stop_conditions
+                stop_conditions=self._stop_conditions,
             ),
-            timestamp=fragment_timestamp
+            timestamp=fragment_timestamp,
         )
+
 
 class IPServer(Adapter[IPDescriptor, IP]):
     """

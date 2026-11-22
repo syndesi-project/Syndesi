@@ -12,7 +12,7 @@ All the methods in the "Reactor interface" section run on the reactor thread and
 must not be called by the user. Everything else is thread safe
 """
 
-#pylint: disable=too-many-lines
+# pylint: disable=too-many-lines
 
 from __future__ import annotations
 
@@ -665,7 +665,11 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
                 # No need to report a simple disconnection. A read waiting gets the
                 # error and may handle it, otherwise nobody would hear of it
                 self._logger.log(
-                    logging.DEBUG if self._pending_read is not None else logging.WARNING,
+                    (
+                        logging.DEBUG
+                        if self._pending_read is not None
+                        else logging.WARNING
+                    ),
                     "Failed to read from %s (%s)",
                     self.descriptor,
                     e,
@@ -887,7 +891,9 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         while self._pending_writes and self._pending_writes[0][1].done():
             command, done, start = self._pending_writes.popleft()
             error = (
-                AdapterWriteError("Write cancelled") if done.cancelled() else done.exception()
+                AdapterWriteError("Write cancelled")
+                if done.cancelled()
+                else done.exception()
             )
             self._write_done(command, error, start)
 
@@ -906,7 +912,7 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
     # │ Reads │
     # └───────┘
 
-    #pylint: disable=too-many-return-statements
+    # pylint: disable=too-many-return-statements
     def _begin_read(self, command: ReadCommand[DataT]) -> None:
         now = time.time()
 

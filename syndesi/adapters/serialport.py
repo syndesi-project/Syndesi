@@ -74,7 +74,9 @@ class SerialPortDescriptor(Descriptor):
         if not separator or not baudrate.isdigit():
             port, baudrate = target, ""
         if not port:
-            raise ValueError(f"Invalid descriptor : {string!r}, expected serial:port:baudrate")
+            raise ValueError(
+                f"Invalid descriptor : {string!r}, expected serial:port:baudrate"
+            )
         return SerialPortDescriptor(port, int(baudrate) if baudrate else None)
 
     def __str__(self) -> str:
@@ -205,7 +207,9 @@ class SerialPortBackend(AdapterBackend[SerialPortDescriptor, bytes]):
                 exclusive=True,
             )
         except serial.SerialException as e:
-            raise AdapterOpenError(_open_error_message(self.descriptor.port, e)) from None
+            raise AdapterOpenError(
+                _open_error_message(self.descriptor.port, e)
+            ) from None
 
         if not port.is_open:
             raise AdapterOpenError(f"Port '{self.descriptor.port}' did not open")
@@ -358,7 +362,9 @@ class BridgedSerialPortBackend(AdapterBackend[SerialPortDescriptor, bytes]):
             raise AdapterWriteError(f"{self.descriptor} is not open")
         error = configured.exception()
         if error is not None:
-            raise AdapterWriteError(f"{self.descriptor} : configuration failed ({error})")
+            raise AdapterWriteError(
+                f"{self.descriptor} : configuration failed ({error})"
+            )
         self._bridge.serial_write(data)
 
     def _read_once(self) -> bytes | None:
@@ -367,7 +373,9 @@ class BridgedSerialPortBackend(AdapterBackend[SerialPortDescriptor, bytes]):
         if configured is not None:
             error = configured.exception()
             if error is not None:
-                raise AdapterOpenError(f"{self.descriptor} : configuration failed ({error})")
+                raise AdapterOpenError(
+                    f"{self.descriptor} : configuration failed ({error})"
+                )
         start = time.monotonic()
         period = self._bridge.SERIAL_POLL_PERIOD
         data = self._bridge.run(self._bridge.serial_read, period).result()

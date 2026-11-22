@@ -143,7 +143,9 @@ class MainWindow(QMainWindow):
         on_stack = self.pages.currentIndex() == 0
         self.build_button.setVisible(on_stack)
         self.build_button.setText("Rebuild && test" if self._built else "Build && test")
-        self.build_button.setEnabled(self.stack_screen.complete and not self.worker.busy)
+        self.build_button.setEnabled(
+            self.stack_screen.complete and not self.worker.busy
+        )
         # Back to the test without rebuilding, only if it still matches the stack
         self.to_test_button.setVisible(on_stack and self._built and not self._outdated)
         self.edit_button.setVisible(not on_stack)
@@ -225,7 +227,9 @@ class MainWindow(QMainWindow):
     def open_stack(self, path: str | None = None) -> None:
         """Load a saved stack"""
         if not path:
-            path, _ = QFileDialog.getOpenFileName(self, "Open a stack", "", STACK_FILTER)
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Open a stack", "", STACK_FILTER
+            )
             if not path:
                 return
         try:
@@ -241,7 +245,9 @@ class MainWindow(QMainWindow):
     def save_stack(self) -> None:
         """Save the stack"""
         start = str(self._path) if self._path else "stack.json"
-        path, _ = QFileDialog.getSaveFileName(self, "Save the stack", start, STACK_FILTER)
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save the stack", start, STACK_FILTER
+        )
         if not path:
             return
         try:
@@ -290,7 +296,9 @@ def leaks_none_references() -> bool:
 
 def main(args: list[str] | None = None) -> int:
     """Entry point of syndesi ui"""
-    parser = argparse.ArgumentParser(prog="syndesi ui", description="Syndesi graphical interface")
+    parser = argparse.ArgumentParser(
+        prog="syndesi ui", description="Syndesi graphical interface"
+    )
     parser.add_argument("stack", nargs="?", help="stack file saved by the GUI (.json)")
     parser.add_argument(
         "-l",

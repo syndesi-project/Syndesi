@@ -167,7 +167,9 @@ class Library:
     collections: list[Collection] = field(default_factory=list)
 
     @classmethod
-    def default(cls, packages: tuple[DefaultPackage, ...] = DEFAULT_PACKAGES) -> Library:
+    def default(
+        cls, packages: tuple[DefaultPackage, ...] = DEFAULT_PACKAGES
+    ) -> Library:
         """The adapters, protocols and drivers of syndesi, and the default packages"""
         builtin = _builtin_classes()
         library = cls(
@@ -225,7 +227,9 @@ class Library:
     def add(self, cls: type, source: str | None = None) -> None:
         """Add a component class"""
         if kind_of(cls) is None:
-            raise LibraryError(f"{cls.__qualname__} isn't an adapter, a protocol or a driver")
+            raise LibraryError(
+                f"{cls.__qualname__} isn't an adapter, a protocol or a driver"
+            )
         if cls not in self.classes:
             self.classes.append(cls)
         if source is not None:
@@ -329,7 +333,9 @@ class Library:
         module = _import_file(path)
         return self._pick(module, location, class_name, path.name)
 
-    def _load_module(self, module: ModuleType, location: str, class_name: str) -> list[type]:
+    def _load_module(
+        self, module: ModuleType, location: str, class_name: str
+    ) -> list[type]:
         return self._pick(module, location, class_name, location)
 
     def _pick(
@@ -359,7 +365,9 @@ class Library:
 
         package = _import_module(module_name)
         collection = Collection(name, CollectionKind.PACKAGE, location=location)
-        self._collect(collection, package, location, _category(module_name, module_name, True))
+        self._collect(
+            collection, package, location, _category(module_name, module_name, True)
+        )
 
         pending = [package]
         while pending:
@@ -380,7 +388,10 @@ class Library:
                 try:
                     module = importlib.import_module(info.name)
                 # SystemExit too : a sys.exit() in a module must not close the GUI
-                except (Exception, SystemExit) as e:  # pylint: disable=broad-exception-caught
+                except (
+                    Exception,
+                    SystemExit,
+                ) as e:  # pylint: disable=broad-exception-caught
                     collection.errors[info.name] = f"{type(e).__name__}: {e}"
                     continue
                 category = _category(info.name, module_name, info.ispkg)
@@ -509,10 +520,14 @@ def _not_a_library(path: Path) -> str:
 def _nothing_loaded(name: str, collection: Collection) -> str:
     message = f"No adapter, protocol or driver class could be loaded from {name}"
     if collection.errors:
-        details = "\n".join(f"  {k} : {v}" for k, v in list(collection.errors.items())[:5])
+        details = "\n".join(
+            f"  {k} : {v}" for k, v in list(collection.errors.items())[:5]
+        )
         message += f"\n\nErrors :\n{details}"
     if collection.skipped:
-        message += "\n\nSkipped :\n" + "\n".join(f"  {s}" for s in collection.skipped[:5])
+        message += "\n\nSkipped :\n" + "\n".join(
+            f"  {s}" for s in collection.skipped[:5]
+        )
     return message
 
 

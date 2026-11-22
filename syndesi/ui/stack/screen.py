@@ -159,7 +159,10 @@ class StackScreen(QWidget):
         return self.runtime.find(node.instance)
 
     def fill_menu(
-        self, menu: QMenu, accepts: Callable[[type], bool], action: Callable[[type], None]
+        self,
+        menu: QMenu,
+        accepts: Callable[[type], bool],
+        action: Callable[[type], None],
     ) -> None:
         """Add the compatible classes to a menu, grouped by layer"""
         infos = [component_info(c) for c in self.visible_classes() if accepts(c)]
@@ -239,7 +242,8 @@ class StackScreen(QWidget):
         else:
             spec = parent.slot_spec(slot)
             self.library_panel.set_filter(
-                spec.accepts, f"Showing what {parent.info.name}.{slot} accepts : {spec.type_label}"
+                spec.accepts,
+                f"Showing what {parent.info.name}.{slot} accepts : {spec.type_label}",
             )
             self.inspector.show_slot(parent, spec)
         self._render()
@@ -260,7 +264,9 @@ class StackScreen(QWidget):
                     self.wrap_root(cls)
                 return
             self.fill_slot(parent, slot, cls)
-        elif self.selected_node is not None and self.can_replace(self.selected_node, cls):
+        elif self.selected_node is not None and self.can_replace(
+            self.selected_node, cls
+        ):
             self.replace_node(self.selected_node, cls)
         elif self.root is None:
             self.fill_slot(None, None, cls)

@@ -117,7 +117,9 @@ class IOPanel(QWidget):
         is_bytes = payload is bytes
         self.format = QComboBox()
         self.format.addItems(["Text", "Hex"] if is_bytes else ["Text"])
-        self.format.setToolTip("Text : \\n \\r \\t \\xHH escapes accepted\nHex : 01 02 ff")
+        self.format.setToolTip(
+            "Text : \\n \\r \\t \\xHH escapes accepted\nHex : 01 02 ff"
+        )
         self.format.setEnabled(is_bytes)
         explanation = QLabel(
             f"Payloads are <code>{payload.__name__}</code>"
@@ -179,7 +181,9 @@ class IOPanel(QWidget):
         read_row.addWidget(QLabel("scope"))
         read_row.addWidget(self.scope)
         # The timeout parameter of read(), with its Default / None checkboxes
-        read_params = signature_params(type(item.instance).read, type(item.instance), {})
+        read_params = signature_params(
+            type(item.instance).read, type(item.instance), {}
+        )
         timeout_spec = next(p for p in read_params if p.name == "timeout")
         self.timeout = FieldEditor(timeout_spec)
         self.timeout.setToolTip(
@@ -313,7 +317,9 @@ class IOPanel(QWidget):
         set_tone(self.buffer_count, "warning" if frames else "")
 
     def _show_received(self) -> None:
-        self.received.setPlainText("\n".join(self._line(*entry) for entry in self._history))
+        self.received.setPlainText(
+            "\n".join(self._line(*entry) for entry in self._history)
+        )
         self.received.moveCursor(self.received.textCursor().MoveOperation.End)
 
     def _clear_received(self) -> None:
@@ -331,7 +337,7 @@ class IOPanel(QWidget):
             label="← read",
             data=repr(result),
             style=EntryStyle.READ,
-            key=read_key(result)
+            key=read_key(result),
         )
         self._add_received(result)
 
@@ -361,13 +367,13 @@ class IOPanel(QWidget):
             label="→ write",
             data=repr(data),
             style=EntryStyle.WRITE,
-            key=write_key(data)
+            key=write_key(data),
         )
         self.owner.run(
             item=self.item,
             call=lambda: instance.write(data),
             on_result=None,
-            failure="✗ write"
+            failure="✗ write",
         )
 
     def query(self) -> None:
@@ -387,7 +393,7 @@ class IOPanel(QWidget):
             label="→ write",
             data=repr(data),
             style=EntryStyle.WRITE,
-            key=write_key(data)
+            key=write_key(data),
         )
         self.owner.run(
             self.item,
@@ -420,6 +426,6 @@ class IOPanel(QWidget):
             item=self.item,
             label="▶ command",
             data=f"{name}()",
-            style=EntryStyle.COMMAND
+            style=EntryStyle.COMMAND,
         )
         self.owner.run(self.item, getattr(instance, name), None)

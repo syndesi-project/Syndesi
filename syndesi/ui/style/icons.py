@@ -120,7 +120,8 @@ def _register(target: Any, name: str, color: str | None, size: int) -> None:
     # The canvas is redrawn often : forget the widgets deleted since
     if len(_registry) > 400:
         _registry[:] = [
-            entry for entry in _registry
+            entry
+            for entry in _registry
             if (alive := entry[0]()) is not None and shiboken6.isValid(alive)
         ]
     _registry.append((weakref.ref(target), name, color, size))
@@ -142,7 +143,9 @@ def set_pixmap(label: Any, name: str, color: str | None = None, size: int = 16) 
 
 def add_leading_icon(line_edit: Any, name: str, color: str | None = "muted") -> None:
     """An icon at the start of a line edit (a search field, ...)"""
-    action = line_edit.addAction(icon(name, color), line_edit.ActionPosition.LeadingPosition)
+    action = line_edit.addAction(
+        icon(name, color), line_edit.ActionPosition.LeadingPosition
+    )
     set_icon(action, name, color)
 
 

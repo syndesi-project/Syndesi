@@ -33,7 +33,9 @@ class StackNode:
         self.info = component_info(cls)
         # Only the values the user set, see the module docstring
         self.values: dict[str, Any] = {}
-        self.children: dict[str, StackNode | None] = {s.name: None for s in self.info.slots}
+        self.children: dict[str, StackNode | None] = {
+            s.name: None for s in self.info.slots
+        }
         self.parent: StackNode | None = None
         self.parent_slot: str | None = None
         # Built instance, None until the stack is built
@@ -86,8 +88,14 @@ class StackNode:
             for spec in node.info.params:
                 if spec.is_slot:
                     if node.children.get(spec.name) is None and spec.required:
-                        result.append(f"{node.info.name} : choose what '{spec.name}' is built on")
-                elif not spec.hidden and spec.required and node.values.get(spec.name) in (None, ""):
+                        result.append(
+                            f"{node.info.name} : choose what '{spec.name}' is built on"
+                        )
+                elif (
+                    not spec.hidden
+                    and spec.required
+                    and node.values.get(spec.name) in (None, "")
+                ):
                     if spec.allows_none and spec.name in node.values:
                         continue
                     result.append(f"{node.info.name} : '{spec.name}' is required")
@@ -181,8 +189,11 @@ class Stack:
         new.values = {k: v for k, v in node.values.items() if k in known}
         for child in [c for c in node.children.values() if c is not None]:
             slot = next(
-                (s.name for s in new.info.slots
-                 if new.children[s.name] is None and s.accepts(child.cls)),
+                (
+                    s.name
+                    for s in new.info.slots
+                    if new.children[s.name] is None and s.accepts(child.cls)
+                ),
                 None,
             )
             if slot is not None:
@@ -203,7 +214,11 @@ class Stack:
         if node.parent is None:
             return child
         assert node.parent_slot is not None
-        return child if node.parent.slot_spec(node.parent_slot).accepts(child.cls) else None
+        return (
+            child
+            if node.parent.slot_spec(node.parent_slot).accepts(child.cls)
+            else None
+        )
 
     def remove(self, node: StackNode, keep_child: bool) -> StackNode | None:
         """

@@ -25,6 +25,7 @@ from prompt_toolkit.keys import Keys
 
 DATA_DIR_NAME = "syndesi"
 
+
 # pylint: disable=too-many-instance-attributes
 class Shell:
     """

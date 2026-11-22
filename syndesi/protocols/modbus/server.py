@@ -145,7 +145,7 @@ class ModbusHandlerErrorEvent(ProtocolEvent):
     error: Exception
 
 
-#pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-instance-attributes
 class ModbusServerCommon:
     """
     Data model and request handling shared by ModbusServer and AsyncModbusServer
@@ -207,8 +207,7 @@ class ModbusServerCommon:
         return self.__str__()
 
     @abstractmethod
-    def __str__(self) -> str:
-        ...
+    def __str__(self) -> str: ...
 
     def register_event_callback(self, callback: Callable[[SyndesiEvent], None]) -> None:
         """
@@ -235,7 +234,7 @@ class ModbusServerCommon:
     # │ Request handling │
     # └──────────────────┘
 
-    #pylint: disable=too-many-branches
+    # pylint: disable=too-many-branches
     def default_handler(
         self, request: ModbusRequestSDU
     ) -> ModbusResponseSDU[Any] | None:
@@ -489,7 +488,7 @@ class ModbusServer(ModbusServerCommon):
         elif self._serial is not None:
             desc = str(self._serial[0])
         else:
-            desc = 'error'
+            desc = "error"
 
         return f"ModbusServer({desc})"
 
@@ -640,7 +639,7 @@ class AsyncModbusServer(ModbusServerCommon):
         elif self._serial is not None:
             desc = str(self._serial[0])
         else:
-            desc = 'error'
+            desc = "error"
 
         return f"AsyncModbusServer({desc})"
 
