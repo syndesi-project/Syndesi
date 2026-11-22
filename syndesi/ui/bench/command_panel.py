@@ -45,10 +45,14 @@ if TYPE_CHECKING:
     from .screen import TestScreen
 
 
+# pylint: disable=too-many-instance-attributes
 class CommandPanel(QWidget):
     """The public methods of a component, with a form for their arguments"""
 
-    def __init__(self, screen: TestScreen, item: RuntimeItem, commands: list[CommandInfo]) -> None:
+    # pylint: disable=too-many-statements
+    def __init__(
+        self, screen: TestScreen, item: RuntimeItem, commands: list[CommandInfo]
+    ) -> None:
         super().__init__()
         self.owner = screen
         self.item = item
@@ -82,7 +86,9 @@ class CommandPanel(QWidget):
         self.signature = QLabel()
         self.signature.setFont(monospace())
         self.signature.setWordWrap(True)
-        self.signature.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.signature.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self.right.addWidget(self.signature)
         self.summary = QLabel()
         self.summary.setObjectName("Muted")
@@ -96,7 +102,9 @@ class CommandPanel(QWidget):
         self.result = QLabel()
         self.result.setFont(monospace())
         self.result.setWordWrap(True)
-        self.result.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.result.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         row.addWidget(self.result, 1)
         self.run_button = QPushButton("Run")
         set_icon(self.run_button, "play", "white")
@@ -115,7 +123,11 @@ class CommandPanel(QWidget):
         owner = None
         first: QListWidgetItem | None = None
         for command in self.commands:
-            if text and text not in command.name.lower() and text not in command.summary.lower():
+            if (
+                text
+                and text not in command.name.lower()
+                and text not in command.summary.lower()
+            ):
                 continue
             group = command.owner.__name__
             if command.is_framework:
@@ -178,26 +190,36 @@ class CommandPanel(QWidget):
             self.result.setText(f"✗ {e}")
             set_tone(self.result, "error")
             return
-        call_text = ", ".join([repr(a) for a in args] + [f"{k}={v!r}" for k, v in kwargs.items()])
+        call_text = ", ".join(
+            [repr(a) for a in args] + [f"{k}={v!r}" for k, v in kwargs.items()]
+        )
         call_text = f"{command.name}({call_text})"
         method = getattr(self.item.instance, command.name)
         self.result.setText("running…")
         set_tone(self.result, "muted")
-        self.owner.log(self.item, "▶ command", call_text, EntryStyle.COMMAND)
+        self.owner.log(
+            item=self.item, label="▶ command", data=call_text, style=EntryStyle.COMMAND
+        )
 
         def done(result: Any) -> None:
             text = "done" if result is None else repr(result)
             self.result.setText(f"= {text}")
             set_tone(self.result, "")
-            self.owner.log(self.item, "= result", "None" if result is None else repr(result),
-                            EntryStyle.RESULT)
+            self.owner.log(
+                item=self.item,
+                label="= result",
+                data="None" if result is None else repr(result),
+                style=EntryStyle.RESULT,
+            )
             self.owner.add_returned(self.item, result, call_text)
 
         def failed(error: BaseException) -> None:
             self.result.setText(f"✗ {error_text(error)}")
             set_tone(self.result, "error")
 
-        self.owner.run(self.item, lambda: method(*args, **kwargs), done, on_error=failed)
+        self.owner.run(
+            self.item, lambda: method(*args, **kwargs), done, on_error=failed
+        )
 
 
 # ┌───────┐

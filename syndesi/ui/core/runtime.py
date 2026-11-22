@@ -76,7 +76,9 @@ class RuntimeTree:
     """
 
     def __init__(self, root: StackNode) -> None:
-        self._external = {id(n.instance): n for n in root.walk() if n.instance is not None}
+        self._external = {
+            id(n.instance): n for n in root.walk() if n.instance is not None
+        }
         self._placed: set[int] = set()
         self._names: dict[str, int] = {}
         self.root = self._item(root.instance, Role.TOP, "", None)
@@ -113,7 +115,9 @@ class RuntimeTree:
                 continue
             if id(found.instance) in self._external:
                 role = Role.EXTERNAL
-            elif isinstance(found.instance, SubDriver) and not isinstance(found.instance, Driver):
+            elif isinstance(found.instance, SubDriver) and not isinstance(
+                found.instance, Driver
+            ):
                 role = Role.SUBDRIVER
             else:
                 role = Role.INTERNAL
@@ -123,9 +127,13 @@ class RuntimeTree:
             for slot, child in item.node.children.items():
                 if child is not None and child.instance is not None:
                     if id(child.instance) not in self._placed:
-                        self._place(self._item(child.instance, Role.EXTERNAL, slot, item))
+                        self._place(
+                            self._item(child.instance, Role.EXTERNAL, slot, item)
+                        )
 
-    def add(self, instance: Any, role: Role, path: str, parent: RuntimeItem) -> RuntimeItem | None:
+    def add(
+        self, instance: Any, role: Role, path: str, parent: RuntimeItem
+    ) -> RuntimeItem | None:
         """Add a component found later (returned by a command), None if already there"""
         if id(instance) in self._placed:
             return None
@@ -154,6 +162,7 @@ def is_endpoint(obj: Any) -> bool:
 
 
 def is_adapter(obj: Any) -> bool:
+    """Return True if the object is an Adapter or AsyncAdapter"""
     return isinstance(obj, (Adapter, AsyncAdapter))
 
 

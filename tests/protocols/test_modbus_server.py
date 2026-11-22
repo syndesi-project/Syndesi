@@ -40,7 +40,7 @@ from syndesi.protocols.modbus import (
 )
 from syndesi.protocols.modbus.backend import _serial_backend
 from syndesi.protocols.protocol import ProtocolFrameEvent
-from syndesi.tools.errors import AdapterTimeoutError, ProtocolError
+from syndesi.errors import AdapterTimeoutError, ProtocolError
 
 HOST = "localhost"
 BAUDRATE = 19200

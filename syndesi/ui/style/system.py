@@ -83,7 +83,9 @@ class SystemWatcher(QObject):
         self._dark = system_prefers_dark()
         QGuiApplication.styleHints().colorSchemeChanged.connect(self._qt_changed)
         try:
-            from PySide6.QtDBus import QDBusConnection  # pylint: disable=import-outside-toplevel
+            from PySide6.QtDBus import (
+                QDBusConnection,
+            )  # pylint: disable=import-outside-toplevel
         except ImportError:
             return
         bus = QDBusConnection.sessionBus()

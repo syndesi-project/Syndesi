@@ -17,14 +17,12 @@ from syndesi import (
     AsyncI2C,
     AsyncSPI,
     LinuxI2C,
-    LinuxSPI,
-    auto_adapter,
-    auto_async_adapter,
+    LinuxSPI
 )
 from syndesi.adapters.i2c import I2CDescriptor
 from syndesi.adapters.spi import SPIDescriptor
 from syndesi.bridges import linux
-from syndesi.tools.errors import AdapterWriteError
+from syndesi.errors import AdapterWriteError
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="native buses are Linux only"
@@ -185,17 +183,6 @@ def test_spi_settings_are_checked(kernel):
         SPI("/dev/spidev0.0", mode=4)
     with pytest.raises(ValueError):
         SPI("/dev/spidev0.0", speed_hz=0)
-
-
-def test_auto_adapter(kernel):
-    i2c = auto_adapter("i2c:/dev/i2c-3@0x48")
-    assert isinstance(i2c, I2C) and str(i2c) == "i2c:/dev/i2c-3@0x48"
-    spi = auto_adapter("spi:/dev/spidev0.1")
-    assert isinstance(spi, SPI) and str(spi) == "spi:/dev/spidev0.1"
-    assert spi.transfer(b"\x0f") == b"\xf0"
-    assert isinstance(auto_async_adapter("i2c:/dev/i2c-3@0x48"), AsyncI2C)
-    assert isinstance(auto_async_adapter("spi:/dev/spidev0.1"), AsyncSPI)
-
 
 def test_descriptors_round_trip():
     for string in ("i2c:/dev/i2c-1@0x48", "i2c:MCP2221@0x20"):

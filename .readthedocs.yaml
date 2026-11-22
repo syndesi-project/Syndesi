@@ -6,16 +6,21 @@ build:
     python: "3.11"
   apt_packages:
     - graphviz
+  jobs:
+    # Sphinx and its extensions : the "docs" group of pyproject.toml.
+    # pip reads dependency groups since 25.1
+    post_install:
+      - python -m pip install --upgrade "pip>=25.1"
+      - python -m pip install --group docs
 
 python:
   install:
     - method: pip
       path: .
-    - requirements: docs/requirements.txt
 
 sphinx:
   configuration: docs/source/conf.py
 
-formats: 
+formats:
   - pdf
   - epub

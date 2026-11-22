@@ -61,15 +61,15 @@ _SVG = (
     'stroke-linejoin="round">{body}</svg>'
 )
 
-_directory: Path | None = None
+_DIRECTORY: Path | None = None
 
 
 def _cache() -> Path:
-    global _directory  # pylint: disable=global-statement
-    if _directory is None:
-        _directory = Path(tempfile.mkdtemp(prefix="syndesi-icons-"))
-        atexit.register(shutil.rmtree, _directory, True)
-    return _directory
+    global _DIRECTORY  # pylint: disable=global-statement
+    if _DIRECTORY is None:
+        _DIRECTORY = Path(tempfile.mkdtemp(prefix="syndesi-icons-"))
+        atexit.register(shutil.rmtree, _DIRECTORY, True)
+    return _DIRECTORY
 
 
 def icon_file(name: str, color: str) -> str:
@@ -120,7 +120,8 @@ def _register(target: Any, name: str, color: str | None, size: int) -> None:
     # The canvas is redrawn often : forget the widgets deleted since
     if len(_registry) > 400:
         _registry[:] = [
-            entry for entry in _registry
+            entry
+            for entry in _registry
             if (alive := entry[0]()) is not None and shiboken6.isValid(alive)
         ]
     _registry.append((weakref.ref(target), name, color, size))
@@ -142,7 +143,9 @@ def set_pixmap(label: Any, name: str, color: str | None = None, size: int = 16) 
 
 def add_leading_icon(line_edit: Any, name: str, color: str | None = "muted") -> None:
     """An icon at the start of a line edit (a search field, ...)"""
-    action = line_edit.addAction(icon(name, color), line_edit.ActionPosition.LeadingPosition)
+    action = line_edit.addAction(
+        icon(name, color), line_edit.ActionPosition.LeadingPosition
+    )
     set_icon(action, name, color)
 
 

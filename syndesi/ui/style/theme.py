@@ -72,9 +72,12 @@ def _rgba(color: QColor, alpha: float) -> str:
 @cache
 def _stylesheet_template() -> str:
     """style.qss, $name being the tokens filled in by Theme.stylesheet"""
-    return (resources.files("syndesi.ui.style") / "style.qss").read_text(encoding="utf-8")
+    return (resources.files("syndesi.ui.style") / "style.qss").read_text(
+        encoding="utf-8"
+    )
 
 
+# pylint: disable=too-many-public-methods
 @dataclass(frozen=True)
 class Theme:
     """Design tokens of a light or a dark theme"""
@@ -282,22 +285,20 @@ class Theme:
         return palette
 
 
-
-
-_theme: Theme | None = None
-_fonts_loaded = False
+_THEME: Theme | None = None
+_FONTS_LOADED = False
 
 
 def theme() -> Theme:
     """Current theme"""
-    return _theme if _theme is not None else Theme(dark=False)
+    return _THEME if _THEME is not None else Theme(dark=False)
 
 
 def load_fonts() -> bool:
     """Register the bundled fonts, True if Inter is available"""
-    global _fonts_loaded  # pylint: disable=global-statement
-    if not _fonts_loaded:
-        _fonts_loaded = True
+    global _FONTS_LOADED  # pylint: disable=global-statement
+    if not _FONTS_LOADED:
+        _FONTS_LOADED = True
         directory = resources.files("syndesi.ui.style") / "fonts"
         for entry in directory.iterdir():
             if entry.name.endswith(".ttf"):
@@ -312,24 +313,24 @@ class ThemeEvents(QObject):
     changed = Signal()
 
 
-_events: ThemeEvents | None = None
+_EVENTS: ThemeEvents | None = None
 
 
 def events() -> ThemeEvents:
     """Signals of the theme"""
-    global _events  # pylint: disable=global-statement
-    if _events is None:
-        _events = ThemeEvents()
-    return _events
+    global _EVENTS  # pylint: disable=global-statement
+    if _EVENTS is None:
+        _EVENTS = ThemeEvents()
+    return _EVENTS
 
 
 def _use(app: QApplication, dark: bool) -> None:
     """Switch the palette, the stylesheet and the icons to a theme"""
-    global _theme  # pylint: disable=global-statement
-    switching = _theme is not None and _theme.dark != dark
-    _theme = Theme(dark=dark)
-    app.setPalette(_theme.palette())
-    app.setStyleSheet(_theme.stylesheet())
+    global _THEME  # pylint: disable=global-statement
+    switching = _THEME is not None and _THEME.dark != dark
+    _THEME = Theme(dark=dark)
+    app.setPalette(_THEME.palette())
+    app.setStyleSheet(_THEME.stylesheet())
     if switching:
         refresh_icons()
         events().changed.emit()

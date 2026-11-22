@@ -33,7 +33,7 @@ from syndesi.protocols.modbus import (
     ModbusError,
     ModbusExceptionEvent,
 )
-from syndesi.tools.errors import ProtocolError
+from syndesi.errors import ProtocolError
 
 BAUDRATE = 19200
 

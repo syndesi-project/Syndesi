@@ -76,6 +76,8 @@ class EventRelay(QObject):
 
         self._worker.submit(register, registered)
 
-    def _deliver(self, generation: int, label: str, kind: Kind, event: SyndesiEvent) -> None:
+    def _deliver(
+        self, generation: int, label: str, kind: Kind, event: SyndesiEvent
+    ) -> None:
         if generation == self._generation:
             self.received.emit(label, kind, event)

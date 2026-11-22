@@ -1,20 +1,29 @@
 """
 Syndesi module
 """
+
 from importlib.metadata import version
 
 __version__ = version("syndesi")
 
 from .adapters.adapter import Adapter, AsyncAdapter
-from .adapters.auto import auto_adapter, auto_async_adapter
+from .adapters.i2c import I2C, AsyncI2C, I2CTransfer
 from .adapters.ip import IP, AsyncIP
 from .adapters.ipserver import AsyncIPServer, Client, IPServer
 from .adapters.serialport import AsyncSerialPort, Parity, SerialPort
-from .adapters.stop_conditions import Continuation, FragmentSC, Length, Termination, Total
-from .adapters.visa import AsyncVisa, Visa
-from .adapters.i2c import I2C, AsyncI2C, I2CTransfer
 from .adapters.spi import SPI, AsyncSPI
-from .protocols.protocol import Protocol, AsyncProtocol
+from .adapters.stop_conditions import (
+    Continuation,
+    FragmentSC,
+    Length,
+    Termination,
+    Total,
+)
+from .adapters.visa import AsyncVisa, Visa
+from .bridges import I2CBridge, LinuxI2C, LinuxSPI, SerialBridge, SPIBridge
+from .drivers.driver import Driver, SubDriver
+from .drivers.scpi_driver import SCPIDriver
+from .drivers.tools import FlexibleEnum
 from .protocols.delimited import AsyncDelimited, Delimited
 from .protocols.modbus import (
     AsyncModbus,
@@ -23,11 +32,9 @@ from .protocols.modbus import (
     ModbusMultiRegisterValue,
     ModbusServer,
 )
+from .protocols.protocol import AsyncProtocol, Protocol
 from .protocols.raw import AsyncRaw, Raw
 from .protocols.scpi import SCPI, AsyncSCPI
-from .drivers.driver import Driver, SubDriver
-from .bridges import I2CBridge, LinuxI2C, LinuxSPI, SerialBridge, SPIBridge
-from .drivers.scpi_driver import SCPIDriver
 
 __all__ = [
     # Adapters
@@ -41,9 +48,9 @@ __all__ = [
     "IPServer",
     "AsyncIPServer",
     "Client",
-    "auto_adapter",
-    "auto_async_adapter",
     # Protocols
+    "AsyncProtocol",
+    "Protocol",
     "Delimited",
     "AsyncDelimited",
     "Raw",
@@ -67,6 +74,7 @@ __all__ = [
     "Driver",
     "SubDriver",
     "SCPIDriver",
+    "FlexibleEnum",
     # Buses
     "I2C",
     "AsyncI2C",

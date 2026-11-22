@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from ..bridges.bridge import SPIBridge
 from ..bridges.linux import LinuxSPI, SPISettings, linux_spi, list_spi_devices
-from ..tools.errors import AdapterReadError
+from ..errors import AdapterReadError
 from ..tools.others import DEFAULT
 from .adapter import Adapter, AsyncAdapter
 from .bus import BusBackend

@@ -19,6 +19,7 @@ a single class
                 └ DelimitedBackend                            │
                        ▲───────────── frames ─────────────────┘
 """
+
 # pylint: disable=too-many-lines
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ from ..adapters.framer import AdapterReadFrame
 from ..adapters.reactor import default_reactor
 from ..adapters.stop_conditions import StopCondition
 from ..adapters.utils import HasFileno, TimeoutParameterType, TimeoutType, nmin
-from ..tools.errors import (
+from ..errors import (
     AdapterDisconnectedError,
     AdapterError,
     AdapterTimeoutError,
@@ -67,6 +68,7 @@ ProtocolT = TypeVar("ProtocolT")
 # │ Frames │
 # └────────┘
 
+
 @dataclass(kw_only=True)
 class ProtocolFrame(Generic[ProtocolT]):
     """A payload assembled by a protocol, as returned to the user"""
@@ -77,6 +79,7 @@ class ProtocolFrame(Generic[ProtocolT]):
 
     def __str__(self) -> str:
         return f"ProtocolFrame({self.data!r})"
+
 
 @dataclass
 class BackendOutput(Generic[AdapterT, ProtocolT]):
@@ -93,6 +96,7 @@ class BackendOutput(Generic[AdapterT, ProtocolT]):
     # Events specific to the protocol, emitted before the payloads
     events: list[ProtocolEvent] = field(default_factory=list)
 
+
 # ┌────────┐
 # │ Events │
 # └────────┘
@@ -100,6 +104,7 @@ class BackendOutput(Generic[AdapterT, ProtocolT]):
 # Protocol events and adapter events go through the same callbacks, in the order they
 # happened : the adapter frame, then the payload it completed. Like adapter events, they
 # are emitted on the reactor thread and callbacks must not block
+
 
 class ProtocolEvent(SyndesiEvent):
     """
@@ -109,10 +114,13 @@ class ProtocolEvent(SyndesiEvent):
     own events by inheriting from this class, and emits them with BackendOutput.events
     """
 
+
 @dataclass
 class ProtocolWriteEvent(Generic[ProtocolT], ProtocolEvent):
     """A payload has been encoded, its data is being written to the adapter"""
+
     payload: ProtocolT
+
 
 @dataclass
 class ProtocolFrameEvent(Generic[ProtocolT], ProtocolEvent):
@@ -122,30 +130,39 @@ class ProtocolFrameEvent(Generic[ProtocolT], ProtocolEvent):
     adapter_frame_ids are the adapter frames it was assembled from. An adapter frame can
     hold the end of a payload and the start of the next one, it is then in both lists
     """
+
     frame: ProtocolFrame[ProtocolT]
     buffered: bool
     adapter_frame_ids: list[int]
 
+
 @dataclass
 class ProtocolReadEvent(Generic[ProtocolT], ProtocolEvent):
     """A payload has been handed to a read call"""
+
     frame: ProtocolFrame[ProtocolT]
     from_buffer: bool
+
 
 @dataclass
 class ProtocolBufferEvent(ProtocolEvent):
     """Payloads have been added to or removed from the frame buffer"""
+
     added_frame_ids: list[int]
     removed_frame_ids: list[int]
+
 
 @dataclass
 class ProtocolDecodeErrorEvent(ProtocolEvent):
     """An adapter frame couldn't be decoded by the backend"""
+
     error: ProtocolReadError
+
 
 # ┌─────────┐
 # │ Backend │
 # └─────────┘
+
 
 class ProtocolBackend(Generic[AdapterT, ProtocolT], ABC):
     """
@@ -216,17 +233,19 @@ class ProtocolBackend(Generic[AdapterT, ProtocolT], ABC):
         return None
 
     @property
-    def adapter_default_timeout(self) -> TimeoutParameterType:
+    def pending_data(self) -> ProtocolT | AdapterT | None:
         """
-        Time the adapter waits for the first fragment, ``DEFAULT`` to leave it alone
+        What the backend holds of the payload being assembled, None if nothing
 
-        Only applied if the user didn't set the adapter timeout themselves
+        Reported by a timeout : what arrived without forming a payload
         """
-        return DEFAULT
+        return None
+
 
 # ┌──────────┐
 # │ Commands │
 # └──────────┘
+
 
 class ProtocolWriteCommand(Generic[ProtocolT], Command[None]):
     """Encode a payload and write it to the adapter"""
@@ -235,6 +254,7 @@ class ProtocolWriteCommand(Generic[ProtocolT], Command[None]):
         super().__init__()
         self.payload = payload
 
+
 class ConfigureBackendCommand(Command[None]):
     """Run an action on the backend, on the reactor thread"""
 
@@ -242,12 +262,14 @@ class ConfigureBackendCommand(Command[None]):
         super().__init__()
         self.action = action
 
+
 class ProtocolWriteRawCommand(Generic[AdapterT], Command[None]):
     """Write data to the adapter without encoding it"""
 
     def __init__(self, data: AdapterT) -> None:
         super().__init__()
         self.data = data
+
 
 class ProtocolReadCommand(Generic[ProtocolT], Command[ProtocolFrame[ProtocolT]]):
     """Read one protocol frame"""
@@ -257,6 +279,7 @@ class ProtocolReadCommand(Generic[ProtocolT], Command[ProtocolFrame[ProtocolT]])
         self.timeout = timeout
         self.scope = scope
 
+
 class AddProtocolEventCallbackCommand(Command[None]):
     """Register an event callback"""
 
@@ -264,11 +287,14 @@ class AddProtocolEventCallbackCommand(Command[None]):
         super().__init__()
         self.callback = callback
 
+
 class ClearProtocolEventCallbacksCommand(Command[None]):
     """Remove every event callback"""
 
+
 class ProtocolStopCommand(Command[None]):
     """Detach the protocol engine from the reactor and give the stream back"""
+
 
 class SetProtocolTimeoutCommand(Command[None]):
     """Set the protocol timeout"""
@@ -276,6 +302,7 @@ class SetProtocolTimeoutCommand(Command[None]):
     def __init__(self, timeout: TimeoutType) -> None:
         super().__init__()
         self.timeout = timeout
+
 
 @dataclass
 class PendingProtocolRead(Generic[ProtocolT]):
@@ -286,10 +313,14 @@ class PendingProtocolRead(Generic[ProtocolT]):
     scope: ReadScope
     response_deadline: float | None
     timeout: TimeoutType
+    # Time given to the adapter for the first fragment, reported if it passes
+    first_fragment_timeout: TimeoutType = None
+
 
 # ┌────────┐
 # │ Engine │
 # └────────┘
+
 
 # pylint: disable=too-many-instance-attributes, too-many-public-methods
 class ProtocolEngine(Generic[AdapterT, ProtocolT]):
@@ -503,7 +534,9 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
             self._fail(
                 pending.command,
                 AdapterTimeoutError(
-                    float("nan") if pending.timeout is None else pending.timeout
+                    float("nan") if pending.timeout is None else pending.timeout,
+                    received=self._received_data(),
+                    waiting_for=self._waiting_for(),
                 ),
             )
 
@@ -551,12 +584,15 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
         self._fail_pending(error)
 
     def on_fragment_timeout(self) -> None:
-        """The adapter received nothing within its own timeout"""
-        adapter_timeout = self._adapter_engine.timeout
+        """The adapter received nothing within the time armed by _begin_read"""
+        pending = self._pending_read
+        timeout = (
+            self._adapter_engine.timeout
+            if pending is None
+            else pending.first_fragment_timeout
+        )
         self._fail_pending(
-            AdapterTimeoutError(
-                float("nan") if adapter_timeout is None else adapter_timeout
-            )
+            AdapterTimeoutError(float("nan") if timeout is None else timeout)
         )
 
     # ┌──────────┐
@@ -677,10 +713,14 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
         )
 
         # The adapter's own timeout covers the first fragment. It has no pending read of
-        # its own here, so it has to be armed
-        adapter_timeout = self._adapter_engine.timeout
-        if adapter_timeout is not None and not self._backend.in_progress:
-            self._adapter_engine.arm_fragment_deadline(now + adapter_timeout)
+        # its own here, so it has to be armed. A timeout given to this read is an
+        # instruction for the whole exchange : it covers the first fragment as well
+        first_fragment_timeout = (
+            self._adapter_engine.timeout if command.timeout is DEFAULT else timeout
+        )
+        self._pending_read.first_fragment_timeout = first_fragment_timeout
+        if first_fragment_timeout is not None and not self._backend.in_progress:
+            self._adapter_engine.arm_fragment_deadline(now + first_fragment_timeout)
 
         command.add_done_callback(self._wakeup_if_cancelled)
 
@@ -794,6 +834,30 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
             return index
         return None
 
+    def _received_data(self) -> Any:
+        """
+        What arrived for the pending read without forming a payload, None if nothing
+
+        The backend holds the adapter frames it is assembling, the adapter framer the
+        bytes of the frame it is assembling, in this order on the wire
+        """
+        parts: list[Any] = [
+            part
+            for part in (self._backend.pending_data, self._adapter_engine.pending_data)
+            if part is not None
+        ]
+        if not parts:
+            return None
+        if all(isinstance(part, bytes) for part in parts):
+            return b"".join(parts)
+        return parts[0] if len(parts) == 1 else parts
+
+    def _waiting_for(self) -> str:
+        """What the adapter frame being assembled waits for, empty if none is"""
+        if self._adapter_engine.pending_data is None:
+            return ""
+        return self._adapter_engine.stop_conditions_description()
+
     def _fail_pending(self, error: BaseException) -> None:
         pending = self._pending_read
         if pending is None:
@@ -838,27 +902,31 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
         self._frame_id += 1
         return output
 
+
 class _ClearProtocolBufferCommand(Command[None]):
     """Drop the buffered payloads and the one being assembled"""
 
+
 CommandT = TypeVar("CommandT", bound=Command[Any])
 BackendT = TypeVar("BackendT", bound=ProtocolBackend[Any, Any])
+
 
 def _stop_engine(engine: ProtocolEngine[Any, Any]) -> None:
     """Detach a protocol engine from the reactor once its protocol is collected"""
     engine.stop()
 
+
 def _resolve_timeout(
     timeout: TimeoutParameterType,
     adapter: Adapter[Any, Any] | AsyncAdapter[Any, Any],
     backend: ProtocolBackend[Any, Any],
-) -> TimeoutParameterType:
+) -> TimeoutType:
     """
     Time to wait for a complete protocol frame
 
-    ``DEFAULT`` keeps the timeout the user gave the adapter, and falls back on the backend
-    default when they gave it none : an explicit adapter timeout is an instruction about
-    the exchange, not only about its first fragment
+    ``DEFAULT`` keeps the timeout someone chose for the adapter (the user, or a driver
+    with set_default_timeout), and falls back on the backend default otherwise : the
+    2 s of IP say nothing about how long a SCPI instrument takes to answer
     """
     if timeout is not DEFAULT:
         return timeout
@@ -866,9 +934,11 @@ def _resolve_timeout(
         return backend.default_timeout
     return adapter.timeout
 
+
 # ┌─────────┐
 # │ Facades │
 # └─────────┘
+
 
 class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
     """
@@ -877,6 +947,7 @@ class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
 
     def __init__(
         self,
+        *,
         adapter: Adapter[Any, AdapterT] | AsyncAdapter[Any, AdapterT],
         backend: BackendT,
         timeout: TimeoutParameterType,
@@ -889,17 +960,20 @@ class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
         self.adapter = adapter
         # Private : a user looking for the adapter must find self.adapter
         self._backend = backend
+        resolved_timeout = _resolve_timeout(timeout, adapter, backend)
         self._engine: ProtocolEngine[AdapterT, ProtocolT] = ProtocolEngine(
             adapter.engine,
             backend,
-            timeout=_resolve_timeout(timeout, adapter, backend),
+            timeout=resolved_timeout,
             alias=alias,
             event_callback=event_callback,
         )
 
-        adapter_timeout = backend.adapter_default_timeout
-        if adapter_timeout is not DEFAULT and adapter.has_default_timeout:
-            adapter.engine.set_timeout(adapter_timeout)
+        # The adapter waits for the first fragment as long as the protocol waits for its
+        # payload, unless the user chose the adapter timeout
+        self._engine.configuration.append(
+            adapter.engine.set_default_timeout(resolved_timeout)
+        )
 
         # Both have to allow it : auto_open=False on either the adapter or the
         # protocol means an explicit open() is required
@@ -942,6 +1016,7 @@ class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
     def __repr__(self) -> str:
         return self.__str__()
 
+
 class Protocol(
     Generic[BackendT, AdapterT, ProtocolT],
     ProtocolCommon[BackendT, AdapterT, ProtocolT],
@@ -964,7 +1039,7 @@ class Protocol(
         explicit open(), whatever the adapter's own auto_open. True keeps the adapter's
     """
 
-    adapter : Adapter[Any, AdapterT]
+    adapter: Adapter[Any, AdapterT]
 
     def __init__(
         self,
@@ -977,7 +1052,14 @@ class Protocol(
         auto_open: bool = True,
     ) -> None:
         self._lock = threading.Lock()
-        super().__init__(adapter, backend, timeout, alias, event_callback, auto_open)
+        super().__init__(
+            adapter=adapter,
+            backend=backend,
+            timeout=timeout,
+            alias=alias,
+            event_callback=event_callback,
+            auto_open=auto_open,
+        )
 
         # Waited for, so that the adapter attributes (framing, ...) are up to date as
         # soon as the constructor returns. AsyncProtocol deliberately doesn't wait
@@ -993,8 +1075,13 @@ class Protocol(
         self._engine.close().result()
 
     def set_timeout(self, timeout: TimeoutType) -> None:
-        """Set the time to wait for a complete protocol frame"""
+        """
+        Set the time to wait for a complete protocol frame
+
+        The adapter gets it too, unless the user chose the adapter timeout
+        """
         self._engine.set_timeout(timeout).result()
+        self.adapter.engine.set_default_timeout(timeout).result()
 
     def write(self, payload: ProtocolT) -> None:
         """Encode a payload and write it to the target"""
@@ -1058,6 +1145,7 @@ class Protocol(
     ) -> None:
         self.close()
 
+
 class AsyncProtocol(
     Generic[BackendT, AdapterT, ProtocolT],
     ProtocolCommon[BackendT, AdapterT, ProtocolT],
@@ -1066,7 +1154,7 @@ class AsyncProtocol(
     Async protocol, same parameters as Protocol
     """
 
-    adapter : AsyncAdapter[Any, AdapterT]
+    adapter: AsyncAdapter[Any, AdapterT]
 
     def __init__(
         self,
@@ -1079,7 +1167,14 @@ class AsyncProtocol(
         auto_open: bool = True,
     ) -> None:
         self._lock = asyncio.Lock()
-        super().__init__(adapter, backend, timeout, alias, event_callback, auto_open)
+        super().__init__(
+            adapter=adapter,
+            backend=backend,
+            timeout=timeout,
+            alias=alias,
+            event_callback=event_callback,
+            auto_open=auto_open,
+        )
 
     async def open(self) -> None:
         """Open communication with the target"""
@@ -1090,8 +1185,13 @@ class AsyncProtocol(
         await asyncio.wrap_future(self._engine.close())
 
     async def set_timeout(self, timeout: TimeoutType) -> None:
-        """Set the time to wait for a complete protocol frame"""
+        """
+        Set the time to wait for a complete protocol frame
+
+        The adapter gets it too, unless the user chose the adapter timeout
+        """
         await asyncio.wrap_future(self._engine.set_timeout(timeout))
+        await asyncio.wrap_future(self.adapter.engine.set_default_timeout(timeout))
 
     async def write(self, payload: ProtocolT) -> None:
         """Encode a payload and write it to the target"""

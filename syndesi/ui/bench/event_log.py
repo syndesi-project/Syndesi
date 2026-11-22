@@ -97,6 +97,7 @@ DEFAULT_CATEGORIES = {
 }
 
 
+# pylint: disable=too-many-instance-attributes
 @dataclass
 class LogEntry:
     """One row"""
@@ -146,7 +147,10 @@ def event_key(event: SyndesiEvent) -> str:
     return ""
 
 
-def describe_event(event: SyndesiEvent) -> tuple[str, str, EntryStyle, Category | None] | None:
+# pylint: disable=too-many-branches
+def describe_event(
+    event: SyndesiEvent,
+) -> tuple[str, str, EntryStyle, Category | None] | None:
     """(label, data, style, category) of an event, None to drop it"""
     # pylint: disable=too-many-return-statements
     gray = EntryStyle.EVENT
@@ -163,9 +167,16 @@ def describe_event(event: SyndesiEvent) -> tuple[str, str, EntryStyle, Category 
         case AdapterFrameEvent():
             # A frame without stop condition (I2C, SPI, ...) has no reason to show
             sc = event.frame.stop_condition
-            notes = ([] if sc is None else [str(sc)]) + (["buffered"] if event.buffered else [])
+            notes = ([] if sc is None else [str(sc)]) + (
+                ["buffered"] if event.buffered else []
+            )
             details = f" ({', '.join(notes)})" if notes else ""
-            return "↓ frame", f"{_short(event.frame.data)}{details}", gray, Category.FRAME
+            return (
+                "↓ frame",
+                f"{_short(event.frame.data)}{details}",
+                gray,
+                Category.FRAME,
+            )
         case AdapterReadEvent():
             origin = " (buffer)" if event.from_buffer else ""
             return "← read", _short(event.frame.data) + origin, gray, Category.READ
@@ -207,10 +218,14 @@ class EventLogModel(QAbstractTableModel):
         self._unmatched: list[LogEntry] = []
         self.start = time.time()
 
-    def rowCount(self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()) -> int:  # noqa: B008
+    def rowCount(
+        self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()
+    ) -> int:  # noqa: B008
         return 0 if parent.isValid() else len(self.entries)
 
-    def columnCount(self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()) -> int:  # noqa: B008
+    def columnCount(
+        self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()
+    ) -> int:  # noqa: B008
         return 0 if parent.isValid() else len(COLUMNS)
 
     def headerData(
@@ -219,7 +234,10 @@ class EventLogModel(QAbstractTableModel):
         orientation: Qt.Orientation,
         role: int = Qt.ItemDataRole.DisplayRole,
     ) -> Any:
-        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
+        if (
+            orientation == Qt.Orientation.Horizontal
+            and role == Qt.ItemDataRole.DisplayRole
+        ):
             return COLUMNS[section]
         return None
 
@@ -274,7 +292,9 @@ class EventLogModel(QAbstractTableModel):
 
     def _duplicate_of(self, entry: LogEntry) -> LogEntry | None:
         now = entry.timestamp
-        self._unmatched = [e for e in self._unmatched if now - e.timestamp < self.DUPLICATE_WINDOW]
+        self._unmatched = [
+            e for e in self._unmatched if now - e.timestamp < self.DUPLICATE_WINDOW
+        ]
         return next(
             (
                 other
@@ -309,7 +329,6 @@ class EventLogModel(QAbstractTableModel):
         self.endResetModel()
 
 
-
 class _Filter(QSortFilterProxyModel):
     def __init__(self) -> None:
         super().__init__()
@@ -318,7 +337,7 @@ class _Filter(QSortFilterProxyModel):
         self.component = ""
 
     def filterAcceptsRow(
-        self, source_row: int, source_parent: QModelIndex | QPersistentModelIndex
+        self, source_row: int, _: QModelIndex | QPersistentModelIndex
     ) -> bool:
         model = self.sourceModel()
         assert isinstance(model, EventLogModel)
@@ -335,6 +354,7 @@ class EventLog(QWidget):
 
     show_events_changed = Signal(bool)
 
+    # pylint: disable=too-many-statements
     def __init__(self) -> None:
         super().__init__()
         self.model = EventLogModel()
@@ -369,7 +389,9 @@ class EventLog(QWidget):
             action = QAction(category.value, menu)
             action.setCheckable(True)
             action.setChecked(category in DEFAULT_CATEGORIES)
-            action.toggled.connect(lambda checked, c=category: self._category(c, checked))
+            action.toggled.connect(
+                lambda checked, c=category: self._category(c, checked)
+            )
             menu.addAction(action)
         self.categories.setMenu(menu)
         self.categories.setEnabled(False)
@@ -405,7 +427,9 @@ class EventLog(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.verticalHeader().hide()
         self.table.verticalHeader().setMinimumSectionSize(1)
-        self.table.verticalHeader().setDefaultSectionSize(self.table.fontMetrics().height() + 1)
+        self.table.verticalHeader().setDefaultSectionSize(
+            self.table.fontMetrics().height() + 1
+        )
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
@@ -442,7 +466,16 @@ class EventLog(QWidget):
             return
         label, data, style, category = description
         self.add(
-            LogEntry(event.timestamp, source, kind, label, data, style, category, event_key(event))
+            LogEntry(
+                event.timestamp,
+                source,
+                kind,
+                label,
+                data,
+                style,
+                category,
+                event_key(event),
+            )
         )
 
     def clear(self) -> None:

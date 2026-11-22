@@ -38,6 +38,7 @@ from ..adapters.stop_conditions import (
     Termination,
     Total,
 )
+from ..drivers.tools import FlexibleEnum
 from ..tools.others import DEFAULT
 from .core.introspection import FieldType, ParamSpec
 from .style.icons import set_icon
@@ -111,13 +112,26 @@ def parse_hex(text: str) -> bytes:
     return bytes.fromhex(text.replace(" ", "").replace(",", ""))
 
 
+def choice_text(choice: Any) -> str:
+    """A choice as shown in a list : '2V' for a FlexibleEnum that sends 'R1'"""
+    if isinstance(choice, FlexibleEnum):
+        return choice.label
+    if isinstance(choice, enum.Enum):
+        return str(choice.value)
+    return str(choice)
+
+
 def format_value(value: Any) -> str:
     """Short text of a value for the user"""
     if isinstance(value, enum.Enum):
-        return str(value.value)
+        return choice_text(value)
     if isinstance(value, StopCondition):
         return str(value)
-    if isinstance(value, list) and value and all(isinstance(v, StopCondition) for v in value):
+    if (
+        isinstance(value, list)
+        and value
+        and all(isinstance(v, StopCondition) for v in value)
+    ):
         return ", ".join(str(v) for v in value)
     return repr(value)
 
@@ -129,7 +143,9 @@ def expression_namespace() -> dict[str, Any]:
     from syndesi.protocols import modbus
 
     namespace: dict[str, Any] = {}
-    namespace.update({n: getattr(modbus, n) for n in dir(modbus) if not n.startswith("_")})
+    namespace.update(
+        {n: getattr(modbus, n) for n in dir(modbus) if not n.startswith("_")}
+    )
     namespace.update({n: getattr(syndesi, n) for n in syndesi.__all__})
     namespace["DEFAULT"] = DEFAULT
     return namespace
@@ -275,6 +291,7 @@ class StopConditionsEditor(QWidget):
 # │ Fields │
 # └────────┘
 
+
 class FieldEditor(QWidget):
     """Editor of one parameter"""
 
@@ -296,7 +313,9 @@ class FieldEditor(QWidget):
         self._default_box: QCheckBox | None = None
         if spec.allows_default:
             self._default_box = QCheckBox("Default")
-            self._default_box.setToolTip("Let the component choose (the parameter isn't passed)")
+            self._default_box.setToolTip(
+                "Let the component choose (the parameter isn't passed)"
+            )
             boxes.addWidget(self._default_box)
         # Checked : None is passed
         self._none_box: QCheckBox | None = None
@@ -353,8 +372,7 @@ class FieldEditor(QWidget):
                 editor = QComboBox()
                 editor.setMinimumWidth(80)
                 for choice in spec.choices or []:
-                    text = str(choice.value) if isinstance(choice, enum.Enum) else str(choice)
-                    editor.addItem(text, choice)
+                    editor.addItem(choice_text(choice), choice)
                 editor.currentIndexChanged.connect(self.changed)
             case FieldType.STOP_CONDITIONS:
                 editor = StopConditionsEditor()
@@ -431,6 +449,7 @@ class FieldEditor(QWidget):
 
     # Values
 
+    # pylint: disable=too-many-branches
     def set_value(self, value: Any) -> None:
         """Show a value (DEFAULT and None check the matching box)"""
         if self._default_box is not None:
@@ -453,7 +472,7 @@ class FieldEditor(QWidget):
         elif isinstance(editor, QComboBox) and not editor.isEditable():
             index = editor.findData(value)
             if index < 0:
-                index = editor.findText(str(value.value if isinstance(value, enum.Enum) else value))
+                index = editor.findText(choice_text(value))
             if index >= 0:
                 editor.setCurrentIndex(index)
         elif isinstance(editor, QComboBox):
@@ -466,6 +485,7 @@ class FieldEditor(QWidget):
             else:
                 editor.setText(str(value))
 
+    # pylint: disable=too-many-return-statements
     def value(self) -> Any:
         """Value of the parameter, raises ValueError if it's invalid"""
         if self._default_box is not None and self._default_box.isChecked():
@@ -483,6 +503,10 @@ class FieldEditor(QWidget):
         if isinstance(editor, StopConditionsEditor):
             return editor.value()
         if isinstance(editor, QComboBox) and not editor.isEditable():
+            # Not currentData() : Qt turns a StrEnum member into a plain str
+            index = editor.currentIndex()
+            if spec.choices and 0 <= index < len(spec.choices):
+                return spec.choices[index]
             return editor.currentData()
         text = editor.currentText() if isinstance(editor, QComboBox) else editor.text()  # type: ignore[attr-defined]
         if spec.field_type is FieldType.EXPRESSION:
@@ -523,7 +547,11 @@ class ParamForm(QWidget):
     changed = Signal()
 
     def __init__(
-        self, params: list[ParamSpec], *, show_docs: bool = True, labels_above: bool = False
+        self,
+        params: list[ParamSpec],
+        *,
+        show_docs: bool = True,
+        labels_above: bool = False,
     ) -> None:
         super().__init__()
         self.editors: dict[str, FieldEditor] = {}
@@ -536,7 +564,9 @@ class ParamForm(QWidget):
             else QFormLayout.RowWrapPolicy.WrapLongRows
         )
         layout.setVerticalSpacing(10 if labels_above else 6)
-        layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
         for spec in params:
             if spec.is_slot or spec.hidden:
                 continue

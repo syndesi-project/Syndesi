@@ -1858,7 +1858,7 @@ wheels = [
 
 [[package]]
 name = "syndesi"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "platformdirs" },
@@ -1898,6 +1898,16 @@ dev = [
     { name = "sphinx-design" },
     { name = "twine" },
 ]
+docs = [
+    { name = "furo" },
+    { name = "sphinx", version = "9.0.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "sphinx", version = "9.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.12.*'" },
+    { name = "sphinx", version = "9.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "sphinx-autodoc-typehints", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "sphinx-autodoc-typehints", version = "3.17.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "sphinx-copybutton" },
+    { name = "sphinx-design" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1929,6 +1939,13 @@ dev = [
     { name = "sphinx-copybutton", specifier = ">=0.5.2" },
     { name = "sphinx-design", specifier = ">=0.8.0" },
     { name = "twine", specifier = ">=7.0.0" },
+]
+docs = [
+    { name = "furo", specifier = ">=2025.12.19" },
+    { name = "sphinx", specifier = ">=9.0.4" },
+    { name = "sphinx-autodoc-typehints", specifier = ">=3.6.1" },
+    { name = "sphinx-copybutton", specifier = ">=0.5.2" },
+    { name = "sphinx-design", specifier = ">=0.8.0" },
 ]
 
 [[package]]

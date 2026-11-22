@@ -120,6 +120,15 @@ class Framer(Generic[DataT], ABC):
         Discard the frame currently being assembled
         """
 
+    @property
+    def pending_data(self) -> DataT | None:
+        """
+        Data of the frame being assembled, None if there is none
+
+        Reported by a timeout : what arrived without forming a frame
+        """
+        return None
+
 
 @runtime_checkable
 class SupportsStopConditions(Protocol):
@@ -271,6 +280,12 @@ class BytesFramer(Framer[bytes]):
     @property
     def in_progress(self) -> bool:
         return len(self._fragments) > 0
+
+    @property
+    def pending_data(self) -> bytes | None:
+        if not self._fragments:
+            return None
+        return b"".join(fragment.data for fragment in self._fragments)
 
     def reset(self) -> None:
         self._clear_assembly()

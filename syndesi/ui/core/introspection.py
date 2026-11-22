@@ -149,7 +149,9 @@ def generic_args(cls: type, target: type) -> tuple[Any, ...] | None:
         if result is None:
             continue
         if get_origin(base) is not None:
-            mapping = dict(zip(getattr(origin, "__parameters__", ()), get_args(base), strict=False))
+            mapping = dict(
+                zip(getattr(origin, "__parameters__", ()), get_args(base), strict=False)
+            )
             result = tuple(_substitute(arg, mapping) for arg in result)
         return result
     return None
@@ -174,6 +176,7 @@ def _type_arg_matches(expected: Any, actual: Any) -> bool:
     return bool(expected == actual)
 
 
+# pylint: disable=too-many-return-statements
 def accepts(hint: Any, cls: type) -> bool:
     """
     True if an instance of cls can be passed where hint is expected
@@ -197,7 +200,9 @@ def accepts(hint: Any, cls: type) -> bool:
     actual = generic_args(cls, origin)
     if actual is None:
         return True
-    return all(_type_arg_matches(e, a) for e, a in zip(get_args(hint), actual, strict=False))
+    return all(
+        _type_arg_matches(e, a) for e, a in zip(get_args(hint), actual, strict=False)
+    )
 
 
 def _mentions_component(hint: Any) -> bool:
@@ -210,6 +215,7 @@ def _mentions_component(hint: Any) -> bool:
     return isinstance(origin, type) and issubclass(origin, COMPONENT_BASES)
 
 
+# pylint: disable=too-many-return-statements
 def type_name(hint: Any) -> str:
     """Short, readable form of a type hint : Adapter[Any, bytes], str | bytes, ..."""
     if hint is inspect.Parameter.empty or hint is None:
@@ -254,6 +260,7 @@ class ParamDoc:
 _SECTION_RE = re.compile(r"^\s*(\w[\w ]*)\n\s*-{3,}\s*$", re.MULTILINE)
 
 
+# pylint: disable=too-many-branches
 def parse_numpy_doc(doc: str | None) -> tuple[str, dict[str, ParamDoc]]:
     """
     Return the summary of a numpy docstring and its Parameters section
@@ -334,6 +341,7 @@ class FieldType(StrEnum):
     UNSUPPORTED = "unsupported"
 
 
+# pylint: disable=too-many-instance-attributes
 @dataclass
 class ParamSpec:
     """One parameter of a constructor or of a method"""
@@ -366,7 +374,11 @@ class ParamSpec:
     @property
     def hidden(self) -> bool:
         """Parameters the GUI can't edit but can leave out (sock, callbacks, ...)"""
-        return self.field_type is FieldType.UNSUPPORTED and not self.is_slot and self.has_default
+        return (
+            self.field_type is FieldType.UNSUPPORTED
+            and not self.is_slot
+            and self.has_default
+        )
 
     @property
     def type_label(self) -> str:
@@ -378,6 +390,7 @@ class ParamSpec:
         return self.is_slot and accepts(self.annotation, cls)
 
 
+# pylint: disable=too-many-return-statements
 def _classify_member(hint: Any) -> tuple[FieldType, list[Any] | None]:
     if hint is bool:
         return FieldType.BOOL, None
@@ -405,6 +418,7 @@ def _classify_member(hint: Any) -> tuple[FieldType, list[Any] | None]:
     return FieldType.UNSUPPORTED, None
 
 
+# pylint: disable=too-many-branches
 def _classify(spec: ParamSpec) -> None:
     hint = spec.annotation
     if hint is inspect.Parameter.empty:
@@ -436,11 +450,19 @@ def _classify(spec: ParamSpec) -> None:
     elif types_found == {FieldType.STR, FieldType.BYTES}:
         spec.field_type = FieldType.TEXT
     elif types_found <= {FieldType.INT, FieldType.FLOAT}:
-        spec.field_type = FieldType.FLOAT if FieldType.FLOAT in types_found else FieldType.INT
+        spec.field_type = (
+            FieldType.FLOAT if FieldType.FLOAT in types_found else FieldType.INT
+        )
     elif FieldType.STOP_CONDITIONS in types_found:
         spec.field_type = FieldType.STOP_CONDITIONS
-    elif types_found == {FieldType.CHOICE, FieldType.STR}:
-        # Endian | str : the enum gives the choices, a string is accepted too
+    elif FieldType.CHOICE in types_found and types_found <= {
+        FieldType.CHOICE,
+        FieldType.STR,
+        FieldType.INT,
+        FieldType.FLOAT,
+    }:
+        # Endian | str, VoltageRange | str | float : the enum gives the choices, the
+        # other types are what it accepts too
         spec.field_type = FieldType.CHOICE
         spec.choices = next(c for t, c in kept if t is FieldType.CHOICE)
     elif len(types_found) == 1:
@@ -506,7 +528,9 @@ def _resolve_hints(func: Callable[..., Any], owner: type | None) -> dict[str, An
     for name, annotation in getattr(func, "__annotations__", {}).items():
         if isinstance(annotation, str):
             try:
-                annotation = eval(annotation, globalns, localns)  # pylint: disable=eval-used
+                annotation = eval(
+                    annotation, globalns, localns
+                )  # pylint: disable=eval-used
             except Exception:  # pylint: disable=broad-exception-caught
                 annotation = inspect.Parameter.empty
         hints[name] = annotation
@@ -546,7 +570,9 @@ def signature_params(
     except (TypeError, ValueError):
         return []
     mapping = _typevar_mapping(owner)
-    hints = {k: _deep_substitute(v, mapping) for k, v in _resolve_hints(func, owner).items()}
+    hints = {
+        k: _deep_substitute(v, mapping) for k, v in _resolve_hints(func, owner).items()
+    }
     params: list[ParamSpec] = []
     first_str_seen = False
     for i, param in enumerate(signature.parameters.values()):
@@ -617,7 +643,11 @@ class ComponentInfo:
         usable, but meant to be subclassed
         """
         return any(
-            getattr(inspect.getattr_static(self.cls, name, None), "__isabstractmethod__", False)
+            getattr(
+                inspect.getattr_static(self.cls, name, None),
+                "__isabstractmethod__",
+                False,
+            )
             for name in ("open", "close", "test")
         )
 
@@ -661,7 +691,9 @@ def _class_docs(cls: type) -> tuple[str, dict[str, ParamDoc]]:
     init_summary, init_params = parse_numpy_doc(getattr(cls, "__init__", None).__doc__)
     # An async facade documented as "same parameters as X" takes the sync ones
     if not params and is_async(cls):
-        sync = getattr(sys.modules.get(cls.__module__), cls.__name__.removeprefix("Async"), None)
+        sync = getattr(
+            sys.modules.get(cls.__module__), cls.__name__.removeprefix("Async"), None
+        )
         if isinstance(sync, type) and sync is not cls:
             _, params = parse_numpy_doc(sync.__doc__)
     return summary or init_summary, {**params, **init_params}
@@ -675,7 +707,8 @@ def component_info(cls: type) -> ComponentInfo:
         raise TypeError(f"{cls!r} is not an adapter, a protocol or a driver")
     summary, docs = _class_docs(cls)
     init = vars(cls).get("__init__") or next(
-        (vars(c)["__init__"] for c in cls.__mro__ if "__init__" in vars(c)), object.__init__
+        (vars(c)["__init__"] for c in cls.__mro__ if "__init__" in vars(c)),
+        object.__init__,
     )
     params = [] if init is object.__init__ else signature_params(init, cls, docs)
     return ComponentInfo(
@@ -737,7 +770,9 @@ _FRAMEWORK_COMMANDS: dict[type, list[str]] = {
 _TOOLBAR_COMMANDS = {"open", "close"}
 
 
-def _command_info(cls: type, owner: type, name: str, framework: bool) -> CommandInfo | None:
+def _command_info(
+    cls: type, owner: type, name: str, framework: bool
+) -> CommandInfo | None:
     raw = inspect.getattr_static(owner, name, None)
     if isinstance(raw, (staticmethod, classmethod)):
         func = raw.__func__
@@ -749,7 +784,9 @@ def _command_info(cls: type, owner: type, name: str, framework: bool) -> Command
         return None
     summary, docs = parse_numpy_doc(func.__doc__)
     hints = _resolve_hints(func, owner)
-    returns = _deep_substitute(hints.get("return", inspect.Parameter.empty), _typevar_mapping(cls))
+    returns = _deep_substitute(
+        hints.get("return", inspect.Parameter.empty), _typevar_mapping(cls)
+    )
     return CommandInfo(
         name=name,
         owner=owner,
@@ -804,7 +841,11 @@ def properties_of(cls: type) -> list[str]:
         if owner is object:
             continue
         for name, value in vars(owner).items():
-            if isinstance(value, property) and not name.startswith("_") and name not in names:
+            if (
+                isinstance(value, property)
+                and not name.startswith("_")
+                and name not in names
+            ):
                 names.append(name)
     hidden = {"engine", "frame_buffer"}
     return [n for n in names if n not in hidden]

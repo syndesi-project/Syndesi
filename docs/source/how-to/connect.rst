@@ -57,7 +57,13 @@ List the serial ports
    >>> SerialPort.list_ports()
    ['/dev/ttyUSB0', '/dev/ttyACM0']
 
-Or from the command line: ``syndesi term serial --list``.
+Or from the command line, with what is plugged in on each port:
+
+.. code-block:: console
+
+   $ syndesi term serial --list
+   /dev/ttyUSB0  CP2102 USB to UART Bridge Controller
+   /dev/ttyACM0  Arduino Uno
 
 Through VISA (USB-TMC, GPIB, LXI)
 ---------------------------------
@@ -93,25 +99,6 @@ Serial                     ``ASRL/dev/ttyUSB0::INSTR``, ``ASRL1::INSTR``
    A SCPI instrument on the network doesn't need VISA: ``SCPI(IP("192.168.1.42"))``
    talks to it directly, with no driver to install.
 
-From a string
--------------
-
-``auto_adapter`` builds the adapter a string describes. It is handy in configuration
-files and command line options:
-
-.. code-block:: python
-
-   from syndesi import auto_adapter
-
-   auto_adapter("192.168.1.10:5025:TCP")     # IP
-   auto_adapter("192.168.1.50:9000:UDP")     # IP over UDP
-   auto_adapter("/dev/ttyUSB0:115200")       # SerialPort
-   auto_adapter("COM3:9600")                 # SerialPort
-   auto_adapter("GPIB0::14::INSTR")          # Visa (if pyvisa is installed)
-
-Given an adapter instead of a string, it returns it unchanged. See
-:ref:`driver-any-adapter` to use it in a driver.
-
 Open early, or not at all
 -------------------------
 
@@ -135,8 +122,9 @@ Once closed, an adapter only reopens with an explicit ``open()``.
 Wait longer for answers
 -----------------------
 
-Each adapter waits a limited time for an answer: 1 s for ``IP``, 2 s for
-``SerialPort``, 5 s for ``Visa``. Change it at creation, or for a single call:
+Each adapter waits a limited time for an answer: 2 s by default. A protocol replaces
+it with its own (5 s for ``SCPI``, see :ref:`timeouts`). Change it at creation, or for
+a single call:
 
 .. code-block:: python
 

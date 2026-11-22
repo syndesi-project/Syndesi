@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from math import ceil
 from typing import Any, Generic, TypeVar, cast
 
-from ...tools.errors import ProtocolReadError
+from ...errors import ProtocolReadError
 from .common import (
     AVAILABLE_PDU_SIZE,
     ENDIAN,

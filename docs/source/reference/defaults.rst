@@ -9,9 +9,9 @@ Adapters
 ==================  ===========  =========================  ==========================
 Adapter             Timeout      Stop conditions            Opens
 ==================  ===========  =========================  ==========================
-``IP``              1 s          ``Continuation(0.2)``      at the first operation
+``IP``              2 s          ``Continuation(0.2)``      at the first operation
 ``SerialPort``      2 s          ``Continuation(0.1)``      at the first operation
-``Visa``            5 s          ``Continuation(0.1)``      at the first operation
+``Visa``            2 s          ``Continuation(0.1)``      at the first operation
 ``IPServer``        none         clients: ``Continuation``  at the first ``read()``
                                  ``(0.2)``
 ==================  ===========  =========================  ==========================
@@ -57,9 +57,9 @@ user left out.
      -
      - 1 s
 
-A read through a protocol waits for the shorter of the adapter's and the protocol's
-timeout. A timeout given to the adapter at its creation is used by the protocol too,
-see :ref:`timeouts`.
+The protocol gives its timeout to the adapter, unless you chose the adapter's yourself.
+A timeout you gave the adapter at its creation is used by the protocol too, when the
+protocol isn't given one. See :ref:`timeouts`.
 
 Modbus
 ------

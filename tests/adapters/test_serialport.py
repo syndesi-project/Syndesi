@@ -6,7 +6,7 @@ import pytest
 
 from syndesi import SerialPort
 from syndesi.adapters.stop_conditions import Length, Termination, Continuation
-from syndesi.tools.errors import AdapterOpenError, AdapterTimeoutError
+from syndesi.errors import AdapterOpenError, AdapterTimeoutError
 
 BAUDRATE = 115200
 TIME_DELTA = 30e-3

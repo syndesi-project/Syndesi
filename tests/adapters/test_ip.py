@@ -17,7 +17,7 @@ import pytest
 
 from pathlib import Path
 
-from syndesi.tools.errors import AdapterOpenError, AdapterTimeoutError
+from syndesi.errors import AdapterOpenError, AdapterTimeoutError
 HOST = "localhost"
 PORT = 8888
 

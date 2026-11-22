@@ -24,8 +24,8 @@ from typing import Any, Generic, Self, TypeVar
 from syndesi.adapters.events import AdapterEvent
 from syndesi.tools.others import DEFAULT, DefaultType
 
-from ..tools.errors import AdapterConfigurationError
-from .engine import AdapterBackend, AdapterEngine, Descriptor, ReadScope
+from ..errors import AdapterConfigurationError
+from .engine import AdapterBackend, AdapterEngine, Descriptor, ReadScope, TimeoutSource
 from .framer import AdapterReadFrame, Framer, SupportsStopConditions
 from .stop_conditions import StopCondition
 from .utils import TimeoutParameterType, TimeoutType
@@ -79,7 +79,6 @@ class AdapterCommon(Generic[DescriptorT, DataT]):
         self._engine = AdapterEngine(
             backend, framer, timeout=timeout, alias=alias, auto_open=auto_open
         )
-        self._is_default_timeout = timeout is DEFAULT
         self._is_default_stop_condition = stop_conditions is DEFAULT
         self._alias = alias
 
@@ -105,8 +104,13 @@ class AdapterCommon(Generic[DescriptorT, DataT]):
 
     @property
     def has_default_timeout(self) -> bool:
-        """True if no timeout was given at construction, a protocol then sets its own"""
-        return self._is_default_timeout
+        """
+        True while the timeout is the default of the transport
+
+        Nobody chose one : neither the user, nor a driver or a protocol with
+        set_default_timeout
+        """
+        return self._engine.timeout_source is TimeoutSource.TRANSPORT
 
     @property
     def has_default_stop_conditions(self) -> bool:
@@ -135,6 +139,22 @@ class AdapterCommon(Generic[DescriptorT, DataT]):
     def clear_event_callbacks(self) -> None:
         """Remove every event callback"""
         self._engine.clear_event_callbacks().result()
+
+    def _check_payload(self, data: object, method: str) -> None:
+        """
+        Refuse a str with an explanation : an adapter carries bytes, text needs a protocol
+
+        Without it, the TypeError would come from deep inside the transport (the socket,
+        pyserial...) and say nothing about what to write instead
+        """
+        if not isinstance(data, str):
+            return
+        name = type(self).__name__
+        example = f"b{data!r}" if data.isascii() else f"{data!r}.encode()"
+        raise TypeError(
+            f"{name}.{method}() sends bytes, not str : write {example}, or wrap the "
+            f"adapter in a protocol to exchange text, Delimited({name}(...))"
+        )
 
     # Experimental
     @property
@@ -185,9 +205,13 @@ class Adapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT]):
         )
 
     def set_default_timeout(self, timeout: TimeoutType) -> None:
-        """Set the timeout, unless one was given at construction"""
-        if self._is_default_timeout:
-            self.set_timeout(timeout)
+        """
+        Set the timeout, unless the user chose one
+
+        For drivers and protocols : a timeout given at construction or with set_timeout
+        always wins
+        """
+        self._engine.set_default_timeout(timeout).result()
 
     def open(self) -> None:
         """Open communication with the target"""
@@ -203,6 +227,7 @@ class Adapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT]):
 
     def write(self, data: DataT) -> None:
         """Write data to the target"""
+        self._check_payload(data, "write")
         with self._lock:
             self._engine.write(data).result()
 
@@ -244,6 +269,7 @@ class Adapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT]):
         stop_conditions: StopCondition | list[StopCondition] | DefaultType = DEFAULT,
     ) -> AdapterReadFrame[DataT]:
         """Write payload and read the frame received after it"""
+        self._check_payload(payload, "query")
         with self._lock:
             self._engine.write(payload).result()
             return self._engine.read_detailed(
@@ -328,9 +354,13 @@ class AsyncAdapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT
         )
 
     async def set_default_timeout(self, timeout: TimeoutType) -> None:
-        """Set the timeout, unless one was given at construction"""
-        if self._is_default_timeout:
-            await self.set_timeout(timeout)
+        """
+        Set the timeout, unless the user chose one
+
+        For drivers and protocols : a timeout given at construction or with set_timeout
+        always wins
+        """
+        await asyncio.wrap_future(self._engine.set_default_timeout(timeout))
 
     async def set_default_stop_conditions(
         self, stop_conditions: StopCondition | list[StopCondition]
@@ -353,6 +383,7 @@ class AsyncAdapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT
 
     async def write(self, data: DataT) -> None:
         """Write data to the target"""
+        self._check_payload(data, "write")
         async with self._lock:
             await asyncio.wrap_future(self._engine.write(data))
 
@@ -397,6 +428,7 @@ class AsyncAdapter(Generic[DescriptorT, DataT], AdapterCommon[DescriptorT, DataT
         stop_conditions: StopCondition | list[StopCondition] | DefaultType = DEFAULT,
     ) -> AdapterReadFrame[DataT]:
         """Write payload and read the frame received after it"""
+        self._check_payload(payload, "query")
         async with self._lock:
             await asyncio.wrap_future(self._engine.write(payload))
             return await asyncio.wrap_future(

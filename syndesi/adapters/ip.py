@@ -5,11 +5,12 @@
 IP adapters and backend, used to communicate with IP targets using the socket module
 """
 
+import errno
 import socket
 from dataclasses import dataclass
 from enum import StrEnum
 
-from syndesi.tools.errors import (
+from syndesi.errors import (
     AdapterDisconnectedError,
     AdapterOpenError,
     AdapterReadError,
@@ -82,7 +83,9 @@ class IPDescriptor(Descriptor):
             if not separator:
                 address, port = target, None
         if not address or port == "" or (port is not None and not port.isdigit()):
-            raise ValueError(f"Invalid descriptor : {string!r}, expected {scheme}:address:port")
+            raise ValueError(
+                f"Invalid descriptor : {string!r}, expected {scheme}:address:port"
+            )
         return IPDescriptor(
             address, transport, None if port is None else int(port), server=server
         )
@@ -101,8 +104,40 @@ class IPDescriptor(Descriptor):
 
         return self.port is not None and self.transport is not None
 
+    def missing(self) -> str:
+        return f"no port given, for example IP({self.address!r}, port=5025)"
+
 
 BUFFER_SIZE = 65535
+
+
+def _open_error_message(
+    descriptor: IPDescriptor, error: OSError, timeout: float | None
+) -> str:
+    """Explain why a connection failed, and what to check"""
+    target = f"{descriptor.address}:{descriptor.port}"
+    prefix = f"Failed to open adapter {descriptor}"
+    if isinstance(error, ConnectionRefusedError):
+        return (
+            f"{prefix} : connection refused. Nothing listens on {target} : check the "
+            "port, and that the device (or its server) is running"
+        )
+    if isinstance(error, TimeoutError):
+        return (
+            f"{prefix} : no answer from {descriptor.address} within {timeout} seconds. "
+            "Check the address, and that the device is on and on the same network"
+        )
+    if isinstance(error, socket.gaierror):
+        return (
+            f"{prefix} : unknown host '{descriptor.address}'. Check the name, or use "
+            "the IP address of the device"
+        )
+    if error.errno in (errno.EHOSTUNREACH, errno.ENETUNREACH):
+        return (
+            f"{prefix} : {error.strerror}. Check the address, and that this computer "
+            "is on the network of the device"
+        )
+    return f"{prefix} ({error})"
 
 
 class IPBackend(AdapterBackend[IPDescriptor, bytes]):
@@ -142,9 +177,11 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
             else:
                 s.settimeout(timeout)
             s.connect((self.descriptor.address, self.descriptor.port))
-        except (OSError, ConnectionRefusedError, socket.gaierror) as e:
-            msg = f"Failed to open adapter {self.descriptor} ({e})"
-            raise AdapterOpenError(msg) from None
+        except OSError as e:  # ConnectionRefusedError, TimeoutError, gaierror included
+            s.close()
+            raise AdapterOpenError(
+                _open_error_message(self.descriptor, e, timeout)
+            ) from None
 
         # We only set the socket on success to prevent the worker thread
         # from sending events before the adapter is opened
@@ -185,8 +222,8 @@ class IPBackend(AdapterBackend[IPDescriptor, bytes]):
 
     @property
     def default_timeout(self) -> float | None:
-        """Default timeout"""
-        return 1.0
+        """Default timeout, the same for every adapter"""
+        return 2.0
 
     # @property
     # def default_stop_conditions(self) -> list[StopCondition]:
@@ -214,7 +251,7 @@ class IP(Adapter[IPDescriptor, bytes]):
         None lets a protocol set its well-known port with set_default_port
     transport : {'TCP', 'UDP'}
     timeout : float, None or DEFAULT
-        Time to wait for the target to respond, 1 s by default
+        Time to wait for the target to respond, 2 s by default
     stop_conditions : StopCondition, list of StopCondition or DEFAULT
         When a frame is complete, Continuation(0.2) by default
     alias : str
@@ -241,7 +278,7 @@ class IP(Adapter[IPDescriptor, bytes]):
                 address,
                 IPDescriptor.Transport(transport.upper()),
                 port,
-                server=is_server
+                server=is_server,
             ),
             sock,
         )

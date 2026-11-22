@@ -56,11 +56,17 @@ def _import_line(cls: type, library: Library | None) -> tuple[str, str]:
     return cls.__module__, ""
 
 
-def _value_code(value: Any, imports: dict[str, set[str]], library: Library | None) -> str:
+def _value_code(
+    value: Any, imports: dict[str, set[str]], library: Library | None
+) -> str:
     if isinstance(value, StopCondition):
         imports.setdefault("syndesi", set()).add(type(value).__name__)
         return stop_condition_code(value)
-    if isinstance(value, list) and value and all(isinstance(v, StopCondition) for v in value):
+    if (
+        isinstance(value, list)
+        and value
+        and all(isinstance(v, StopCondition) for v in value)
+    ):
         return "[" + ", ".join(_value_code(v, imports, library) for v in value) + "]"
     if isinstance(value, enum.Enum):
         module, _ = _import_line(type(value), library)
@@ -71,7 +77,9 @@ def _value_code(value: Any, imports: dict[str, set[str]], library: Library | Non
 
 def _variable_name(cls: type, used: set[str]) -> str:
     name = cls.__name__.removeprefix("Async")
-    snake = re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name).lower()
+    snake = re.sub(
+        r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name
+    ).lower()
     snake = snake or "component"
     if keyword.iskeyword(snake):
         snake += "_"
@@ -93,7 +101,9 @@ def to_code(root: StackNode | None, library: Library | None = None) -> str:
 
     def generate(node: StackNode) -> str:
         children = {
-            name: generate(child) for name, child in node.children.items() if child is not None
+            name: generate(child)
+            for name, child in node.children.items()
+            if child is not None
         }
         module, comment = _import_line(node.cls, library)
         imports.setdefault(module, set()).add(node.cls.__name__)
@@ -118,9 +128,14 @@ def to_code(root: StackNode | None, library: Library | None = None) -> str:
             if positional and can_be_positional and (spec.required or spec.is_slot):
                 arguments.append(code)
             else:
-                positional = positional and spec.kind is inspect.Parameter.POSITIONAL_ONLY
-                arguments.append(code if spec.kind is inspect.Parameter.POSITIONAL_ONLY
-                                 else f"{spec.name}={code}")
+                positional = (
+                    positional and spec.kind is inspect.Parameter.POSITIONAL_ONLY
+                )
+                arguments.append(
+                    code
+                    if spec.kind is inspect.Parameter.POSITIONAL_ONLY
+                    else f"{spec.name}={code}"
+                )
         variable = _variable_name(node.cls, used)
         lines.append(f"{variable} = {node.cls.__name__}({', '.join(arguments)})")
         return variable

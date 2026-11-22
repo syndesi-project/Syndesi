@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from ..bridges.bridge import I2CBridge
 from ..bridges.linux import linux_i2c, list_i2c_buses
-from ..tools.errors import AdapterReadError
+from ..errors import AdapterReadError
 from ..tools.others import DEFAULT
 from .adapter import Adapter, AsyncAdapter
 from .bus import BusBackend
@@ -79,7 +79,9 @@ class I2CDescriptor(Descriptor):
         _, target = I2CDescriptor.split_scheme(string)
         match = re.match(r"^(.+)@(0x[0-9a-fA-F]+|\d+)$", target)
         if match is None:
-            raise ValueError(f"Invalid descriptor : {string!r}, expected i2c:bus@address")
+            raise ValueError(
+                f"Invalid descriptor : {string!r}, expected i2c:bus@address"
+            )
         return I2CDescriptor(match.group(1), int(match.group(2), 0))
 
     def is_initialized(self) -> bool:

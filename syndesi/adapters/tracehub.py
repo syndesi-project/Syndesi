@@ -186,7 +186,7 @@ class _TraceHub:
         """
         Emit a fragment trace event
         """
-        if fragment.data.__class__ is bytes: # Only bytes, no subclass of bytes
+        if fragment.data.__class__ is bytes:  # Only bytes, no subclass of bytes
             message = self._format_bytes(fragment.data)
         else:
             message = self._format_generic(repr(fragment.data))
@@ -223,7 +223,7 @@ class _TraceHub:
         else:
             sc_indicator = STOP_CONDITION_INDICATOR[frame.stop_condition.type]
 
-        if frame.data.__class__ is bytes: # Only bytes, no subclass of bytes
+        if frame.data.__class__ is bytes:  # Only bytes, no subclass of bytes
             message = self._format_bytes(frame.data)
         else:
             message = self._format_generic(repr(frame.data))
@@ -244,7 +244,7 @@ class _TraceHub:
     ) -> None:
         """Send a write frame to clients, timestamp is when the write started"""
 
-        if frame.data.__class__ is bytes: # Only bytes, no subclass of bytes
+        if frame.data.__class__ is bytes:  # Only bytes, no subclass of bytes
             message = self._format_bytes(frame.data)
         else:
             message = self._format_generic(repr(frame.data))

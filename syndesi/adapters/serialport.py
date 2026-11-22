@@ -8,20 +8,22 @@ SerialPort adapter, talks to serial devices through the OS layer
 
 from __future__ import annotations
 
+import errno
 import re
 import sys
 import time
 from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import cast
+from typing import Any, cast
 
 import serial  # type: ignore #pylint: disable=import-error
 from serial.serialutil import PortNotOpenError  # type: ignore #pylint: disable=import-error
 from serial.tools.list_ports import comports  # type: ignore #pylint: disable=import-error
 
 from ..bridges.bridge import SerialBridge
-from ..tools.errors import AdapterOpenError, AdapterReadError, AdapterWriteError
+from ..errors import AdapterOpenError, AdapterReadError, AdapterWriteError
+from ..tools.hints import busy_hint, permission_hint
 from ..tools.others import DEFAULT, DefaultType
 from .adapter import Adapter, AsyncAdapter
 from .engine import AdapterBackend, Descriptor
@@ -72,7 +74,9 @@ class SerialPortDescriptor(Descriptor):
         if not separator or not baudrate.isdigit():
             port, baudrate = target, ""
         if not port:
-            raise ValueError(f"Invalid descriptor : {string!r}, expected serial:port:baudrate")
+            raise ValueError(
+                f"Invalid descriptor : {string!r}, expected serial:port:baudrate"
+            )
         return SerialPortDescriptor(port, int(baudrate) if baudrate else None)
 
     def __str__(self) -> str:
@@ -82,16 +86,67 @@ class SerialPortDescriptor(Descriptor):
     def is_initialized(self) -> bool:
         return self.baudrate is not None
 
+    def missing(self) -> str:
+        return f"no baudrate given, for example SerialPort({self.port!r}, 115200)"
+
+
+def _comports() -> list[Any]:
+    """The pyserial ports worth showing, excluding ttyn and ttySn on Linux"""
+    if sys.platform in ("linux", "linux2", "darwin"):
+        return [p for p in comports() if not re.match(r"ttyS?(\d+)", p.name)]
+    if sys.platform == "win32":
+        return list(comports())
+    raise RuntimeError(f"Invalid platform : {sys.platform}")
+
 
 def list_ports() -> list[str]:
     """
     List the available serial ports, excluding ttyn and ttySn on Linux
     """
-    if sys.platform in ("linux", "linux2", "darwin"):
-        return [p.device for p in comports() if not re.match(r"ttyS?(\d+)", p.name)]
-    if sys.platform == "win32":
-        return [p.device for p in comports()]
-    raise RuntimeError(f"Invalid platform : {sys.platform}")
+    return [p.device for p in _comports()]
+
+
+def describe_ports() -> dict[str, str]:
+    """
+    The available serial ports and what is plugged in, as far as the system knows
+
+    {'/dev/ttyACM0': 'Arduino Uno', 'COM3': 'USB-SERIAL CH340 (COM3)'}, an empty
+    description if there is none
+    """
+    output = {}
+    for port in _comports():
+        description = port.description or ""
+        if description in ("n/a", port.name, port.device):
+            description = port.product or port.manufacturer or ""
+        output[port.device] = description
+    return output
+
+
+def _open_error_message(port: str, error: serial.SerialException) -> str:
+    """
+    Explain why a port didn't open, and what to do about it
+
+    pyserial gives the errno on Unix, and only the text of the Windows error on Windows
+    """
+    text = str(error)
+    code = getattr(error, "errno", None)
+
+    if code == errno.ENOENT or "No such file" in text or "FileNotFoundError" in text:
+        ports = describe_ports()
+        if ports:
+            available = "Available ports : " + ", ".join(
+                f"{device} ({description})" if description else device
+                for device, description in ports.items()
+            )
+        else:
+            available = "No serial port found, is the device plugged in ?"
+        return f"Port '{port}' was not found. {available}"
+    if code in (errno.EACCES, errno.EPERM) or "PermissionError" in text:
+        hint = permission_hint(port)
+        return f"Cannot open {port} : permission denied" + (f"\n{hint}" if hint else "")
+    if code in (errno.EBUSY, errno.EAGAIN) or "exclusively lock" in text:
+        return f"Cannot open {port} : port busy\n{busy_hint(port)}"
+    return f"Cannot open {port} : {text}"
 
 
 def default_stop_conditions() -> list[StopCondition]:
@@ -152,11 +207,9 @@ class SerialPortBackend(AdapterBackend[SerialPortDescriptor, bytes]):
                 exclusive=True,
             )
         except serial.SerialException as e:
-            if "No such file" in str(e):
-                raise AdapterOpenError(
-                    f"Port '{self.descriptor.port}' was not found"
-                ) from e
-            raise AdapterOpenError(f"SerialPort open error : {e}") from None
+            raise AdapterOpenError(
+                _open_error_message(self.descriptor.port, e)
+            ) from None
 
         if not port.is_open:
             raise AdapterOpenError(f"Port '{self.descriptor.port}' did not open")
@@ -309,7 +362,9 @@ class BridgedSerialPortBackend(AdapterBackend[SerialPortDescriptor, bytes]):
             raise AdapterWriteError(f"{self.descriptor} is not open")
         error = configured.exception()
         if error is not None:
-            raise AdapterWriteError(f"{self.descriptor} : configuration failed ({error})")
+            raise AdapterWriteError(
+                f"{self.descriptor} : configuration failed ({error})"
+            )
         self._bridge.serial_write(data)
 
     def _read_once(self) -> bytes | None:
@@ -318,7 +373,9 @@ class BridgedSerialPortBackend(AdapterBackend[SerialPortDescriptor, bytes]):
         if configured is not None:
             error = configured.exception()
             if error is not None:
-                raise AdapterOpenError(f"{self.descriptor} : configuration failed ({error})")
+                raise AdapterOpenError(
+                    f"{self.descriptor} : configuration failed ({error})"
+                )
         start = time.monotonic()
         period = self._bridge.SERIAL_POLL_PERIOD
         data = self._bridge.run(self._bridge.serial_read, period).result()

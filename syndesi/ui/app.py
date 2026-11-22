@@ -8,7 +8,8 @@ Syndesi GUI : main window and entry point
     syndesi ui stack.json                   open a saved stack
     syndesi ui -l ./psu.py                  add the components of a file to the library
     syndesi ui -l ./psu.py:PSU              ... and put PSU on top of the stack
-    syndesi ui -l mypackage.drivers         add the components of a module
+    syndesi ui -l ./drivers                 every file of a folder, or the package it is
+    syndesi ui -l mypackage                 every module of a package
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ from .worker import Worker, error_text
 STACK_FILTER = "Syndesi stack (*.json)"
 
 
+# pylint: disable=too-many-instance-attributes
 class MainWindow(QMainWindow):
     """Two screens : the stack, then the test of what was built"""
 
@@ -141,7 +143,9 @@ class MainWindow(QMainWindow):
         on_stack = self.pages.currentIndex() == 0
         self.build_button.setVisible(on_stack)
         self.build_button.setText("Rebuild && test" if self._built else "Build && test")
-        self.build_button.setEnabled(self.stack_screen.complete and not self.worker.busy)
+        self.build_button.setEnabled(
+            self.stack_screen.complete and not self.worker.busy
+        )
         # Back to the test without rebuilding, only if it still matches the stack
         self.to_test_button.setVisible(on_stack and self._built and not self._outdated)
         self.edit_button.setVisible(not on_stack)
@@ -223,7 +227,9 @@ class MainWindow(QMainWindow):
     def open_stack(self, path: str | None = None) -> None:
         """Load a saved stack"""
         if not path:
-            path, _ = QFileDialog.getOpenFileName(self, "Open a stack", "", STACK_FILTER)
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Open a stack", "", STACK_FILTER
+            )
             if not path:
                 return
         try:
@@ -239,7 +245,9 @@ class MainWindow(QMainWindow):
     def save_stack(self) -> None:
         """Save the stack"""
         start = str(self._path) if self._path else "stack.json"
-        path, _ = QFileDialog.getSaveFileName(self, "Save the stack", start, STACK_FILTER)
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save the stack", start, STACK_FILTER
+        )
         if not path:
             return
         try:
@@ -288,16 +296,18 @@ def leaks_none_references() -> bool:
 
 def main(args: list[str] | None = None) -> int:
     """Entry point of syndesi ui"""
-    parser = argparse.ArgumentParser(prog="syndesi ui", description="Syndesi graphical interface")
+    parser = argparse.ArgumentParser(
+        prog="syndesi ui", description="Syndesi graphical interface"
+    )
     parser.add_argument("stack", nargs="?", help="stack file saved by the GUI (.json)")
     parser.add_argument(
         "-l",
         "--load",
         action="append",
         default=[],
-        metavar="FILE_OR_MODULE[:CLASS]",
-        help="add the components of a python file or module to the library, "
-        "':Class' also puts it on top of the stack",
+        metavar="SOURCE[:CLASS]",
+        help="add the components of a python file, a folder, a module or a package to "
+        "the library, ':Class' also puts it on top of the stack",
     )
     parser.add_argument("--theme", choices=["auto", "light", "dark"], default="auto")
     parser.add_argument("--version", action="version", version=f"Syndesi {__version__}")

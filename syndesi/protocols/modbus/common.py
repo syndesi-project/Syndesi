@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import Enum, IntEnum, StrEnum
 from math import ceil
 
-from ...tools.errors import SyndesiError
+from ...errors import SyndesiError
 
 MODBUS_TCP_DEFAULT_PORT = 502
 

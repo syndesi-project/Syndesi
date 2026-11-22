@@ -51,9 +51,8 @@ from ...adapters.stop_conditions import (
     StopCondition,
     Termination,
 )
-from ...adapters.utils import TimeoutParameterType, TimeoutType
-from ...tools.errors import ProtocolError, ProtocolReadError
-from ...tools.others import DEFAULT
+from ...adapters.utils import TimeoutType
+from ...errors import ProtocolError, ProtocolReadError
 from ..protocol import (
     BackendOutput,
     ProtocolBackend,
@@ -290,8 +289,8 @@ class ModbusBackend(ProtocolBackend[bytes, ModbusSDU]):
         return None if self._server else 1.0
 
     @property
-    def adapter_default_timeout(self) -> TimeoutParameterType:
-        return None if self._server else DEFAULT
+    def pending_data(self) -> bytes | None:
+        return self._buffer or None
 
 
 class ModbusTCPBackend(ModbusBackend):

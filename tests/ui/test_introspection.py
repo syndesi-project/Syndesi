@@ -8,6 +8,7 @@ from syndesi import (
     AsyncIP,
     AsyncSCPI,
     Delimited,
+    FlexibleEnum,
     IPServer,
     Modbus,
     SCPIDriver,
@@ -119,3 +120,27 @@ def test_user_driver_slots():
     assert component_info(classes["PowerSupplyChannel"]).kind is Kind.SUBDRIVER
     channel = next(c for c in commands_of(psu) if c.name == "channel")
     assert channel.returns is classes["PowerSupplyChannel"]
+
+
+class _Range(FlexibleEnum):
+    _2V = "R1", 2, "2V"
+    _20V = "R2", 20, "20V"
+
+
+class _Meter(SCPIDriver):
+    def set_range(self, voltage_range: _Range | str | float) -> None:
+        """Set the range"""
+
+    def open(self) -> None: ...
+
+    def close(self) -> None: ...
+
+    def test(self) -> bool:
+        return True
+
+
+def test_flexible_enum_union_is_a_choice():
+    set_range = next(c for c in commands_of(_Meter) if c.name == "set_range")
+    # The enum gives the choices, str and float are what it accepts too
+    assert set_range.params[0].field_type is FieldType.CHOICE
+    assert set_range.params[0].choices == [_Range._2V, _Range._20V]

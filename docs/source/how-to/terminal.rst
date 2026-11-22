@@ -21,8 +21,11 @@ Find the serial ports
 .. code-block:: console
 
    $ syndesi term serial --list
-   /dev/ttyUSB0
-   /dev/ttyACM0
+   /dev/ttyUSB0  CP2102 USB to UART Bridge Controller
+   /dev/ttyACM0  Arduino Uno
+
+The description comes from the system, when it knows what is plugged in. The same
+works for buses: ``syndesi term i2c --list``, ``syndesi term spi --list``.
 
 Choose the line ending
 ----------------------

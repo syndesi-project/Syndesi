@@ -101,7 +101,13 @@ class Connector(QWidget):
             QPolygon([QPoint(x, top), QPoint(x - 4, top + 6), QPoint(x + 4, top + 6)])
         )
         painter.drawPolygon(
-            QPolygon([QPoint(x, bottom), QPoint(x - 4, bottom - 6), QPoint(x + 4, bottom - 6)])
+            QPolygon(
+                [
+                    QPoint(x, bottom),
+                    QPoint(x - 4, bottom - 6),
+                    QPoint(x + 4, bottom - 6),
+                ]
+            )
         )
 
 
@@ -186,7 +192,9 @@ class SlotWidget(_DropTarget):
         row = QHBoxLayout()
         if spec is None:
             text = "Choose the top layer"
-            detail = "the component you want to test : a driver, a protocol or an adapter"
+            detail = (
+                "the component you want to test : a driver, a protocol or an adapter"
+            )
         else:
             text = f"{spec.name}" + ("" if spec.required else "  (optional)")
             detail = f"accepts {spec.type_label}"
@@ -209,7 +217,9 @@ class SlotWidget(_DropTarget):
             names += "…"
         if spec is not None:
             choices = QLabel(
-                f"e.g. {names}" if compatible else "Nothing in the library fits, load one"
+                f"e.g. {names}"
+                if compatible
+                else "Nothing in the library fits, load one"
             )
             choices.setObjectName("Muted")
             choices.setWordWrap(True)
@@ -227,7 +237,9 @@ class SlotWidget(_DropTarget):
         return self.spec is None or self.spec.accepts(cls)
 
     def drop_class(self, cls: type) -> None:
-        self.owner.fill_slot(self.parent_node, self.spec.name if self.spec else None, cls)
+        self.owner.fill_slot(
+            self.parent_node, self.spec.name if self.spec else None, cls
+        )
 
     def set_drop_state(self, state: str) -> None:
         if state:
@@ -236,7 +248,9 @@ class SlotWidget(_DropTarget):
         else:
             self._refresh_state()
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # pylint: disable=unused-argument
+    def mousePressEvent(
+        self, event: QMouseEvent
+    ) -> None:  # pylint: disable=unused-argument
         self.owner.select_slot(self.parent_node, self.spec.name if self.spec else None)
 
     def _menu(self) -> None:
@@ -274,11 +288,15 @@ class TopZone(_DropTarget):
         self.setProperty("state", state)
         repolish(self)
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # pylint: disable=unused-argument
+    def mousePressEvent(
+        self, event: QMouseEvent
+    ) -> None:  # pylint: disable=unused-argument
         menu = QMenu(self)
         self.owner.fill_menu(menu, self.accepts_class, self.drop_class)
         if menu.isEmpty():
-            menu.addAction("Nothing in the library can be built on it").setEnabled(False)
+            menu.addAction("Nothing in the library can be built on it").setEnabled(
+                False
+            )
         menu.exec(self.mapToGlobal(QPoint(0, self.height())))
 
 
@@ -342,7 +360,9 @@ class NodeCard(_DropTarget):
         set_tone(self.values, "" if text else "muted")
         self.setProperty("selected", self.owner.selected_node is self.node)
         repolish(self)
-        problems = [p for p in self.node.problems() if p.startswith(self.node.info.name + " ")]
+        problems = [
+            p for p in self.node.problems() if p.startswith(self.node.info.name + " ")
+        ]
         own = [p for p in problems if "choose what" not in p]
         if own:
             set_pixmap(self.status, "alert", "error", size=16)
@@ -361,7 +381,9 @@ class NodeCard(_DropTarget):
         self.setProperty("drop", state)
         repolish(self)
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # pylint: disable=unused-argument
+    def mousePressEvent(
+        self, event: QMouseEvent
+    ) -> None:  # pylint: disable=unused-argument
         self.owner.select_node(self.node)
 
     def contextMenuEvent(self, event: Any) -> None:
@@ -381,7 +403,9 @@ class NodeCard(_DropTarget):
                 f"Remove this layer only (keep {keep.info.name})",
                 lambda: self.owner.remove_node(self.node, keep_children=True),
             )
-        menu.addAction("Remove", lambda: self.owner.remove_node(self.node, keep_children=False))
+        menu.addAction(
+            "Remove", lambda: self.owner.remove_node(self.node, keep_children=False)
+        )
         menu.exec(position or self.mapToGlobal(QPoint(self.width() - 30, 30)))
 
 
@@ -416,7 +440,9 @@ class InternalCard(QFrame):
         )
         fit_height(self, CARD_WIDTH - 40)
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # pylint: disable=unused-argument
+    def mousePressEvent(
+        self, event: QMouseEvent
+    ) -> None:  # pylint: disable=unused-argument
         self.owner.select_internal(self.item)
 
 
@@ -462,10 +488,14 @@ class StackCanvas(QScrollArea):
         layout.addWidget(app, 0, Qt.AlignmentFlag.AlignHCenter)
         if root is None:
             layout.addWidget(Connector("", ""), 0, Qt.AlignmentFlag.AlignHCenter)
-            layout.addWidget(SlotWidget(self.owner, None, None), 0, Qt.AlignmentFlag.AlignHCenter)
+            layout.addWidget(
+                SlotWidget(self.owner, None, None), 0, Qt.AlignmentFlag.AlignHCenter
+            )
         else:
             layout.addWidget(
-                Connector("", root.info.provides_label), 0, Qt.AlignmentFlag.AlignHCenter
+                Connector("", root.info.provides_label),
+                0,
+                Qt.AlignmentFlag.AlignHCenter,
             )
             layout.addWidget(TopZone(self.owner), 0, Qt.AlignmentFlag.AlignHCenter)
             layout.addSpacing(6)
@@ -474,6 +504,7 @@ class StackCanvas(QScrollArea):
         self.setWidget(container)
         self.verticalScrollBar().setValue(scroll)
 
+    # pylint: disable=too-many-locals
     def _node_view(self, node: StackNode) -> QWidget:
         view = QWidget()
         layout = QVBoxLayout(view)
@@ -488,7 +519,9 @@ class StackCanvas(QScrollArea):
         if item is not None:
             for internal in self._internal_chain(item):
                 layout.addWidget(
-                    Connector("", _flow(internal), dashed=True), 0, Qt.AlignmentFlag.AlignHCenter
+                    Connector("", _flow(internal), dashed=True),
+                    0,
+                    Qt.AlignmentFlag.AlignHCenter,
                 )
                 layout.addWidget(
                     InternalCard(self.owner, internal), 0, Qt.AlignmentFlag.AlignHCenter
@@ -501,7 +534,9 @@ class StackCanvas(QScrollArea):
                     f" ({', '.join(classes)})"
                 )
                 exposes.setObjectName("Muted")
-                exposes.setToolTip("\n".join(f"{c.path} : {c.cls.__name__}" for c in subdrivers))
+                exposes.setToolTip(
+                    "\n".join(f"{c.path} : {c.cls.__name__}" for c in subdrivers)
+                )
                 layout.addSpacing(4)
                 layout.addWidget(exposes, 0, Qt.AlignmentFlag.AlignHCenter)
 
@@ -513,22 +548,35 @@ class StackCanvas(QScrollArea):
                 spec = node.slot_spec(slot)
                 column = QVBoxLayout()
                 column.setSpacing(0)
-                flow = child.info.provides_label if child is not None else spec.type_label
-                column.addWidget(Connector(slot, flow), 0, Qt.AlignmentFlag.AlignHCenter)
+                flow = (
+                    child.info.provides_label if child is not None else spec.type_label
+                )
+                column.addWidget(
+                    Connector(slot, flow), 0, Qt.AlignmentFlag.AlignHCenter
+                )
                 if child is None:
                     column.addWidget(
-                        SlotWidget(self.owner, node, spec), 0, Qt.AlignmentFlag.AlignHCenter
+                        SlotWidget(self.owner, node, spec),
+                        0,
+                        Qt.AlignmentFlag.AlignHCenter,
                     )
                 else:
-                    column.addWidget(self._node_view(child), 0, Qt.AlignmentFlag.AlignHCenter)
+                    column.addWidget(
+                        self._node_view(child), 0, Qt.AlignmentFlag.AlignHCenter
+                    )
                 column.addStretch(1)
                 row.addLayout(column)
             row.addStretch(1)
             layout.addLayout(row)
         elif node.kind is Kind.ADAPTER:
-            layout.addWidget(Connector("", "bytes" if node.info.provides is bytes else ""), 0,
-                             Qt.AlignmentFlag.AlignHCenter)
-            layout.addWidget(Pill("Device", _device_text(node)), 0, Qt.AlignmentFlag.AlignHCenter)
+            layout.addWidget(
+                Connector("", "bytes" if node.info.provides is bytes else ""),
+                0,
+                Qt.AlignmentFlag.AlignHCenter,
+            )
+            layout.addWidget(
+                Pill("Device", _device_text(node)), 0, Qt.AlignmentFlag.AlignHCenter
+            )
         return view
 
     def _internal_chain(self, item: RuntimeItem) -> list[RuntimeItem]:

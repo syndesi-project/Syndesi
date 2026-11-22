@@ -16,3 +16,7 @@ Base classes for your own drivers. Guides: :doc:`/tutorials/first-driver`,
    :members: get_identification, get_system_error, get_system_version,
              clear_status_registers, trigger, reset
    :no-show-inheritance:
+
+.. autoclass:: syndesi.drivers.tools.FlexibleEnum
+   :members: label
+   :no-show-inheritance:

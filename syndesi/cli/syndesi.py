@@ -7,18 +7,19 @@ Main syndesi CLI script
 
 import argparse
 import logging
+import sys
 from enum import Enum
 from importlib.util import find_spec
 
-from .terminal import Terminal
-
 from .. import __version__
+from .terminal import Terminal
 
 
 class SyndesiCommand(Enum):
     """
     Syndesi script commands enum
     """
+
     TERMINAL = "term"
     DRIVER = "driver"
     UI = "ui"
@@ -39,7 +40,8 @@ def main() -> None:
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument(
         "command",
-        choices=[x.value for x in SyndesiCommand],
+        # driver is hidden until it does something
+        choices=[x.value for x in SyndesiCommand if x is not SyndesiCommand.DRIVER],
         help="Command, use syndesi <command> -h for help",
     )
 
@@ -63,11 +65,12 @@ def main() -> None:
             ...
         elif command == SyndesiCommand.UI:
             if find_spec("PySide6") is None:
-                raise ImportError(
-                    "Missing optional dependency 'PySide6'. Install with:\n"
-                    "  python -m pip install syndesi[ui]"
+                sys.exit(
+                    "The graphical interface needs a few more packages. Install them "
+                    "with :\n"
+                    '    python -m pip install "syndesi[ui]"'
                 )
-            #pylint: disable=import-outside-toplevel
+            # pylint: disable=import-outside-toplevel
             from syndesi.ui.app import main as start_ui
 
             start_ui(args.remaining)

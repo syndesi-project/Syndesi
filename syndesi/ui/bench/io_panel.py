@@ -101,9 +101,11 @@ class FrameBuffer(QObject):
         return result
 
 
+# pylint: disable=too-many-instance-attributes
 class IOPanel(QWidget):
     """Write, query and read on an adapter or a protocol"""
 
+    # pylint: disable=too-many-statements, too-many-locals
     def __init__(self, screen: TestScreen, item: RuntimeItem, payload: type) -> None:
         super().__init__()
         self.owner = screen
@@ -115,7 +117,9 @@ class IOPanel(QWidget):
         is_bytes = payload is bytes
         self.format = QComboBox()
         self.format.addItems(["Text", "Hex"] if is_bytes else ["Text"])
-        self.format.setToolTip("Text : \\n \\r \\t \\xHH escapes accepted\nHex : 01 02 ff")
+        self.format.setToolTip(
+            "Text : \\n \\r \\t \\xHH escapes accepted\nHex : 01 02 ff"
+        )
         self.format.setEnabled(is_bytes)
         explanation = QLabel(
             f"Payloads are <code>{payload.__name__}</code>"
@@ -177,7 +181,9 @@ class IOPanel(QWidget):
         read_row.addWidget(QLabel("scope"))
         read_row.addWidget(self.scope)
         # The timeout parameter of read(), with its Default / None checkboxes
-        read_params = signature_params(type(item.instance).read, type(item.instance), {})
+        read_params = signature_params(
+            type(item.instance).read, type(item.instance), {}
+        )
         timeout_spec = next(p for p in read_params if p.name == "timeout")
         self.timeout = FieldEditor(timeout_spec)
         self.timeout.setToolTip(
@@ -311,7 +317,9 @@ class IOPanel(QWidget):
         set_tone(self.buffer_count, "warning" if frames else "")
 
     def _show_received(self) -> None:
-        self.received.setPlainText("\n".join(self._line(*entry) for entry in self._history))
+        self.received.setPlainText(
+            "\n".join(self._line(*entry) for entry in self._history)
+        )
         self.received.moveCursor(self.received.textCursor().MoveOperation.End)
 
     def _clear_received(self) -> None:
@@ -324,7 +332,13 @@ class IOPanel(QWidget):
         self.received.appendPlainText(self._line(*entry))
 
     def _read_done(self, result: Any) -> None:
-        self.owner.log(self.item, "← read", repr(result), EntryStyle.READ, key=read_key(result))
+        self.owner.log(
+            item=self.item,
+            label="← read",
+            data=repr(result),
+            style=EntryStyle.READ,
+            key=read_key(result),
+        )
         self._add_received(result)
 
     def _read_failed(self, error: BaseException) -> None:
@@ -348,8 +362,19 @@ class IOPanel(QWidget):
             return
         self._remember(self.write_input)
         instance = self.item.instance
-        self.owner.log(self.item, "→ write", repr(data), EntryStyle.WRITE, key=write_key(data))
-        self.owner.run(self.item, lambda: instance.write(data), None, failure="✗ write")
+        self.owner.log(
+            item=self.item,
+            label="→ write",
+            data=repr(data),
+            style=EntryStyle.WRITE,
+            key=write_key(data),
+        )
+        self.owner.run(
+            item=self.item,
+            call=lambda: instance.write(data),
+            on_result=None,
+            failure="✗ write",
+        )
 
     def query(self) -> None:
         """Write the data and read the answer"""
@@ -363,7 +388,13 @@ class IOPanel(QWidget):
             data = I2CTransfer(data, self.read_length.value())
         instance = self.item.instance
         timeout = self._timeout()
-        self.owner.log(self.item, "→ write", repr(data), EntryStyle.WRITE, key=write_key(data))
+        self.owner.log(
+            item=self.item,
+            label="→ write",
+            data=repr(data),
+            style=EntryStyle.WRITE,
+            key=write_key(data),
+        )
         self.owner.run(
             self.item,
             lambda: instance.query(data, timeout=timeout),
@@ -391,5 +422,10 @@ class IOPanel(QWidget):
         """Drop the buffered frames"""
         instance = self.item.instance
         name = "clear_read_buffer" if is_adapter(instance) else "clear_buffer"
-        self.owner.log(self.item, "▶ command", f"{name}()", EntryStyle.COMMAND)
+        self.owner.log(
+            item=self.item,
+            label="▶ command",
+            data=f"{name}()",
+            style=EntryStyle.COMMAND,
+        )
         self.owner.run(self.item, getattr(instance, name), None)

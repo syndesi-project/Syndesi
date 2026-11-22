@@ -53,7 +53,10 @@ def encode_value(value: Any) -> Any:
     if isinstance(value, bytes):
         return {"$bytes": value.hex()}
     if isinstance(value, enum.Enum):
-        return {"$enum": f"{type(value).__module__}:{type(value).__qualname__}", "name": value.name}
+        return {
+            "$enum": f"{type(value).__module__}:{type(value).__qualname__}",
+            "name": value.name,
+        }
     if isinstance(value, StopCondition):
         return {"$stop": type(value).__name__, "args": _stop_condition_args(value)}
     if isinstance(value, (list, tuple)):
@@ -94,7 +97,9 @@ def node_to_dict(node: StackNode) -> dict[str, Any]:
         "class": node.info.qualified_name,
         "values": values,
         "children": {
-            name: node_to_dict(child) for name, child in node.children.items() if child is not None
+            name: node_to_dict(child)
+            for name, child in node.children.items()
+            if child is not None
         },
     }
 

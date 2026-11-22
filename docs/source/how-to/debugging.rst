@@ -67,10 +67,14 @@ React to events in your code
 Callbacks run on Syndesi's internal thread: keep them short and never call the adapter
 from inside one. See :doc:`/reference/events` for every event.
 
+.. _debug-logging:
+
 Turn on logging
 ---------------
 
-Syndesi logs through the standard ``logging`` module, under the ``syndesi`` logger:
+Syndesi logs through the standard ``logging`` module, under the ``syndesi`` logger.
+Errors raised to your code are logged at ``DEBUG`` only, so that an error you catch
+stays silent:
 
 .. code-block:: python
 

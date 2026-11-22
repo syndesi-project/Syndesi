@@ -197,9 +197,11 @@ class Inspector(QScrollArea):
             for spec in info.slots:
                 child = node.children.get(spec.name)
                 state = child.info.name if child is not None else "— empty —"
-                label = QLabel(f"<code>{spec.name}</code> : {state}<br>"
-                               f"<span style='color:{theme().muted.name()}'>accepts "
-                               f"<code>{spec.type_label}</code></span>")
+                label = QLabel(
+                    f"<code>{spec.name}</code> : {state}<br>"
+                    f"<span style='color:{theme().muted.name()}'>accepts "
+                    f"<code>{spec.type_label}</code></span>"
+                )
                 label.setWordWrap(True)
                 layout.addWidget(label)
         layout.addStretch(1)
@@ -233,7 +235,9 @@ class PythonHighlighter(QSyntaxHighlighter):
         comment.setForeground(theme().muted)
         cls = QTextCharFormat()
         cls.setForeground(theme().kind(Kind.ADAPTER))
-        for match in re.finditer(r"\b(from|import|await|print|async|def|return)\b", text):
+        for match in re.finditer(
+            r"\b(from|import|await|print|async|def|return)\b", text
+        ):
             self.setFormat(match.start(), match.end() - match.start(), keyword)
         for match in re.finditer(r"\b[A-Z]\w*", text):
             self.setFormat(match.start(), match.end() - match.start(), cls)
@@ -261,7 +265,9 @@ class CodePreview(QWidget):
         copy.setText("Copy")
         set_icon(copy, "copy")
         copy.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.editor.toPlainText()))
+        copy.clicked.connect(
+            lambda: QGuiApplication.clipboard().setText(self.editor.toPlainText())
+        )
         row.addWidget(copy)
         layout.addLayout(row)
         self.editor.setReadOnly(True)
