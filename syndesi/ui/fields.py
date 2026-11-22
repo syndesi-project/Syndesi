@@ -38,6 +38,7 @@ from ..adapters.stop_conditions import (
     Termination,
     Total,
 )
+from ..drivers.tools import FlexibleEnum
 from ..tools.others import DEFAULT
 from .core.introspection import FieldType, ParamSpec
 from .style.icons import set_icon
@@ -111,10 +112,19 @@ def parse_hex(text: str) -> bytes:
     return bytes.fromhex(text.replace(" ", "").replace(",", ""))
 
 
+def choice_text(choice: Any) -> str:
+    """A choice as shown in a list : '2V' for a FlexibleEnum that sends 'R1'"""
+    if isinstance(choice, FlexibleEnum):
+        return choice.label
+    if isinstance(choice, enum.Enum):
+        return str(choice.value)
+    return str(choice)
+
+
 def format_value(value: Any) -> str:
     """Short text of a value for the user"""
     if isinstance(value, enum.Enum):
-        return str(value.value)
+        return choice_text(value)
     if isinstance(value, StopCondition):
         return str(value)
     if isinstance(value, list) and value and all(isinstance(v, StopCondition) for v in value):
@@ -353,8 +363,7 @@ class FieldEditor(QWidget):
                 editor = QComboBox()
                 editor.setMinimumWidth(80)
                 for choice in spec.choices or []:
-                    text = str(choice.value) if isinstance(choice, enum.Enum) else str(choice)
-                    editor.addItem(text, choice)
+                    editor.addItem(choice_text(choice), choice)
                 editor.currentIndexChanged.connect(self.changed)
             case FieldType.STOP_CONDITIONS:
                 editor = StopConditionsEditor()
@@ -454,7 +463,7 @@ class FieldEditor(QWidget):
         elif isinstance(editor, QComboBox) and not editor.isEditable():
             index = editor.findData(value)
             if index < 0:
-                index = editor.findText(str(value.value if isinstance(value, enum.Enum) else value))
+                index = editor.findText(choice_text(value))
             if index >= 0:
                 editor.setCurrentIndex(index)
         elif isinstance(editor, QComboBox):
@@ -485,6 +494,10 @@ class FieldEditor(QWidget):
         if isinstance(editor, StopConditionsEditor):
             return editor.value()
         if isinstance(editor, QComboBox) and not editor.isEditable():
+            # Not currentData() : Qt turns a StrEnum member into a plain str
+            index = editor.currentIndex()
+            if spec.choices and 0 <= index < len(spec.choices):
+                return spec.choices[index]
             return editor.currentData()
         text = editor.currentText() if isinstance(editor, QComboBox) else editor.text()  # type: ignore[attr-defined]
         if spec.field_type is FieldType.EXPRESSION:

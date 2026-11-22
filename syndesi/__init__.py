@@ -27,6 +27,7 @@ from .protocols.scpi import SCPI, AsyncSCPI
 from .drivers.driver import Driver, SubDriver
 from .bridges import I2CBridge, LinuxI2C, LinuxSPI, SerialBridge, SPIBridge
 from .drivers.scpi_driver import SCPIDriver
+from .drivers.tools import FlexibleEnum
 
 __all__ = [
     # Adapters
@@ -64,6 +65,7 @@ __all__ = [
     "Driver",
     "SubDriver",
     "SCPIDriver",
+    "FlexibleEnum",
     # Buses
     "I2C",
     "AsyncI2C",

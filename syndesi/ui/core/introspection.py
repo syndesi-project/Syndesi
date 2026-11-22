@@ -442,8 +442,14 @@ def _classify(spec: ParamSpec) -> None:
         spec.field_type = FieldType.FLOAT if FieldType.FLOAT in types_found else FieldType.INT
     elif FieldType.STOP_CONDITIONS in types_found:
         spec.field_type = FieldType.STOP_CONDITIONS
-    elif types_found == {FieldType.CHOICE, FieldType.STR}:
-        # Endian | str : the enum gives the choices, a string is accepted too
+    elif FieldType.CHOICE in types_found and types_found <= {
+        FieldType.CHOICE,
+        FieldType.STR,
+        FieldType.INT,
+        FieldType.FLOAT,
+    }:
+        # Endian | str, VoltageRange | str | float : the enum gives the choices, the
+        # other types are what it accepts too
         spec.field_type = FieldType.CHOICE
         spec.choices = next(c for t, c in kept if t is FieldType.CHOICE)
     elif len(types_found) == 1:
