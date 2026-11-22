@@ -25,7 +25,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from ..tools.errors import AdapterError, AdapterReadError
+from ..errors import AdapterError, AdapterReadError
 from ..tools.log_settings import LoggerAlias
 from .utils import Fragment, HasFileno
 

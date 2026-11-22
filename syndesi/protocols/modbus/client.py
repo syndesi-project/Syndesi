@@ -17,7 +17,7 @@ from syndesi.adapters.serialport import AsyncSerialPort, SerialPort
 from ...adapters.adapter import Adapter, AsyncAdapter
 from ...adapters.ip import IP, AsyncIP
 from ...adapters.utils import TimeoutParameterType
-from ...tools.errors import ProtocolReadError
+from ...errors import ProtocolReadError
 from ...tools.others import DEFAULT
 from ..protocol import (
     AsyncProtocol,

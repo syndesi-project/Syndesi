@@ -26,7 +26,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from ..tools.errors import AdapterConfigurationError, AdapterOpenError, AdapterWriteError
+from ..errors import AdapterConfigurationError, AdapterOpenError, AdapterWriteError
+from ..tools.hints import permission_hint
 from .bridge import I2CBridge, SPIBridge
 
 # ┌─────────────┐
@@ -90,6 +91,17 @@ def _ioctl(fd: int, request: int, argument: Any) -> None:
 def _open_device(path: str) -> int:
     try:
         return os.open(path, os.O_RDWR)
+    except PermissionError as e:
+        message = f"Cannot open {path} : {e.strerror}"
+        hint = permission_hint(path)
+        raise AdapterOpenError(message + (f"\n{hint}" if hint else "")) from e
+    except FileNotFoundError as e:
+        spi = os.path.basename(path).startswith("spidev")
+        buses = ", ".join(list_spi_devices() if spi else list_i2c_buses()) or "none"
+        raise AdapterOpenError(
+            f"Cannot open {path} : {e.strerror}. Buses on this machine : {buses}. "
+            "On a Raspberry Pi, enable I2C or SPI with sudo raspi-config"
+        ) from e
     except OSError as e:
         raise AdapterOpenError(f"Cannot open {path} : {e.strerror}") from e
 

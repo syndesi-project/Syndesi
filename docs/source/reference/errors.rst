@@ -1,7 +1,7 @@
 Errors
 ======
 
-``from syndesi.tools.errors import ...``. Guide: :doc:`/how-to/errors`.
+``from syndesi.errors import ...``. Guide: :doc:`/how-to/errors`.
 
 .. code-block:: text
 
@@ -19,26 +19,26 @@ Errors
    └── ModbusError                    (syndesi.protocols.modbus)
        └── ModbusException
 
-.. autoexception:: syndesi.tools.errors.SyndesiError
+.. autoexception:: syndesi.errors.SyndesiError
    :no-show-inheritance:
 
 Adapter errors
 --------------
 
-.. autoexception:: syndesi.tools.errors.AdapterError
-.. autoexception:: syndesi.tools.errors.AdapterOpenError
-.. autoexception:: syndesi.tools.errors.AdapterWriteError
-.. autoexception:: syndesi.tools.errors.AdapterDisconnectedError
-.. autoexception:: syndesi.tools.errors.AdapterConfigurationError
-.. autoexception:: syndesi.tools.errors.AdapterReadError
-.. autoexception:: syndesi.tools.errors.AdapterTimeoutError
+.. autoexception:: syndesi.errors.AdapterError
+.. autoexception:: syndesi.errors.AdapterOpenError
+.. autoexception:: syndesi.errors.AdapterWriteError
+.. autoexception:: syndesi.errors.AdapterDisconnectedError
+.. autoexception:: syndesi.errors.AdapterConfigurationError
+.. autoexception:: syndesi.errors.AdapterReadError
+.. autoexception:: syndesi.errors.AdapterTimeoutError
 
 Protocol errors
 ---------------
 
-.. autoexception:: syndesi.tools.errors.ProtocolError
-.. autoexception:: syndesi.tools.errors.ProtocolWriteError
-.. autoexception:: syndesi.tools.errors.ProtocolReadError
+.. autoexception:: syndesi.errors.ProtocolError
+.. autoexception:: syndesi.errors.ProtocolWriteError
+.. autoexception:: syndesi.errors.ProtocolReadError
 
 Modbus errors
 -------------

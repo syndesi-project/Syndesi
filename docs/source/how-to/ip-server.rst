@@ -51,14 +51,13 @@ One thread per client:
    import threading
 
    from syndesi import Delimited, IPServer
-   from syndesi.tools.errors import AdapterError
+   from syndesi.errors import AdapterError
 
    def serve(client):
-       client.set_timeout(None)            # clients may stay silent for a long time
-       line = Delimited(client)
+       line = Delimited(client, timeout=None)   # clients may stay silent for a long time
        try:
            while True:
-               command = line.read(timeout=None)
+               command = line.read()
                line.write(command.upper())
        except AdapterError:
            pass   # client left
@@ -69,8 +68,8 @@ One thread per client:
 
 .. note::
 
-   A read through a protocol waits for the shorter of the adapter's timeout and the
-   protocol's. To wait without limit for a client, lift both, as above.
+   The protocol gives its timeout to the client adapter: ``timeout=None`` on
+   ``Delimited`` is enough to wait without limit. See :ref:`timeouts`.
 
 Stop the server
 ---------------

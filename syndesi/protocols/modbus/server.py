@@ -23,7 +23,7 @@ from syndesi.adapters.serialport import AsyncSerialPort, SerialPort
 from ...adapters.adapter import Adapter, AsyncAdapter
 from ...adapters.events import SyndesiEvent
 from ...adapters.ipserver import AsyncIPServer, IPServer
-from ...tools.errors import AdapterError, ProtocolReadError
+from ...errors import AdapterError, ProtocolReadError
 from ...tools.log_settings import LoggerAlias
 from ..protocol import (
     AsyncProtocol,

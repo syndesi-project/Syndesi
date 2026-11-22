@@ -19,10 +19,10 @@ from syndesi.adapters.stop_conditions import FragmentSC
 
 from ..adapters.i2c import I2C, I2CTransfer
 from ..adapters.ip import IP
-from ..adapters.serialport import SerialPort
+from ..adapters.serialport import SerialPort, describe_ports
 from ..adapters.spi import SPI
 from ..adapters.visa import Visa
-from ..tools.errors import AdapterError, AdapterOpenError
+from ..errors import AdapterError, AdapterOpenError
 from .console import Shell
 
 HISTORY_FILE_NAME = "syndesi"
@@ -128,9 +128,10 @@ def parse_termination_argument(arg: str | None) -> bytes:
 
 class ListAction(argparse.Action):
     """
-    Print what const() lists (serial ports, I2C buses, ...) and exit
+    Print what const lists (serial ports, I2C buses, ...) and exit
 
-    Added with nargs=0 and const set to the function that lists
+    Added with nargs=0 and const set to (function that lists, what is listed). The
+    function returns a list of names, or a dict of names and descriptions
     """
 
     def __call__(
@@ -140,8 +141,17 @@ class ListAction(argparse.Action):
         values: str | Sequence[str] | None,
         option_string: str | None = None,
     ) -> None:
-        for item in self.const():
-            print(f"{item}")
+        lister, what = self.const
+        items = lister()
+        if not items:
+            print(f"No {what} found")
+        elif isinstance(items, dict):
+            width = max(len(name) for name in items)
+            for name, description in items.items():
+                print(f"{name:<{width}}  {description}".rstrip())
+        else:
+            for item in items:
+                print(item)
         parser.exit()
 
 class Terminal:
@@ -187,7 +197,7 @@ class Terminal:
             "--list",
             action=ListAction,
             nargs=0,
-            const=SerialPort.list_ports,
+            const=(describe_ports, "serial port"),
             default=False,
             help="List available serial ports",
         )
@@ -219,16 +229,16 @@ class Terminal:
         )
         spi_parser.add_argument("device", type=str, help="/dev/spidevB.C")
         for parser, lister, what in (
-            (i2c_parser, I2C.list_buses, "I2C buses"),
-            (spi_parser, SPI.list_buses, "SPI devices"),
+            (i2c_parser, I2C.list_buses, "I2C bus"),
+            (spi_parser, SPI.list_buses, "SPI device"),
         ):
             parser.add_argument(
                 "--list",
                 action=ListAction,
                 nargs=0,
-                const=lister,
+                const=(lister, what),
                 default=False,
-                help=f"List available {what}",
+                help=f"List the {what}s of this machine",
             )
             # Binary buses : hex and no termination, unless asked otherwise
             parser.set_defaults(term="", format=Format.HEX.value)
@@ -336,8 +346,8 @@ class Terminal:
         try:
             self.adapter.open()
             #self.protocol.open()
-        except AdapterOpenError:
-            self.shell.print(f"Failed to open {self.adapter}")
+        except AdapterOpenError as e:
+            self.shell.print(str(e), Shell.Style.ERROR)
         else:
             self.shell.run()
             self.shell.print(

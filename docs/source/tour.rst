@@ -63,19 +63,6 @@ Connect
 
          :doc:`how-to/connect`
 
-   .. grid-item-card:: From a string
-
-      .. code-block:: python
-
-         from syndesi import auto_adapter
-
-         auto_adapter("192.168.1.10:5025:TCP")  # IP
-         auto_adapter("/dev/ttyUSB0:115200")    # SerialPort
-
-      .. card-footer::
-
-         :doc:`how-to/connect`
-
    .. grid-item-card:: Context manager
 
       .. code-block:: python

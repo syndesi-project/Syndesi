@@ -15,7 +15,7 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from ..tools.errors import AdapterOpenError, AdapterReadError, AdapterWriteError
+from ..errors import AdapterOpenError, AdapterReadError, AdapterWriteError
 from ..tools.others import DEFAULT, DefaultType
 from .adapter import Adapter, AsyncAdapter
 from .engine import AdapterBackend

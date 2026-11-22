@@ -67,23 +67,6 @@ Same parameters and methods as their sync counterparts, see :doc:`/how-to/async`
    :no-members:
    :no-show-inheritance:
 
-From a string
--------------
-
-.. autofunction:: syndesi.adapters.auto.auto_adapter
-
-.. autofunction:: syndesi.adapters.auto.auto_async_adapter
-
-Accepted strings:
-
-======================================  ============================
-``"192.168.1.10:5025:TCP"``             ``IP``, TCP
-``"192.168.1.50:9000:UDP"``             ``IP``, UDP
-``"/dev/ttyUSB0:115200"``               ``SerialPort``
-``"COM3:9600"``                         ``SerialPort``
-``"GPIB0::14::INSTR"`` (any VISA name)  ``Visa``, if pyvisa is installed
-======================================  ============================
-
 Frames and read scope
 ---------------------
 

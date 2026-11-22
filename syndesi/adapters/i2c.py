@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from ..bridges.bridge import I2CBridge
 from ..bridges.linux import linux_i2c, list_i2c_buses
-from ..tools.errors import AdapterReadError
+from ..errors import AdapterReadError
 from ..tools.others import DEFAULT
 from .adapter import Adapter, AsyncAdapter
 from .bus import BusBackend

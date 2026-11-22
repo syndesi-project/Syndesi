@@ -49,7 +49,7 @@ from ..adapters.framer import AdapterReadFrame
 from ..adapters.reactor import default_reactor
 from ..adapters.stop_conditions import StopCondition
 from ..adapters.utils import HasFileno, TimeoutParameterType, TimeoutType, nmin
-from ..tools.errors import (
+from ..errors import (
     AdapterDisconnectedError,
     AdapterError,
     AdapterTimeoutError,
@@ -216,13 +216,13 @@ class ProtocolBackend(Generic[AdapterT, ProtocolT], ABC):
         return None
 
     @property
-    def adapter_default_timeout(self) -> TimeoutParameterType:
+    def pending_data(self) -> ProtocolT | AdapterT | None:
         """
-        Time the adapter waits for the first fragment, ``DEFAULT`` to leave it alone
+        What the backend holds of the payload being assembled, None if nothing
 
-        Only applied if the user didn't set the adapter timeout themselves
+        Reported by a timeout : what arrived without forming a payload
         """
-        return DEFAULT
+        return None
 
 # ┌──────────┐
 # │ Commands │
@@ -286,6 +286,8 @@ class PendingProtocolRead(Generic[ProtocolT]):
     scope: ReadScope
     response_deadline: float | None
     timeout: TimeoutType
+    # Time given to the adapter for the first fragment, reported if it passes
+    first_fragment_timeout: TimeoutType = None
 
 # ┌────────┐
 # │ Engine │
@@ -503,7 +505,9 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
             self._fail(
                 pending.command,
                 AdapterTimeoutError(
-                    float("nan") if pending.timeout is None else pending.timeout
+                    float("nan") if pending.timeout is None else pending.timeout,
+                    received=self._received_data(),
+                    waiting_for=self._waiting_for(),
                 ),
             )
 
@@ -551,12 +555,15 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
         self._fail_pending(error)
 
     def on_fragment_timeout(self) -> None:
-        """The adapter received nothing within its own timeout"""
-        adapter_timeout = self._adapter_engine.timeout
+        """The adapter received nothing within the time armed by _begin_read"""
+        pending = self._pending_read
+        timeout = (
+            self._adapter_engine.timeout
+            if pending is None
+            else pending.first_fragment_timeout
+        )
         self._fail_pending(
-            AdapterTimeoutError(
-                float("nan") if adapter_timeout is None else adapter_timeout
-            )
+            AdapterTimeoutError(float("nan") if timeout is None else timeout)
         )
 
     # ┌──────────┐
@@ -677,10 +684,14 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
         )
 
         # The adapter's own timeout covers the first fragment. It has no pending read of
-        # its own here, so it has to be armed
-        adapter_timeout = self._adapter_engine.timeout
-        if adapter_timeout is not None and not self._backend.in_progress:
-            self._adapter_engine.arm_fragment_deadline(now + adapter_timeout)
+        # its own here, so it has to be armed. A timeout given to this read is an
+        # instruction for the whole exchange : it covers the first fragment as well
+        first_fragment_timeout = (
+            self._adapter_engine.timeout if command.timeout is DEFAULT else timeout
+        )
+        self._pending_read.first_fragment_timeout = first_fragment_timeout
+        if first_fragment_timeout is not None and not self._backend.in_progress:
+            self._adapter_engine.arm_fragment_deadline(now + first_fragment_timeout)
 
         command.add_done_callback(self._wakeup_if_cancelled)
 
@@ -794,6 +805,30 @@ class ProtocolEngine(Generic[AdapterT, ProtocolT]):
             return index
         return None
 
+    def _received_data(self) -> Any:
+        """
+        What arrived for the pending read without forming a payload, None if nothing
+
+        The backend holds the adapter frames it is assembling, the adapter framer the
+        bytes of the frame it is assembling, in this order on the wire
+        """
+        parts: list[Any] = [
+            part
+            for part in (self._backend.pending_data, self._adapter_engine.pending_data)
+            if part is not None
+        ]
+        if not parts:
+            return None
+        if all(isinstance(part, bytes) for part in parts):
+            return b"".join(parts)
+        return parts[0] if len(parts) == 1 else parts
+
+    def _waiting_for(self) -> str:
+        """What the adapter frame being assembled waits for, empty if none is"""
+        if self._adapter_engine.pending_data is None:
+            return ""
+        return self._adapter_engine.stop_conditions_description()
+
     def _fail_pending(self, error: BaseException) -> None:
         pending = self._pending_read
         if pending is None:
@@ -852,13 +887,13 @@ def _resolve_timeout(
     timeout: TimeoutParameterType,
     adapter: Adapter[Any, Any] | AsyncAdapter[Any, Any],
     backend: ProtocolBackend[Any, Any],
-) -> TimeoutParameterType:
+) -> TimeoutType:
     """
     Time to wait for a complete protocol frame
 
-    ``DEFAULT`` keeps the timeout the user gave the adapter, and falls back on the backend
-    default when they gave it none : an explicit adapter timeout is an instruction about
-    the exchange, not only about its first fragment
+    ``DEFAULT`` keeps the timeout someone chose for the adapter (the user, or a driver
+    with set_default_timeout), and falls back on the backend default otherwise : the
+    2 s of IP say nothing about how long a SCPI instrument takes to answer
     """
     if timeout is not DEFAULT:
         return timeout
@@ -890,17 +925,20 @@ class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
         self.adapter = adapter
         # Private : a user looking for the adapter must find self.adapter
         self._backend = backend
+        resolved_timeout = _resolve_timeout(timeout, adapter, backend)
         self._engine: ProtocolEngine[AdapterT, ProtocolT] = ProtocolEngine(
             adapter.engine,
             backend,
-            timeout=_resolve_timeout(timeout, adapter, backend),
+            timeout=resolved_timeout,
             alias=alias,
             event_callback=event_callback,
         )
 
-        adapter_timeout = backend.adapter_default_timeout
-        if adapter_timeout is not DEFAULT and adapter.has_default_timeout:
-            adapter.engine.set_timeout(adapter_timeout)
+        # The adapter waits for the first fragment as long as the protocol waits for its
+        # payload, unless the user chose the adapter timeout
+        self._engine.configuration.append(
+            adapter.engine.set_default_timeout(resolved_timeout)
+        )
 
         # Both have to allow it : auto_open=False on either the adapter or the
         # protocol means an explicit open() is required
@@ -1001,8 +1039,13 @@ class Protocol(
         self._engine.close().result()
 
     def set_timeout(self, timeout: TimeoutType) -> None:
-        """Set the time to wait for a complete protocol frame"""
+        """
+        Set the time to wait for a complete protocol frame
+
+        The adapter gets it too, unless the user chose the adapter timeout
+        """
         self._engine.set_timeout(timeout).result()
+        self.adapter.engine.set_default_timeout(timeout).result()
 
     def write(self, payload: ProtocolT) -> None:
         """Encode a payload and write it to the target"""
@@ -1105,8 +1148,13 @@ class AsyncProtocol(
         await asyncio.wrap_future(self._engine.close())
 
     async def set_timeout(self, timeout: TimeoutType) -> None:
-        """Set the time to wait for a complete protocol frame"""
+        """
+        Set the time to wait for a complete protocol frame
+
+        The adapter gets it too, unless the user chose the adapter timeout
+        """
         await asyncio.wrap_future(self._engine.set_timeout(timeout))
+        await asyncio.wrap_future(self.adapter.engine.set_default_timeout(timeout))
 
     async def write(self, payload: ProtocolT) -> None:
         """Encode a payload and write it to the target"""

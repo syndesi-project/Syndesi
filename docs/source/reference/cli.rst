@@ -25,6 +25,8 @@ Interactive terminal. Guide: :doc:`/how-to/terminal`.
 
    syndesi term ip      ADDRESS PORT [--protocol {TCP,UDP}]  [options]
    syndesi term serial  PORT BAUDRATE [--rtscts] [--list]   [options]
+   syndesi term i2c     BUS ADDRESS [--read N] [--list]     [options]
+   syndesi term spi     DEVICE [--list]                     [options]
    syndesi term visa    DESCRIPTOR                          [options]
 
 =============================  =================================================  ===========
@@ -37,7 +39,7 @@ Option                         Effect                                           
                                ``hex``, or ``raw`` text
 ``--protocol {TCP,UDP}``       IP only                                            ``TCP``
 ``--rtscts``                   serial only, hardware flow control                 off
-``--list``                     serial only, list the ports and exit
+``--list``                     serial, i2c, spi: list ports or buses and exit
 =============================  =================================================  ===========
 
 ``syndesi ui``

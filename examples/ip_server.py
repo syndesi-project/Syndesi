@@ -1,41 +1,20 @@
-"""
-ip_server.py
+"""A server and its client in the same script, nothing else to start"""
 
-Creates an IP server, IP clients, and exchanges data between them
-"""
-from syndesi import IP, IPServer, Termination
+from syndesi import IP, IPServer
 
-ADDRESS = '127.0.0.1'
-PORT = 4242
+server = IPServer("127.0.0.1", 4243)
+server.open()  # listen now, the client connects below
 
-DATA = b"Syndesi\n"
+client = IP("127.0.0.1", 4243)
+client.open()  # connect now : read() on the server waits for a connection
 
-def main():
-    # Create the server
-    # Give a "\n" stop-condition speed up the exchange
-    print(f'[Server] Open IP server on {ADDRESS}:{PORT}')
-    server = IPServer(ADDRESS, PORT, stop_conditions=[Termination("\n")])
+connection = server.read()  # the client, seen from the server : an IP adapter
 
-    # Create the client
-    print(f'[Client] Connect IP client to {ADDRESS}:{PORT}')
-    client = IP(ADDRESS, PORT, stop_conditions=[Termination("\n")])
+client.write(b"Syndesi\n")
+data = connection.read()
+print("Server received", data)  # b'Syndesi\n'
+connection.write(data)
+print("Client received", client.read())  # b'Syndesi\n'
 
-    # Receive the client adapter on the server side
-    client_handle = server.read()
-    print(f'[Server] Server received client (port : {client_handle.descriptor.port})')
-
-    # Send data from the client to the server
-    print(f'[Client] Sending {DATA}')
-    client.write(DATA)
-
-    # Receive data on the server side, echo it back
-    data = client_handle.read()
-    print(f'[Server] Received {data}, echoing back to client')
-    client_handle.write(data)
-
-    # Read the echoed back on the client side
-    data_out = client.read()
-    print(f'[Client] Received {data_out} back')
-
-if __name__ == '__main__':
-    main()
+client.close()
+server.close()

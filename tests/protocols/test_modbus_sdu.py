@@ -36,7 +36,7 @@ from syndesi.protocols.modbus import (
     WriteSingleRegisterRequestSDU,
     WriteSingleRegisterResponseSDU,
 )
-from syndesi.tools.errors import ProtocolReadError
+from syndesi.errors import ProtocolReadError
 
 # ┌──────────────────────────────┐
 # │ Requests built by the client │

@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "syndesi"
 version = "0.9.0"
-description = "Syndesi"
+description = "Talk to instruments and devices over IP, serial, VISA, I2C and SPI, with SCPI and Modbus"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "Sébastien Deriaz", email = "sebastien.deriaz1@gmail.com" }]
-keywords = ["python", "syndesi", "interface", "ethernet",
-"serial", "visa", "protocol", "driver", "adpater"]
+keywords = ["instrument", "test and measurement", "serial", "ethernet", "visa", "scpi",
+"modbus", "i2c", "spi", "driver", "adapter"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Education",
@@ -27,6 +27,12 @@ dependencies = [
     'rich',
     'platformdirs'
 ]
+
+[project.urls]
+Documentation = "https://syndesi.readthedocs.io/en/latest/"
+Source = "https://github.com/syndesi-project/Syndesi"
+Issues = "https://github.com/syndesi-project/Syndesi/issues"
+Changelog = "https://github.com/syndesi-project/Syndesi/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 visa = [

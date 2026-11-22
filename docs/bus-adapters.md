@@ -129,7 +129,7 @@ change dans l'engine, et un protocole posé sur `I2C` peut produire lui-même de
 `read(timeout, scope, ...)`.
 
 Descripteur : `i2c:bus@adresse`, par exemple `i2c:/dev/i2c-1@0x48` ou
-`i2c:MCP2221@0x48`. Les chaînes d'un bus natif sont reconnues par `auto_adapter()`.
+`i2c:MCP2221@0x48`.
 
 ### SPI
 
@@ -137,8 +137,7 @@ Full duplex : les octets reçus pendant une écriture sont une frame, autant que
 écrits. `spi.query(data)` ou son alias `spi.transfer(data)` les renvoie. Une simple
 `write()` les laisse dans le buffer, où un `read()` les trouve.
 
-Descripteur : `spi:bus.cs`, par exemple `spi:/dev/spidev0.1` ou `spi:MaCarte.1`. Les
-chaînes d'un bus natif sont reconnues par `auto_adapter()`.
+Descripteur : `spi:bus.cs`, par exemple `spi:/dev/spidev0.1` ou `spi:MaCarte.1`.
 
 ### Nom d'un pont
 
@@ -183,8 +182,6 @@ Driver du capteur            bloquant, toujours au sommet
 
 ## CLI et UI
 
-- `auto_adapter()` reconnaît `i2c:/dev/i2c-1@0x48` et `spi:/dev/spidev0.1`, et refuse
-  un nom de pont : un pont est un objet, il se passe à l'adapter.
 - CLI : `syndesi term i2c /dev/i2c-1 0x48 --read 2` écrit chaque ligne puis lit 2
   octets, `syndesi term spi /dev/spidev0.0` affiche les octets reçus pendant chaque
   envoi. Format hex et pas de terminaison par défaut, `--list` liste les bus. Une erreur
@@ -206,6 +203,5 @@ Driver du capteur            bloquant, toujours au sommet
 - **Report ID en écriture** : `report_id=0` par défaut (l'adapter ajoute l'octet),
   `report_id=None` pour le mode transparent.
 - Pas de codec dans HID : les ponts HID-UART (CP2110…) sont des ponts (`SerialBridge`).
-- `list_usb_devices()` générique, extra optionnel `syndesi[hid]`, import protégé dans
-  `auto.py`.
+- `list_usb_devices()` générique, extra optionnel `syndesi[hid]`.
 - Ensuite : un pont `MCP2221` (I2C + GPIO sur HID) en exemple.

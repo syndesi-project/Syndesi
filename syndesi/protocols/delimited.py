@@ -85,6 +85,17 @@ class DelimitedBackend(ProtocolBackend[bytes, str]):
         )
 
     def encode(self, payload: str) -> list[bytes]:
+        if isinstance(payload, (bytes, bytearray)):
+            text = bytes(payload).decode(self.encoding, errors="replace")
+            raise TypeError(
+                f"this protocol sends text (str), not bytes : write {text!r}, or send "
+                f"raw bytes with .adapter.write({bytes(payload)!r})"
+            )
+        if not isinstance(payload, str):
+            raise TypeError(
+                f"this protocol sends text (str), not {type(payload).__name__} : "
+                f"write str({payload!r}) or an f-string"
+            )
         return [(payload + self.termination).encode(self.encoding)]
 
     def decode(self, data: bytes) -> str:

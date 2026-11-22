@@ -23,7 +23,7 @@ from concurrent.futures import Future
 from typing import TypeVar
 
 from ..bridges.bridge import Bridge
-from ..tools.errors import AdapterReadError, AdapterWriteError
+from ..errors import AdapterReadError, AdapterWriteError
 from .engine import AdapterBackend, Descriptor
 from .reader_thread import FragmentQueue
 from .utils import Fragment, HasFileno, TimeoutType

@@ -17,7 +17,7 @@ import pytest
 
 from syndesi import IP, AsyncIP, Delimited, Modbus
 from syndesi.adapters.stop_conditions import Continuation
-from syndesi.tools.errors import AdapterError, AdapterOpenError
+from syndesi.errors import AdapterError, AdapterOpenError
 
 HOST = "127.0.0.1"
 
@@ -139,7 +139,8 @@ def test_default_port_set_after_construction(server):
 
 def test_incomplete_descriptor_raises_on_first_use():
     client = _client(None)
-    with pytest.raises(AdapterOpenError, match="incomplete"):
+    # Says what is missing, with an example
+    with pytest.raises(AdapterOpenError, match="no port given, for example IP"):
         client.write(b"abc")
 
 

@@ -16,7 +16,6 @@ Sync                   Async
 ``SCPI``               ``AsyncSCPI``
 ``Modbus``             ``AsyncModbus``
 ``ModbusServer``       ``AsyncModbusServer``
-``auto_adapter``       ``auto_async_adapter``
 =====================  ==========================
 
 Side by side

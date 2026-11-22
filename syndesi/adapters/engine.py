@@ -24,12 +24,12 @@ from collections import deque
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum, StrEnum
 from typing import Any, ClassVar, Generic, Protocol, TypeVar, runtime_checkable
 
 from syndesi.tools.others import DEFAULT, DefaultType
 
-from ..tools.errors import (
+from ..errors import (
     AdapterDisconnectedError,
     AdapterError,
     AdapterOpenError,
@@ -100,6 +100,10 @@ class Descriptor(ABC):
     def is_initialized(self) -> bool:
         """Return True if the descriptor is initialized"""
 
+    def missing(self) -> str:
+        """What is_initialized lacks, said to the user, with an example if possible"""
+        return "descriptor is incomplete"
+
 
 DataT = TypeVar("DataT")
 ResultT = TypeVar("ResultT")
@@ -119,6 +123,20 @@ class ReadScope(StrEnum):
     NEXT = "next"
     BUFFERED = "buffered"
     LAST_WRITE = "last_write"
+
+
+class TimeoutSource(Enum):
+    """
+    Who chose the timeout of an engine, from the weakest to the strongest
+
+    TRANSPORT : nobody, it is the default of the transport (2 s for IP, ...)
+    DEFAULT : a driver or a protocol, with set_default_timeout
+    USER : the user, at construction or with set_timeout. Nothing overrides it
+    """
+
+    TRANSPORT = "transport"
+    DEFAULT = "default"
+    USER = "user"
 
 
 # ┌──────────┐
@@ -183,11 +201,16 @@ class _WriteDoneCommand(Command[None]):
 
 
 class SetTimeoutCommand(Command[None]):
-    """Set the engine timeout"""
+    """
+    Set the engine timeout
 
-    def __init__(self, timeout: TimeoutType) -> None:
+    default : True for a default (driver, protocol), ignored if the user chose one
+    """
+
+    def __init__(self, timeout: TimeoutType, default: bool = False) -> None:
         super().__init__()
         self.timeout = timeout
+        self.default = default
 
 
 class SetStopConditionsCommand(Command[None]):
@@ -395,8 +418,10 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
 
         if timeout is DEFAULT:
             self._timeout = backend.default_timeout
+            self._timeout_source = TimeoutSource.TRANSPORT
         else:
             self._timeout = timeout
+            self._timeout_source = TimeoutSource.USER
 
         self.alias = alias
 
@@ -459,6 +484,24 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         return self._timeout
 
     @property
+    def timeout_source(self) -> TimeoutSource:
+        """Who chose the timeout, see TimeoutSource"""
+        return self._timeout_source
+
+    @property
+    def pending_data(self) -> DataT | None:
+        """
+        Data of the frame being assembled, None if there is none
+
+        Reactor side, like the framer it comes from
+        """
+        return self._framer.pending_data
+
+    def stop_conditions_description(self) -> str:
+        """What the frame being assembled is waiting for, for an error message"""
+        return ", ".join(str(s) for s in self.stop_conditions)
+
+    @property
     def stop_conditions(self) -> list[StopCondition]:
         """Framer stop-conditions, empty if the framer doesn't use any"""
         if isinstance(self._framer, SupportsStopConditions):
@@ -492,8 +535,12 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         return self._submit(ClearBufferCommand())
 
     def set_timeout(self, timeout: TimeoutType) -> SetTimeoutCommand:
-        """Set the engine timeout"""
+        """Set the engine timeout, the user's choice : nothing overrides it"""
         return self._submit(SetTimeoutCommand(timeout))
+
+    def set_default_timeout(self, timeout: TimeoutType) -> SetTimeoutCommand:
+        """Set the engine timeout, unless the user chose one"""
+        return self._submit(SetTimeoutCommand(timeout, default=True))
 
     def set_stop_conditions(
         self, stop_conditions: list[StopCondition]
@@ -615,8 +662,14 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
             fragment = self._backend.read(now)
         except AdapterError as e:
             if not isinstance(e, AdapterDisconnectedError):
-                # No need to raise an error if the adapter simply disconnected
-                self._logger.error("Failed to read from %s (%s)", self.descriptor, e)
+                # No need to report a simple disconnection. A read waiting gets the
+                # error and may handle it, otherwise nobody would hear of it
+                self._logger.log(
+                    logging.DEBUG if self._pending_read is not None else logging.WARNING,
+                    "Failed to read from %s (%s)",
+                    self.descriptor,
+                    e,
+                )
             self._fail_and_close(e)
             return
 
@@ -694,7 +747,13 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
                 self._framer.reset()
                 command.set_result(None)
             case SetTimeoutCommand():
+                if command.default and self._timeout_source is TimeoutSource.USER:
+                    command.set_result(None)  # the user's choice stands
+                    return
                 self._timeout = command.timeout
+                self._timeout_source = (
+                    TimeoutSource.DEFAULT if command.default else TimeoutSource.USER
+                )
                 command.set_result(None)
                 self._emit(AdapterTimeoutUpdatedEvent())
             case SetStopConditionsCommand():
@@ -747,12 +806,14 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
             return
         if not self._backend.descriptor.is_initialized():
             raise AdapterOpenError(
-                f"Cannot open {self._backend.descriptor} : descriptor is incomplete"
+                f"Cannot open {self._backend.descriptor} : "
+                f"{self._backend.descriptor.missing()}"
             )
         try:
             self._backend.open(self._timeout)
         except AdapterError as e:
-            self._logger.error(str(e))
+            # Raised to the caller, who may handle it : not printed as an error
+            self._logger.debug("Open failed : %s", e)
             self._open_error = str(e)
             raise
         self._is_open = True
@@ -1038,11 +1099,15 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         )
 
     def _fail_read_timeout(self, pending: PendingRead[DataT]) -> None:
+        # Before clearing the read : it may have swapped the stop-conditions
+        waiting_for = self.stop_conditions_description()
         self._clear_pending_read(pending)
         self._fail(
             pending.command,
             AdapterTimeoutError(
-                float("nan") if pending.timeout is None else pending.timeout
+                float("nan") if pending.timeout is None else pending.timeout,
+                received=self.pending_data,
+                waiting_for=waiting_for,
             ),
         )
 

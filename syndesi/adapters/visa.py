@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import cast
 
-from ..tools.errors import (
+from ..errors import (
     AdapterDisconnectedError,
     AdapterOpenError,
     AdapterWriteError,
@@ -42,9 +42,23 @@ _MISSING_PYVISA = """Missing optional dependency 'pyvisa'. Install with:
   python -m pip install pyvisa"""
 
 
+_MISSING_VISA_LIBRARY = """No VISA library found. Install one, for example :
+  python -m pip install pyvisa-py
+or NI-VISA, or Keysight IO Libraries"""
+
+
 def _require_pyvisa() -> None:
     if pyvisa is None:
         raise ImportError(_MISSING_PYVISA)
+
+
+def _resource_manager() -> pyvisa.ResourceManager:
+    """The pyvisa resource manager, with an explanation if no VISA library exists"""
+    _require_pyvisa()
+    try:
+        return pyvisa.ResourceManager()
+    except ValueError as e:  # pyvisa : "Could not locate a VISA implementation"
+        raise AdapterOpenError(_MISSING_VISA_LIBRARY) from e
 
 
 @dataclass
@@ -113,8 +127,7 @@ def list_devices() -> list[str]:
     """
     Return the VISA devices that can actually be opened
     """
-    _require_pyvisa()
-    rm = pyvisa.ResourceManager()
+    rm = _resource_manager()
     available: list[str] = []
     for device in rm.list_resources():
         try:
@@ -144,8 +157,7 @@ class VisaBackend(AdapterBackend[VisaDescriptor, bytes]):
 
     def __init__(self, descriptor: VisaDescriptor) -> None:
         super().__init__(descriptor)
-        _require_pyvisa()
-        self._rm = pyvisa.ResourceManager()
+        self._rm = _resource_manager()
         self._instrument: MessageBasedResource | None = None
         self._reader: ThreadedReader[bytes] | None = None
 
@@ -203,7 +215,8 @@ class VisaBackend(AdapterBackend[VisaDescriptor, bytes]):
 
     @property
     def default_timeout(self) -> TimeoutType:
-        return 5.0
+        # The same as the other adapters, and as pyvisa
+        return 2.0
 
     def _read_blocking(self) -> bytes | None:
         """
@@ -241,7 +254,7 @@ class Visa(Adapter[VisaDescriptor, bytes]):
     descriptor : str
         VISA resource name, see VisaDescriptor for the forms it takes
     timeout : float, None or DEFAULT
-        Time to wait for the instrument to respond, 5 s by default
+        Time to wait for the instrument to respond, 2 s by default
     stop_conditions : StopCondition, list of StopCondition or DEFAULT
         When a frame is complete, Continuation(0.1) by default
     alias : str

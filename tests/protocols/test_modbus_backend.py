@@ -23,7 +23,7 @@ from syndesi.protocols.modbus import (
     WriteSingleCoilResponseSDU,
 )
 from syndesi.protocols.modbus.backend import _ascii_frame, _serial_backend
-from syndesi.tools.errors import ProtocolError, ProtocolReadError
+from syndesi.errors import ProtocolError, ProtocolReadError
 
 SLAVE_ADDRESS = 12
 REQUEST = ReadCoilsRequestSDU(1, 3)

@@ -21,27 +21,39 @@ Check that it worked:
 .. code-block:: console
 
    $ python -c "import syndesi; print(syndesi.__version__)"
-   0.8.0
+   0.9.0
 
 Start a device to talk to
 -------------------------
 
 Real devices come later. For now, an *echo server* will do: it sends back everything
-it receives. Save this as ``echo_server.py``:
+it receives. Syndesi can build one itself with ``IPServer``. Save this as
+``echo_server.py``:
 
 .. code-block:: python
    :caption: echo_server.py
 
-   import socketserver
+   import threading
 
-   class Echo(socketserver.StreamRequestHandler):
-       def handle(self):
-           while data := self.request.recv(1024):
-               self.request.sendall(data)
+   from syndesi import FragmentSC, IPServer
+   from syndesi.errors import AdapterDisconnectedError
 
-   with socketserver.ThreadingTCPServer(("127.0.0.1", 4242), Echo) as server:
-       print("Echo server on 127.0.0.1:4242")
-       server.serve_forever()
+   def echo(client):
+       with client:
+           try:
+               while True:
+                   client.write(client.read(timeout=None))
+           except AdapterDisconnectedError:
+               pass  # the client left
+
+   # FragmentSC: send back each piece of data as soon as it arrives
+   server = IPServer("127.0.0.1", 4242, stop_conditions=[FragmentSC()])
+   print("Echo server on 127.0.0.1:4242")
+   while True:
+       client = server.read()  # waits for a connection, returns an IP adapter
+       threading.Thread(target=echo, args=(client,), daemon=True).start()
+
+Don't worry about the details yet: :doc:`/how-to/ip-server` explains them.
 
 Run it in the first terminal and leave it running:
 

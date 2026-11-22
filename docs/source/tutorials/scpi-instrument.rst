@@ -99,21 +99,22 @@ When nobody answers
 -------------------
 
 Ask a question the instrument doesn't know, and nothing comes back. Syndesi waits for
-the adapter's timeout (1 s for ``IP``), then raises an error rather than blocking
-forever:
+the SCPI timeout (5 s), then raises an error rather than blocking forever:
 
 .. code-block:: python
 
    >>> psu.query("UNKNOWN?")
    Traceback (most recent call last):
      ...
-   syndesi.tools.errors.AdapterTimeoutError: No response received from target within 1.0 seconds
+   syndesi.errors.AdapterTimeoutError: No response received from target within 5.0 seconds
 
-Some measurements take longer than a second. Give the adapter a longer timeout:
+Some measurements take longer. Give SCPI a longer timeout, for every query or for a
+single one:
 
 .. code-block:: python
 
-   >>> psu = SCPI(IP("127.0.0.1", timeout=10))
+   >>> psu = SCPI(IP("127.0.0.1"), timeout=10)
+   >>> psu.query("MEAS:VOLT?", timeout=30)
 
 Switch off
 ----------
@@ -129,7 +130,7 @@ What you learned
 - ``SCPI`` wraps an adapter and fills in the port and terminator instruments expect.
 - ``write`` sends a command, ``query`` asks a question and returns the answer as a
   string.
-- A missing answer raises ``AdapterTimeoutError`` after the adapter's timeout.
+- A missing answer raises ``AdapterTimeoutError`` after the timeout (5 s for SCPI).
 
 Typing SCPI strings is fine in a prompt, but a test script deserves better than
 ``psu.write("INST:NSEL 2;VOLT 12")``. Let's give the power supply real methods.

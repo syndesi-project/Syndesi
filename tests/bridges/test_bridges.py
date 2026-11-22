@@ -32,7 +32,7 @@ from syndesi import (
 )
 from syndesi.adapters.events import AdapterEvent, AdapterReadEvent, AdapterWriteEvent
 from syndesi.adapters.i2c import I2CDescriptor
-from syndesi.tools.errors import AdapterOpenError, AdapterReadError, AdapterWriteError
+from syndesi.errors import AdapterOpenError, AdapterReadError, AdapterWriteError
 
 NACK_ADDRESS = 0x7F
 

@@ -14,7 +14,7 @@ Everything listed here can be imported from ``syndesi`` directly
       :link: adapters
       :link-type: doc
 
-      ``IP``, ``SerialPort``, ``Visa``, ``IPServer``, ``auto_adapter``
+      ``IP``, ``SerialPort``, ``Visa``, ``IPServer``
 
    .. grid-item-card:: Stop conditions
       :link: stop-conditions

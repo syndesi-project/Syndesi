@@ -19,7 +19,7 @@ from syndesi.protocols.protocol import (
     ProtocolReadEvent,
     ProtocolWriteEvent,
 )
-from syndesi.tools.errors import ProtocolReadError
+from syndesi.errors import ProtocolReadError
 
 HOST = "127.0.0.1"
 

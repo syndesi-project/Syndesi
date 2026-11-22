@@ -66,28 +66,12 @@ Subclass ``Driver`` and build the protocol you need:
        def test(self) -> bool:
            return self._prot.query("ID?").startswith("THERMO")
 
-.. _driver-any-adapter:
-
-Accept an adapter or a string
------------------------------
-
-With ``auto_adapter``, users can pass ``"192.168.1.20:5025:TCP"`` or
-``"/dev/ttyUSB0:9600"`` instead of building the adapter:
-
-.. code-block:: python
-
-   from syndesi import Adapter, Driver, auto_adapter
-
-   class Thermometer(Driver):
-       def __init__(self, adapter: Adapter[Any, bytes] | str) -> None:
-           super().__init__()
-           self._prot = Delimited(auto_adapter(adapter), "\r\n")
-
 Set the device's defaults
 -------------------------
 
-A driver often knows the baudrate or port of its device. The ``set_default_*`` methods
-apply them only if the user didn't choose another value:
+A driver often knows the baudrate, port or timeout of its device. The ``set_default_*``
+methods apply them only if the user didn't choose another value. A protocol built
+afterwards adopts the default timeout of the driver:
 
 .. code-block:: python
 

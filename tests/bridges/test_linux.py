@@ -22,7 +22,7 @@ from syndesi import (
 from syndesi.adapters.i2c import I2CDescriptor
 from syndesi.adapters.spi import SPIDescriptor
 from syndesi.bridges import linux
-from syndesi.tools.errors import AdapterWriteError
+from syndesi.errors import AdapterWriteError
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="native buses are Linux only"

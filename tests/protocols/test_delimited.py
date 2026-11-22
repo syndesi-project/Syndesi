@@ -10,7 +10,7 @@ import pytest
 from syndesi import IP, AsyncDelimited, AsyncIP, Delimited
 from syndesi.adapters.stop_conditions import Continuation, Termination
 from syndesi.protocols.delimited import DelimitedBackend
-from syndesi.tools.errors import AdapterOpenError, ProtocolReadError
+from syndesi.errors import AdapterOpenError, ProtocolReadError
 
 HOST = "127.0.0.1"
 

@@ -1,84 +1,96 @@
-# Syndesi Python Implementation
+# Syndesi
 
-Syndesi is a modular Python framework designed to streamline communication and control of a wide range of electronic instruments and devices. By providing a unified abstraction layer for adapters, protocols, and device drivers, Syndesi enables seamless integration with test equipment such as multimeters, oscilloscopes, power supplies, UART/USB devices, and more. Its flexible architecture supports both high-level and low-level operations, making it ideal for automation, data acquisition, and custom device interfacing in laboratory, industrial, and research environments.
+[![PyPI](https://img.shields.io/pypi/v/syndesi)](https://pypi.org/project/syndesi/)
+[![Documentation](https://readthedocs.org/projects/syndesi/badge/?version=latest)](https://syndesi.readthedocs.io/en/latest/)
+
+**Talk to any device in a few lines of Python.**
+
+Syndesi gives instruments, PLCs, boards and sensors the same simple interface:
+`write`, `read` and `query`. It works over TCP, UDP, serial ports, VISA, I2C and SPI,
+and speaks SCPI, Modbus and line-based text out of the box, in sync or async code.
+
+```python
+from syndesi import IP, SCPI
+
+scope = SCPI(IP("192.168.1.42"))   # port 5025 and "\n" termination: SCPI knows its defaults
+print(scope.query("*IDN?"))        # 'KEYSIGHT,DSOX1204G,CN6...,2.12'
+```
+
+📖 **Documentation: [syndesi.readthedocs.io](https://syndesi.readthedocs.io/en/latest/)**.
+New to Syndesi? Start with the
+[first tutorial](https://syndesi.readthedocs.io/en/latest/tutorials/first-connection.html):
+it needs no hardware.
 
 ## Installation
 
-The syndesi Python package can be installed through pip
+```bash
+pip install syndesi
+```
 
-``pip install syndesi``
-
-The package can also be installed locally by cloning this repository
+Python 3.11 or newer. Optional extras:
 
 ```bash
-git clone https://github.com/syndesi-project/Syndesi
-cd Syndesi
-pip install .
+pip install "syndesi[visa]"   # USB-TMC, GPIB and LXI instruments, through pyvisa
+pip install "syndesi[ui]"     # the graphical bench, syndesi ui
 ```
 
-## Usage
+## Three layers
 
-The user can work with any of the three following layers :
+Pick the layer you need, and stack them like building blocks.
 
-- Adapters : low-level communication (IP, UART, ...)
-- Protocols : Encapsulated protocols (Delimited, Modbus, ...)
-- Drivers : Device or application specific commands
-
-### Adapters : low-level communication
-
-Available adapters : ``IP``, ``SerialPort``, ``VISA``, ``I2C``, ``SPI``
-
-```python
-from syndesi import IP
-
-my_adapter = IP('192.168.1.12', port=5025)
-
-my_adapter.write(b'ping\n')
-
-my_adapter.read() # -> b'pong'
-```
+**Adapters** carry `bytes`: `IP`, `SerialPort`, `Visa`, `IPServer`, `I2C`, `SPI`.
 
 ```python
 from syndesi import SerialPort
 
-arduino = SerialPort('/dev/ttyUSB0', baudrate=115200) # COMx on Windows
-arduino.query(b'get_temperature\n') # -> 20.5
+arduino = SerialPort("/dev/ttyUSB0", 115200)   # "COM3" on Windows
+arduino.query(b"get_temperature\n")             # b'20.5\n'
 ```
 
-I2C and SPI work on the machine's own bus (Linux) or on a bus provided by a bridge, the driver of a converter (MCP2221, custom board, ...)
+**Protocols** sit on an adapter and handle the message format: `Delimited` (text lines),
+`SCPI`, `Modbus`, `Raw`.
 
 ```python
-from syndesi import I2C, SPI
+from syndesi import Delimited, Modbus, IP, SerialPort
 
-sensor = I2C('/dev/i2c-1', address=0x48)
-sensor.transfer(b'\x00', read_length=2) # write the register, read 2 bytes
+arduino = Delimited(SerialPort("/dev/ttyUSB0", 115200))
+float(arduino.query("get_temperature"))   # 20.5, the "\n" is added and removed for you
 
-flash = SPI('/dev/spidev0.0')
-flash.transfer(b'\x9f\x00\x00\x00') # -> 4 bytes received meanwhile
+plc = Modbus(IP("192.168.1.50"))          # Modbus TCP, port 502
+plc.read_holding_registers(1, 2)          # [1234, 42]
 ```
 
-### Protocols : Message formatting
-
-Available protocols : ``Raw``, ``Delimited``, ``SCPI``
-
-```python
-from syndesi import IP, Delimited
-
-my_server = Delimited(IP('test.server.local', port=1234))
-
-my_server.query('Hello world') # -> Hello world (\n is both added and removed by Delimited)
-
-```
-
-### Drivers : Device-specific operations
-
-Official syndesi drivers are provided by the [syndesi-drivers](https://github.com/syndesi-project/Drivers) package
+**Drivers** wrap a device in a class with methods named after what it does. Write your
+own ([tutorial](https://syndesi.readthedocs.io/en/latest/tutorials/first-driver.html)),
+or use the ones of [syndesi-drivers](https://github.com/syndesi-project/Drivers):
 
 ```python
-from syndesi_drivers.test_and_measurement.multimeters.siglent_sdm3055 import SiglentSDM3055
 from syndesi import IP
+from syndesi_drivers.test_and_measurement.multimeters.siglent_sdm3055 import SiglentSDM3055
 
-mm = SiglentSDM3055(IP("192.168.1.123"))
-
-voltage = mm.measure_dc_voltage()
+dmm = SiglentSDM3055(IP("192.168.1.123"))
+dmm.measure_dc_voltage()
 ```
+
+Every adapter and protocol has an async twin: `AsyncIP`, `AsyncSCPI`, `AsyncModbus`…
+
+## Tools
+
+```bash
+syndesi term serial /dev/ttyUSB0 115200   # interactive terminal for any device
+syndesi term serial --list                # which serial ports are there
+syndesi-trace                             # watch every byte your scripts exchange, live
+syndesi ui                                # graphical bench: stack layers, call methods
+```
+
+## Links
+
+- [Documentation](https://syndesi.readthedocs.io/en/latest/), with
+  [tutorials](https://syndesi.readthedocs.io/en/latest/tutorials/index.html) and
+  [how-to guides](https://syndesi.readthedocs.io/en/latest/how-to/index.html)
+- [Examples](https://github.com/syndesi-project/Syndesi/tree/main/examples), short scripts to run right away
+- [Drivers](https://github.com/syndesi-project/Drivers), ready-made instrument drivers
+- [Changelog](https://github.com/syndesi-project/Syndesi/blob/main/CHANGELOG.md)
+- [Issues](https://github.com/syndesi-project/Syndesi/issues)
+
+Syndesi is free software, under the [GPL-3.0](https://github.com/syndesi-project/Syndesi/blob/main/LICENSE) license.
