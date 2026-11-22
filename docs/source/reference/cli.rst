@@ -54,8 +54,8 @@ Graphical bench, needs ``pip install "syndesi[ui]"``. Guide: :doc:`/how-to/gui`.
 =============================  ==========================================================
 ``STACK.json``                 open a saved stack
 ``-l``, ``--load SOURCE``      add components to the library: ``file.py``,
-                               ``file.py:Class`` (also puts it on the stack) or a module
-                               name. Repeatable.
+                               ``file.py:Class`` (also puts it on the stack), a folder,
+                               a module or a package name. Repeatable.
 ``--theme``                    ``auto`` (follows the system, default), ``light``, ``dark``
 =============================  ==========================================================
 

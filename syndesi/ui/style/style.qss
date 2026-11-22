@@ -175,6 +175,9 @@ QTabBar::tab {
 }
 QTabBar::tab:hover { color: $text; }
 QTabBar::tab:selected { color: $text; border-bottom-color: $accent; }
+/* A collection that can't be used, see _CollectionTabs */
+QTabBar::tab:disabled { color: $faint; }
+QTabBar::tab:disabled:selected { border-bottom-color: $faint; }
 
 /* Lists, trees, tables */
 QTreeView, QListView, QTableView {

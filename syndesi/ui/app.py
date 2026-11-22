@@ -8,7 +8,8 @@ Syndesi GUI : main window and entry point
     syndesi ui stack.json                   open a saved stack
     syndesi ui -l ./psu.py                  add the components of a file to the library
     syndesi ui -l ./psu.py:PSU              ... and put PSU on top of the stack
-    syndesi ui -l mypackage.drivers         add the components of a module
+    syndesi ui -l ./drivers                 every file of a folder, or the package it is
+    syndesi ui -l mypackage                 every module of a package
 """
 
 from __future__ import annotations
@@ -296,9 +297,9 @@ def main(args: list[str] | None = None) -> int:
         "--load",
         action="append",
         default=[],
-        metavar="FILE_OR_MODULE[:CLASS]",
-        help="add the components of a python file or module to the library, "
-        "':Class' also puts it on top of the stack",
+        metavar="SOURCE[:CLASS]",
+        help="add the components of a python file, a folder, a module or a package to "
+        "the library, ':Class' also puts it on top of the stack",
     )
     parser.add_argument("--theme", choices=["auto", "light", "dark"], default="auto")
     parser.add_argument("--version", action="version", version=f"Syndesi {__version__}")

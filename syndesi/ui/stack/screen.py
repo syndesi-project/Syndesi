@@ -104,7 +104,7 @@ class StackScreen(QWidget):
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 0)
-        splitter.setSizes([270, 640, 360])
+        splitter.setSizes([300, 610, 360])
 
         bottom = QHBoxLayout()
         bottom.setSpacing(8)
