@@ -210,6 +210,15 @@ class AddEventCallbackCommand(Command[None]):
         self.callback = callback
 
 
+class BackendCallCommand(Command[ResultT]):
+    """Run an operation specific to a backend (a HID feature report, ...)"""
+
+    def __init__(self, function: Callable[..., ResultT], args: tuple[Any, ...]) -> None:
+        super().__init__()
+        self.function = function
+        self.args = args
+
+
 @runtime_checkable
 class FrameSink(Protocol[DataT]):
     """
@@ -525,6 +534,19 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
         """Attach or detach the consumer of the frame stream, see FrameSink"""
         return self._submit(SetFrameSinkCommand(sink))
 
+    def call(
+        self, function: Callable[..., ResultT], *args: Any
+    ) -> BackendCallCommand[ResultT]:
+        """
+        Run function(*args) on the reactor thread, the backend open
+
+        For the operations a transport has beyond reading and writing (HID feature
+        reports, ...) : they run between the other commands, never while the backend
+        is in use. function must be short, it holds the reactor. An exception it
+        raises is the result of the command, the adapter stays open
+        """
+        return self._submit(BackendCallCommand(function, args))
+
     def stop(self) -> StopCommand:
         """Close the backend and detach the engine from the reactor"""
         return self._submit(StopCommand())
@@ -730,8 +752,28 @@ class AdapterEngine(Generic[DescriptorT, DataT]):
                 self._close_command(clear_buffer=True)
                 self._reactor.detach(self)
                 command.set_result(None)
+            case BackendCallCommand():
+                self._backend_call(command)
             case _:
                 command.set_exception(WorkerThreadError(f"Unknown command {command!r}"))
+
+    def _backend_call(self, command: BackendCallCommand[Any]) -> None:
+        open_error = self.ensure_open()
+        if open_error is not None:
+            command.set_exception(open_error)
+            return
+        if not self._is_open:
+            command.set_exception(
+                self._not_open_error(AdapterError("Adapter is not opened"))
+            )
+            return
+        try:
+            result = command.function(*command.args)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # Whatever went wrong belongs to the caller, the reactor must keep running
+            command.set_exception(e)
+            return
+        command.set_result(result)
 
     def _open_command(self, command: OpenCommand) -> None:
         try:

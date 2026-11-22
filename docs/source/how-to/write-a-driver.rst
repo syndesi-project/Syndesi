@@ -71,8 +71,8 @@ Subclass ``Driver`` and build the protocol you need:
 Accept an adapter or a string
 -----------------------------
 
-With ``auto_adapter``, users can pass ``"192.168.1.20:5025:TCP"`` or
-``"/dev/ttyUSB0:9600"`` instead of building the adapter:
+With ``auto_adapter``, users can pass ``"tcp:192.168.1.20:5025"`` or
+``"serial:/dev/ttyUSB0:9600"`` instead of building the adapter:
 
 .. code-block:: python
 

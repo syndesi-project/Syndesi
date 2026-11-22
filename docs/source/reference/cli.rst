@@ -26,6 +26,13 @@ Interactive terminal. Guide: :doc:`/how-to/terminal`.
    syndesi term ip      ADDRESS PORT [--protocol {TCP,UDP}]  [options]
    syndesi term serial  PORT BAUDRATE [--rtscts] [--list]   [options]
    syndesi term visa    DESCRIPTOR                          [options]
+   syndesi term i2c     BUS ADDRESS [--read N] [--list]     [options]
+   syndesi term spi     DEVICE [--list]                     [options]
+   syndesi term hid     DEVICE [--report-id ID] [--report-size N] [--list]  [options]
+
+``i2c``, ``spi`` and ``hid`` use the ``hex`` format and no line ending by default.
+``hid`` takes ``VID:PID``, ``VID:PID:SERIAL`` (hexadecimal ids) or a path from
+``--list``.
 
 =============================  =================================================  ===========
 Option                         Effect                                             Default
@@ -37,7 +44,10 @@ Option                         Effect                                           
                                ``hex``, or ``raw`` text
 ``--protocol {TCP,UDP}``       IP only                                            ``TCP``
 ``--rtscts``                   serial only, hardware flow control                 off
-``--list``                     serial only, list the ports and exit
+``--list``                     list the serial ports, buses or HID devices
+``--read N``                   I2C only, bytes read after each write              ``0``
+``--report-id ID``             HID only, added in front of each report            ``0``
+``--report-size N``            HID only, pad each report with zeros
 =============================  =================================================  ===========
 
 ``syndesi ui``

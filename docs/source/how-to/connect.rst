@@ -93,6 +93,22 @@ Serial                     ``ASRL/dev/ttyUSB0::INSTR``, ``ASRL1::INSTR``
    A SCPI instrument on the network doesn't need VISA: ``SCPI(IP("192.168.1.42"))``
    talks to it directly, with no driver to install.
 
+Through USB HID
+---------------
+
+For HID devices (USB converters, relay boards, custom firmwares), with
+``pip install "syndesi[hid]"``:
+
+.. code-block:: python
+
+   from syndesi import HID
+
+   HID.list_devices()              # what is connected
+   dev = HID(0x04D8, 0x00DD)       # vendor id, product id
+   dev.query(b"\x10")              # one report out, the report that answers
+
+See :doc:`hid`.
+
 From a string
 -------------
 
@@ -103,10 +119,13 @@ files and command line options:
 
    from syndesi import auto_adapter
 
-   auto_adapter("192.168.1.10:5025:TCP")     # IP
-   auto_adapter("192.168.1.50:9000:UDP")     # IP over UDP
-   auto_adapter("/dev/ttyUSB0:115200")       # SerialPort
-   auto_adapter("COM3:9600")                 # SerialPort
+   auto_adapter("tcp:192.168.1.10:5025")       # IP
+   auto_adapter("udp:192.168.1.50:9000")       # IP over UDP
+   auto_adapter("serial:/dev/ttyUSB0:115200")  # SerialPort
+   auto_adapter("serial:COM3:9600")            # SerialPort
+   auto_adapter("i2c:/dev/i2c-1@0x48")         # I2C (Linux)
+   auto_adapter("spi:/dev/spidev0.1")          # SPI (Linux)
+   auto_adapter("hid:04d8:00dd")               # HID (if hidapi is installed)
    auto_adapter("GPIB0::14::INSTR")          # Visa (if pyvisa is installed)
 
 Given an adapter instead of a string, it returns it unchanged. See

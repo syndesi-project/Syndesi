@@ -69,8 +69,8 @@ Connect
 
          from syndesi import auto_adapter
 
-         auto_adapter("192.168.1.10:5025:TCP")  # IP
-         auto_adapter("/dev/ttyUSB0:115200")    # SerialPort
+         auto_adapter("tcp:192.168.1.10:5025")       # IP
+         auto_adapter("serial:/dev/ttyUSB0:115200")  # SerialPort
 
       .. card-footer::
 
@@ -286,18 +286,46 @@ Go further
 
          :doc:`how-to/ip-server`
 
-   .. grid-item-card:: I2C and SPI through a bridge
+   .. grid-item-card:: I2C and SPI
 
       .. code-block:: python
 
-         from syndesi import I2C
+         from syndesi import I2C, SPI
 
-         sensor = I2C(my_board, address=0x48)
-         raw = sensor.write_read(b"\x00", 2)  # register 0
+         sensor = I2C("/dev/i2c-1", 0x48)
+         sensor.transfer(b"\x00", read_length=2)
+         SPI("/dev/spidev0.0").transfer(b"\x9f\x00")
 
       .. card-footer::
 
          :doc:`how-to/bridges`
+
+   .. grid-item-card:: I2C and GPIO over USB (MCP2221)
+
+      .. code-block:: python
+
+         from syndesi import I2C, MCP2221
+
+         mcp = MCP2221()
+         I2C(mcp, 0x48).transfer(b"\x00", read_length=2)
+         mcp.configure_gpio(0, output=True, value=True)
+
+      .. card-footer::
+
+         :doc:`how-to/bridges`
+
+   .. grid-item-card:: HID devices
+
+      .. code-block:: python
+
+         from syndesi import HID
+
+         dev = HID(0x04D8, 0x00DD)  # vendor, product
+         dev.query(b"\x10")         # one report each way
+
+      .. card-footer::
+
+         :doc:`how-to/hid`
 
    .. grid-item-card:: Watch the traffic
 

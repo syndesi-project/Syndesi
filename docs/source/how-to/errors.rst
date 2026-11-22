@@ -29,7 +29,7 @@ The device can't be reached
    try:
        dev.open()
    except AdapterOpenError as e:
-       print(e)   # Failed to open adapter 192.168.1.10:5025:TCP ([Errno 111] Connection refused)
+       print(e)   # Failed to open adapter tcp:192.168.1.10:5025 ([Errno 111] Connection refused)
 
 The device went away
 --------------------

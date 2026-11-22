@@ -12,6 +12,7 @@ from .adapters.ipserver import AsyncIPServer, Client, IPServer
 from .adapters.serialport import AsyncSerialPort, Parity, SerialPort
 from .adapters.stop_conditions import Continuation, FragmentSC, Length, Termination, Total
 from .adapters.visa import AsyncVisa, Visa
+from .adapters.hid import HID, AsyncHID
 from .adapters.i2c import I2C, AsyncI2C, I2CTransfer
 from .adapters.spi import SPI, AsyncSPI
 from .protocols.protocol import Protocol, AsyncProtocol
@@ -26,7 +27,7 @@ from .protocols.modbus import (
 from .protocols.raw import AsyncRaw, Raw
 from .protocols.scpi import SCPI, AsyncSCPI
 from .drivers.driver import Driver, SubDriver
-from .bridges import I2CBridge, LinuxI2C, LinuxSPI, SerialBridge, SPIBridge
+from .bridges import I2CBridge, LinuxI2C, LinuxSPI, MCP2221, SerialBridge, SPIBridge
 from .drivers.scpi_driver import SCPIDriver
 
 __all__ = [
@@ -57,6 +58,8 @@ __all__ = [
     "ModbusMultiRegisterValue",
     "Visa",
     "AsyncVisa",
+    "HID",
+    "AsyncHID",
     # Stop conditions
     "Termination",
     "Continuation",
@@ -79,4 +82,5 @@ __all__ = [
     "SerialBridge",
     "LinuxI2C",
     "LinuxSPI",
+    "MCP2221",
 ]

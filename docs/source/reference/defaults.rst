@@ -14,6 +14,8 @@ Adapter             Timeout      Stop conditions            Opens
 ``Visa``            5 s          ``Continuation(0.1)``      at the first operation
 ``IPServer``        none         clients: ``Continuation``  at the first ``read()``
                                  ``(0.2)``
+``HID``             1 s          ``FragmentSC()``: one      at the first operation
+                                 report, one frame
 ==================  ===========  =========================  ==========================
 
 Serial line settings: 8 data bits, no parity, 1 stop bit, no flow control.

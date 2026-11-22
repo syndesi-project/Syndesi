@@ -61,11 +61,17 @@ Short recipes for a precise goal. They assume you know the basics from the
 
       Wrap a device in a class, split it into sub-drivers, accept any adapter.
 
-   .. grid-item-card:: Reach I2C, SPI and UART through a board
+   .. grid-item-card:: Use I2C, SPI and GPIO
       :link: bridges
       :link-type: doc
 
-      Bridges: expose the buses of a custom board as Syndesi objects.
+      Native buses, the MCP2221 over USB, or a bridge for your own board.
+
+   .. grid-item-card:: Talk to a HID device
+      :link: hid
+      :link-type: doc
+
+      Raw reports and feature reports of USB HID devices.
 
    .. grid-item-card:: Handle errors and timeouts
       :link: errors

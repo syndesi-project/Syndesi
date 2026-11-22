@@ -13,6 +13,7 @@ adapter. The scheme, before the first colon, names the adapter :
     serial:COM4:115200           -> SerialPort
     i2c:/dev/i2c-1@0x48          -> I2C (native bus, Linux)
     spi:/dev/spidev0.1           -> SPI (native bus, Linux)
+    hid:04d8:00dd                -> HID (vendor and product ids)
     TCPIP0::1.2.3.4::INSTR       -> Visa, recognized by its own syntax
 
 A bridge is an object, it can't be named in a string : i2c:MCP2221@0x20 is how its
@@ -28,6 +29,7 @@ from typing import Any
 
 from .adapter import Adapter, AsyncAdapter
 from .engine import Descriptor
+from .hid import HID, AsyncHID, HIDDescriptor
 from .i2c import I2C, AsyncI2C, I2CDescriptor
 from .ip import IP, AsyncIP, IPDescriptor
 from .serialport import AsyncSerialPort, SerialPort, SerialPortDescriptor
@@ -43,7 +45,9 @@ except ImportError:  # pragma: no cover - optional dependency
 
 _DESCRIPTOR_TYPES: dict[str, type[Descriptor]] = {
     scheme: descriptor_type
-    for descriptor_type in (IPDescriptor, SerialPortDescriptor, I2CDescriptor, SPIDescriptor)
+    for descriptor_type in (
+        IPDescriptor, SerialPortDescriptor, I2CDescriptor, SPIDescriptor, HIDDescriptor
+    )
     for scheme in descriptor_type.SCHEMES
 }
 
@@ -100,6 +104,14 @@ def _build(string: str, asynchronous: bool) -> Any:
     if isinstance(descriptor, SPIDescriptor):
         _native_bus(descriptor)
         return (AsyncSPI if asynchronous else SPI)(f"{descriptor.bus}.{descriptor.cs}")
+    if isinstance(descriptor, HIDDescriptor):
+        return (AsyncHID if asynchronous else HID)(
+            descriptor.vendor_id,
+            descriptor.product_id,
+            serial_number=descriptor.serial_number,
+            interface=descriptor.interface,
+            path=descriptor.path,
+        )
     if _VISA_AVAILABLE and isinstance(descriptor, VisaDescriptor):
         return (AsyncVisa if asynchronous else Visa)(descriptor=descriptor.descriptor)
     raise RuntimeError(f"Invalid descriptor : {descriptor}")

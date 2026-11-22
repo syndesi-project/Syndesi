@@ -4,6 +4,7 @@ Bridges, drivers that provide a bus (I2C, SPI, serial) to the adapters above the
 
 from .bridge import Bridge, I2CBridge, SerialBridge, SPIBridge
 from .linux import LinuxI2C, LinuxSPI, SPISettings
+from .mcp2221 import MCP2221
 
 __all__ = [
     "Bridge",
@@ -13,4 +14,5 @@ __all__ = [
     "LinuxI2C",
     "LinuxSPI",
     "SPISettings",
+    "MCP2221",
 ]

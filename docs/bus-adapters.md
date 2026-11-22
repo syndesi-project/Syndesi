@@ -1,7 +1,6 @@
 # Adapters de bus (I2C, SPI) et ponts (bridges)
 
-Ce qui est implémenté, et pourquoi. La section HID en fin de document reste une
-proposition.
+Ce qui est implémenté, et pourquoi.
 
 ## Objectif
 
@@ -193,19 +192,61 @@ Driver du capteur            bloquant, toujours au sommet
   propose les bus de la machine (`list_buses()`). Pour un I2C, la ligne Query a un champ
   `read` : la longueur lue après l'écriture.
 
-## Prochaine étape : HID (proposition)
+## HID
+
+`HID` (`syndesi/adapters/hid.py`) et le pont `MCP2221` (`syndesi/bridges/mcp2221.py`).
 
 - **HID est un Adapter**, pas un Protocol sur USB : sous Windows et macOS l'OS possède
   les interfaces HID, HID existe aussi en Bluetooth et en I²C, et un Protocol est
   terminal.
-- Via **hidapi**, avec un `ThreadedReader` (comme Visa).
-- **Reports bruts** : un `read()` hidapi = un report = un fragment, **`FragmentSC` par
-  défaut**. `read_once` lit un seul report.
-- **Feature reports** exposés (`send_feature_report()`, `get_feature_report()`), passés
-  par l'engine sous forme de commandes (hidapi n'est pas garanti thread-safe).
+- Via **hidapi** (le paquet `hidapi`, cython, livré avec la bibliothèque C sur toutes
+  les plateformes), extra optionnel `syndesi[hid]`. Le module s'importe sans hidapi,
+  seule la construction d'un `HID` lève `ImportError`.
+- **Lectures** dans un `ThreadedReader` (comme Visa), `hid_read_timeout` de 50 ms pour
+  voir l'arrêt. **Écritures et feature reports sur le reactor** : un `hid_write` est un
+  appel bloquant court, et lire depuis un thread en écrivant depuis un autre est l'usage
+  normal de hidapi sur ses trois backends (hidraw, IOHIDManager, Windows overlapped).
+- **Reports bruts** : un report = un fragment, **`FragmentSC` par défaut**. Un
+  convertisseur répond à chaque commande par un report, `query()` le renvoie.
 - **Report ID en écriture** : `report_id=0` par défaut (l'adapter ajoute l'octet),
-  `report_id=None` pour le mode transparent.
-- Pas de codec dans HID : les ponts HID-UART (CP2110…) sont des ponts (`SerialBridge`).
-- `list_usb_devices()` générique, extra optionnel `syndesi[hid]`, import protégé dans
-  `auto.py`.
-- Ensuite : un pont `MCP2221` (I2C + GPIO sur HID) en exemple.
+  `report_id=N`, ou `None` pour le mode transparent. En lecture, les reports sont rendus
+  tels que hidapi les donne (avec l'ID s'ils sont numérotés).
+- **`report_size`** : complète chaque écriture avec des zéros (Windows exige des
+  reports pleins), refuse ce qui dépasse.
+- **Feature reports** : `send_feature_report()` / `get_feature_report()` passent par
+  `AdapterEngine.call()`, une nouvelle commande générique qui exécute une fonction du
+  backend sur le reactor, adapter ouvert, entre deux autres commandes. Son erreur est
+  celle de l'appelant, l'adapter reste ouvert.
+- Descripteur `hid:VID:PID[:SERIAL][@INTERFACE]` en hexadécimal (`hid:04d8:00dd`), ou
+  `hid:path=...`. Reconnu par `auto_adapter()`.
+- `HID.list_devices()` renvoie des `HIDDeviceInfo` (une entrée par interface HID).
+- CLI : `syndesi term hid 04d8:00dd [--report-id N] [--report-size N] [--list]`, format
+  hex par défaut.
+- Pas encore dans l'UI (comme les ponts) : l'heuristique de suggestion de l'inspecteur
+  proposerait `list_devices` pour `serial_number`.
+
+### MCP2221
+
+Pont `Driver + I2CBridge` sur un `HID` (créé tout seul si on n'en passe pas :
+`MCP2221()` ouvre le premier 04d8:00dd). Chaque commande est un report de 64 octets,
+envoyé par `hid.query()` sur le thread du pont.
+
+- I2C : `0x90` écriture, `0x94` écriture sans stop puis `0x93` lecture repeated start,
+  `0x91` lecture, `0x40` récupération des données ; blocs de 60 octets, longueur ≤ 65535.
+  Vitesse réglée à la première transaction (`0x10`, diviseur 12 MHz / f − 3),
+  `set_i2c_speed()`.
+- NACK détecté par le bit 6 de l'octet 20 du statut (comme Adafruit Blinka), levé en
+  `AdapterWriteError`, comme `LinuxI2C`, en écriture comme en lecture. Après une erreur,
+  le transfert est annulé pour laisser le bus libre.
+- GPIO : `configure_gpio(pin, output, value)` (SRAM `0x60`, puis `0x51` car l'écriture
+  de la SRAM remet les sorties à zéro), `set_gpio`, `get_gpio`, `get_gpios`. Les
+  méthodes publiques passent par `Bridge.run` : elles sont sérialisées avec les
+  transactions I2C, sinon leurs réponses HID se croiseraient.
+- L'UART du MCP2221 est une interface CDC séparée, un `SerialPort` ordinaire.
+- **Testé contre une simulation de la puce** (`tests/bridges/test_mcp2221.py`) écrite
+  d'après la datasheet, pas encore sur du vrai matériel.
+
+### Suite possible
+
+- `MCP2210` (USB-HID vers SPI + 9 GPIO) en `SPIBridge`, sur le même modèle.
+- ADC et DAC du MCP2221.

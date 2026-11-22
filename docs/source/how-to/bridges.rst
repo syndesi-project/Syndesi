@@ -1,20 +1,96 @@
-Reach I2C, SPI and UART through a board
-=======================================
+Use I2C, SPI and GPIO
+=====================
 
-Sensors and chips often hang on an I2C or SPI bus, reached through a converter: an
-MCP2221, an FTDI chip, a custom microcontroller board… A **bridge** is the driver of
-that converter. It provides the bus, and ``I2C``, ``SPI`` or ``SerialPort`` objects use
-it, so the drivers of your sensors don't depend on the converter.
+Sensors, ADCs, EEPROMs and displays hang on an I2C or SPI bus. ``I2C`` and ``SPI`` are
+adapters for one device on such a bus, whatever provides it: the machine itself
+(Raspberry Pi…), a USB converter like the MCP2221, or a board of your own. What provides
+the bus is a **bridge**.
 
 .. code-block:: text
 
-   TemperatureSensor driver         ← knows the sensor, not the board
+   TMP102 driver                    ← knows the sensor, not the bus
      └ I2C(address=0x48)
-        └ MyBoard  (I2CBridge)      ← knows the board, not the sensor
-           └ Delimited(SerialPort("/dev/ttyUSB0", 115200))
+        └ MCP2221  (bridge)         ← knows the converter, not the sensor
+           └ HID(0x04D8, 0x00DD)
 
-Write a bridge
---------------
+I2C on the machine (Linux)
+--------------------------
+
+.. code-block:: python
+
+   from syndesi import I2C
+
+   sensor = I2C("/dev/i2c-1", 0x48)
+   sensor.write(b"\x01\x60\xa0")                    # write register 1
+   sensor.transfer(b"\x00", read_length=2)          # read 2 bytes from register 0
+   sensor.transfer(read_length=2)                   # plain read
+
+``transfer`` writes, then reads with a repeated start. ``I2C.list_buses()`` lists the
+buses. The ``i2c-dev`` kernel module and access to ``/dev/i2c-*`` are needed.
+
+SPI on the machine (Linux)
+--------------------------
+
+.. code-block:: python
+
+   from syndesi import SPI
+
+   flash = SPI("/dev/spidev0.0", mode=0, speed_hz=1_000_000)
+   jedec_id = flash.transfer(b"\x9f\x00\x00\x00")[1:]   # bytes received meanwhile
+   flash.write(b"\x06")                                 # answer ignored
+
+I2C and GPIO through an MCP2221
+-------------------------------
+
+The Microchip MCP2221 (and MCP2221A) turns a USB port into an I2C bus and four GPIOs.
+It is a HID device, so it works on Linux, Windows and macOS without a driver. Install
+the HID support first (see :doc:`hid`):
+
+.. code-block:: console
+
+   $ pip install "syndesi[hid]"
+
+Then use its bus like any other:
+
+.. code-block:: python
+
+   from syndesi import I2C, MCP2221
+
+   mcp = MCP2221()                                  # the first MCP2221 connected
+   sensor = I2C(mcp, 0x48)
+   sensor.transfer(b"\x00", read_length=2)
+
+   mcp.set_i2c_speed(400_000)                       # 100 kHz by default
+
+Several ``I2C`` adapters can share the bridge, one per address. Their transfers run one
+at a time.
+
+A device that doesn't answer raises ``AdapterWriteError`` ("address not
+acknowledged").
+
+The GPIOs:
+
+.. code-block:: python
+
+   mcp.configure_gpio(0, output=True)       # GP0 as an output, low
+   mcp.set_gpio(0, True)
+
+   mcp.configure_gpio(1, output=False)      # GP1 as an input
+   mcp.get_gpio(1)                          # True
+   mcp.get_gpios()                          # [True, True, None, None], None: not a GPIO
+
+The configuration lasts until the chip is unplugged or reset.
+
+Several chips: ``MCP2221(serial_number="...")`` (the serial number has to be enabled in
+the chip first), or pass the HID adapter yourself, ``MCP2221(HID(path=...))``.
+
+.. note::
+
+   The UART of the MCP2221 is a separate USB serial port: open it with
+   ``SerialPort("/dev/ttyACM0", 9600)`` (``COM5`` on Windows).
+
+Write a bridge for your own board
+---------------------------------
 
 A bridge is a driver that also inherits ``I2CBridge``, ``SPIBridge`` and/or
 ``SerialBridge``, and implements their methods with ordinary blocking code. Say your
@@ -47,35 +123,14 @@ with ``OK:60a0``:
        def test(self) -> bool:
            return self._prot.query("ID?") == "MYBOARD"
 
-Talk to an I2C device
----------------------
-
 .. code-block:: python
-
-   from syndesi import I2C, SerialPort
 
    board = MyBoard(SerialPort("/dev/ttyUSB0", 115200))
-   sensor = I2C(board, address=0x48)
+   sensor = I2C(board, 0x48)
+   flash = SPI(board, cs=1)
 
-   sensor.write(b"\x01\x60\xa0")        # write register 1
-   sensor.write_read(b"\x00", 2)        # read 2 bytes from register 0
-   sensor.read(2)                       # plain read
-
-Several ``I2C`` objects can share a bridge, one per address. Their calls are run one at
-a time, no lock needed.
-
-Talk to an SPI device
----------------------
-
-.. code-block:: python
-
-   from syndesi import SPI
-
-   flash = SPI(board, cs=0)
-   jedec_id = flash.transfer(b"\x9f\x00\x00\x00")[1:]
-   flash.write(b"\x06")                 # write enable, answer ignored
-
-The SPI mode and clock are settings of the board, configured by its driver.
+Each bridge runs its methods on its own thread, one at a time: they can block, and need
+no lock. The SPI mode and clock of a bridge's bus are settings of its driver.
 
 Provide a serial port
 ---------------------
@@ -84,8 +139,6 @@ A board that forwards a UART implements ``SerialBridge``. Pass it to ``SerialPor
 instead of a port name, and protocols work on top of it as on any serial port:
 
 .. code-block:: python
-
-   from syndesi import Delimited, SerialBridge, SerialPort
 
    class MyBoard(Driver, SerialBridge):
        def serial_configure(self, baudrate, bytesize, parity, stopbits) -> None:
@@ -99,7 +152,6 @@ instead of a port name, and protocols work on top of it as on any serial port:
        ...
 
    gps = Delimited(SerialPort(board, 9600), "\r\n")
-   gps.read()   # '$GPGGA,123519,4807.038,N,...'
 
 ``serial_read`` is called in a loop while the port is open. Return ``b""`` when nothing
 came.
@@ -107,7 +159,7 @@ came.
 Write a driver for the chip
 ---------------------------
 
-Your sensor driver only needs an ``I2C``, whatever board provides it:
+Your sensor driver only needs an ``I2C``, whatever provides the bus:
 
 .. code-block:: python
 
@@ -117,8 +169,9 @@ Your sensor driver only needs an ``I2C``, whatever board provides it:
            self._bus = bus
 
        def temperature(self) -> float:
-           raw = int.from_bytes(self._bus.write_read(b"\x00", 2), "big") >> 4
+           raw = int.from_bytes(self._bus.transfer(b"\x00", read_length=2), "big") >> 4
            return raw * 0.0625
        ...
 
-   TMP102(I2C(board, 0x48)).temperature()   # 23.4375
+   TMP102(I2C("/dev/i2c-1", 0x48)).temperature()   # on a Raspberry Pi
+   TMP102(I2C(MCP2221(), 0x48)).temperature()      # through USB

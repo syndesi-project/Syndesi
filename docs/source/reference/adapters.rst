@@ -46,6 +46,15 @@ Transports
    :members: set_default_port
    :no-show-inheritance:
 
+.. autoclass:: syndesi.adapters.hid.HID
+   :members: list_devices, send_feature_report, get_feature_report
+   :no-show-inheritance:
+
+.. autoclass:: syndesi.adapters.hid.HIDDeviceInfo
+   :members: descriptor
+   :no-show-inheritance:
+   :no-index:
+
 Async variants
 --------------
 
@@ -67,6 +76,10 @@ Same parameters and methods as their sync counterparts, see :doc:`/how-to/async`
    :no-members:
    :no-show-inheritance:
 
+.. autoclass:: syndesi.adapters.hid.AsyncHID
+   :no-members:
+   :no-show-inheritance:
+
 From a string
 -------------
 
@@ -77,10 +90,13 @@ From a string
 Accepted strings:
 
 ======================================  ============================
-``"192.168.1.10:5025:TCP"``             ``IP``, TCP
-``"192.168.1.50:9000:UDP"``             ``IP``, UDP
-``"/dev/ttyUSB0:115200"``               ``SerialPort``
-``"COM3:9600"``                         ``SerialPort``
+``"tcp:192.168.1.10:5025"``             ``IP``, TCP
+``"udp:192.168.1.50:9000"``             ``IP``, UDP
+``"serial:/dev/ttyUSB0:115200"``        ``SerialPort``
+``"serial:COM3:9600"``                  ``SerialPort``
+``"i2c:/dev/i2c-1@0x48"``               ``I2C``, native bus (Linux)
+``"spi:/dev/spidev0.1"``                ``SPI``, native bus (Linux)
+``"hid:04d8:00dd"``                     ``HID``, ``hid:VID:PID[:SERIAL][@IFACE]``
 ``"GPIB0::14::INSTR"`` (any VISA name)  ``Visa``, if pyvisa is installed
 ======================================  ============================
 

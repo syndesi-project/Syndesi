@@ -17,6 +17,7 @@ from syndesi.adapters.adapter import Adapter
 from syndesi.adapters.events import AdapterClosedEvent, AdapterFrameEvent, SyndesiEvent
 from syndesi.adapters.stop_conditions import FragmentSC
 
+from ..adapters.hid import HID, HIDDescriptor
 from ..adapters.i2c import I2C, I2CTransfer
 from ..adapters.ip import IP
 from ..adapters.serialport import SerialPort
@@ -53,6 +54,7 @@ class AdapterType(Enum):
     VISA = "visa"
     I2C = "i2c"
     SPI = "spi"
+    HID = "hid"
 
 
 class SpecialLineEnding(Enum):
@@ -144,6 +146,33 @@ class ListAction(argparse.Action):
             print(f"{item}")
         parser.exit()
 
+def _list_hid_devices() -> list[str]:
+    """The HID devices, with the path that opens each interface"""
+    return [f"{device}  [{device.path}]" for device in HID.list_devices()]
+
+
+def _hid_adapter(
+    device: str, report_id: int, report_size: int | None, timeout: float | None
+) -> HID:
+    """HID adapter of a VID:PID[:SERIAL][@INTERFACE] string, or of a path"""
+    string = device if device.startswith("hid:") else f"hid:{device}"
+    try:
+        descriptor = HIDDescriptor.from_string(string)
+    except ValueError:
+        descriptor = HIDDescriptor(path=device)
+    return HID(
+        descriptor.vendor_id,
+        descriptor.product_id,
+        serial_number=descriptor.serial_number,
+        interface=descriptor.interface,
+        path=descriptor.path,
+        report_id=report_id,
+        report_size=report_size,
+        timeout=timeout,
+        auto_open=False,
+    )
+
+
 class Terminal:
     """
     Adapter shell, allows direct communication with an adapter
@@ -232,6 +261,38 @@ class Terminal:
             )
             # Binary buses : hex and no termination, unless asked otherwise
             parser.set_defaults(term="", format=Format.HEX.value)
+        # HID
+        hid_parser = adapter_parsers.add_parser(
+            AdapterType.HID.value,
+            help="HID Adapter",
+            parents=[common],
+            description="Each line is sent as an output report, every input report "
+            "received is printed. Needs hidapi : pip install syndesi[hid]",
+        )
+        hid_parser.add_argument(
+            "device", type=str, help="VID:PID, VID:PID:SERIAL (hex ids), or a path"
+        )
+        hid_parser.add_argument(
+            "--report-id",
+            type=lambda x: int(x, 0),
+            default=0,
+            help="Report id added in front of each report, 0 by default",
+        )
+        hid_parser.add_argument(
+            "--report-size",
+            type=int,
+            default=None,
+            help="Pad each report with zeros to this size (Windows needs full reports)",
+        )
+        hid_parser.add_argument(
+            "--list",
+            action=ListAction,
+            nargs=0,
+            const=_list_hid_devices,
+            default=False,
+            help="List available HID devices",
+        )
+        hid_parser.set_defaults(term="", format=Format.HEX.value)
         # VISA
         visa_parser = adapter_parsers.add_parser(
             AdapterType.VISA.value, help="VISA Adapter", parents=[common]
@@ -287,6 +348,10 @@ class Terminal:
             self.adapter = I2C(args.bus, args.address, timeout=timeout, auto_open=False)
         elif adapter == AdapterType.SPI:
             self.adapter = SPI(args.device, timeout=timeout, auto_open=False)
+        elif adapter == AdapterType.HID:
+            self.adapter = _hid_adapter(
+                args.device, args.report_id, args.report_size, timeout
+            )
 
         self._termination = parse_termination_argument(args.term)
 

@@ -195,6 +195,7 @@ Batteries included
    how-to/async
    how-to/write-a-driver
    how-to/bridges
+   how-to/hid
    how-to/errors
    how-to/debugging
    how-to/terminal

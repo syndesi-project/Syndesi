@@ -32,6 +32,9 @@ dependencies = [
 visa = [
     "pyvisa",
 ]
+hid = [
+    "hidapi",
+]
 ui = [
     "pyside6-essentials>=6.8,!=6.12.0",
 ]
