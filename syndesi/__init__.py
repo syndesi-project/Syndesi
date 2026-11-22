@@ -6,7 +6,6 @@ from importlib.metadata import version
 __version__ = version("syndesi")
 
 from .adapters.adapter import Adapter, AsyncAdapter
-from .adapters.auto import auto_adapter, auto_async_adapter
 from .adapters.ip import IP, AsyncIP
 from .adapters.ipserver import AsyncIPServer, Client, IPServer
 from .adapters.serialport import AsyncSerialPort, Parity, SerialPort
@@ -41,8 +40,6 @@ __all__ = [
     "IPServer",
     "AsyncIPServer",
     "Client",
-    "auto_adapter",
-    "auto_async_adapter",
     # Protocols
     "Delimited",
     "AsyncDelimited",

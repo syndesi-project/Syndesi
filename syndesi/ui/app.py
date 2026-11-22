@@ -50,6 +50,7 @@ from .worker import Worker, error_text
 STACK_FILTER = "Syndesi stack (*.json)"
 
 
+# pylint: disable=too-many-instance-attributes
 class MainWindow(QMainWindow):
     """Two screens : the stack, then the test of what was built"""
 

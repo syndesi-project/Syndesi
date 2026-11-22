@@ -97,6 +97,7 @@ DEFAULT_CATEGORIES = {
 }
 
 
+# pylint: disable=too-many-instance-attributes
 @dataclass
 class LogEntry:
     """One row"""
@@ -146,6 +147,7 @@ def event_key(event: SyndesiEvent) -> str:
     return ""
 
 
+# pylint: disable=too-many-branches
 def describe_event(event: SyndesiEvent) -> tuple[str, str, EntryStyle, Category | None] | None:
     """(label, data, style, category) of an event, None to drop it"""
     # pylint: disable=too-many-return-statements
@@ -318,7 +320,7 @@ class _Filter(QSortFilterProxyModel):
         self.component = ""
 
     def filterAcceptsRow(
-        self, source_row: int, source_parent: QModelIndex | QPersistentModelIndex
+        self, source_row: int, _: QModelIndex | QPersistentModelIndex
     ) -> bool:
         model = self.sourceModel()
         assert isinstance(model, EventLogModel)
@@ -335,6 +337,7 @@ class EventLog(QWidget):
 
     show_events_changed = Signal(bool)
 
+    # pylint: disable=too-many-statements
     def __init__(self) -> None:
         super().__init__()
         self.model = EventLogModel()

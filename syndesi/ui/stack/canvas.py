@@ -474,6 +474,7 @@ class StackCanvas(QScrollArea):
         self.setWidget(container)
         self.verticalScrollBar().setValue(scroll)
 
+    # pylint: disable=too-many-locals
     def _node_view(self, node: StackNode) -> QWidget:
         view = QWidget()
         layout = QVBoxLayout(view)

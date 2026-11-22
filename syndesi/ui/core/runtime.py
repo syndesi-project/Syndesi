@@ -154,6 +154,7 @@ def is_endpoint(obj: Any) -> bool:
 
 
 def is_adapter(obj: Any) -> bool:
+    """Return True if the object is an Adapter or AsyncAdapter"""
     return isinstance(obj, (Adapter, AsyncAdapter))
 
 

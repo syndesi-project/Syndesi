@@ -87,5 +87,6 @@ def fit_height(widget: QWidget, width: int = CARD_WIDTH) -> None:
 
 
 def repolish(widget: QWidget) -> None:
+    """Repolish"""
     widget.style().unpolish(widget)
     widget.style().polish(widget)

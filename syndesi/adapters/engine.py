@@ -71,8 +71,8 @@ class Descriptor(ABC):
         tcp:192.168.1.10:5025   serial:/dev/ttyUSB0:115200   i2c:/dev/i2c-1@0x48
 
     The scheme names the kind of adapter, it is listed in SCHEMES. str() gives the
-    string, from_string() reads it back, and auto_adapter() builds the adapter of a
-    string. VISA is the exception : its resource strings are a standard of their own
+    string, from_string() reads it back.
+    VISA is the exception : its resource strings are a standard of their own
     """
 
     SCHEMES: ClassVar[tuple[str, ...]] = ()

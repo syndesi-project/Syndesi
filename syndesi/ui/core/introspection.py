@@ -174,6 +174,7 @@ def _type_arg_matches(expected: Any, actual: Any) -> bool:
     return bool(expected == actual)
 
 
+# pylint: disable=too-many-return-statements
 def accepts(hint: Any, cls: type) -> bool:
     """
     True if an instance of cls can be passed where hint is expected
@@ -210,6 +211,7 @@ def _mentions_component(hint: Any) -> bool:
     return isinstance(origin, type) and issubclass(origin, COMPONENT_BASES)
 
 
+# pylint: disable=too-many-return-statements
 def type_name(hint: Any) -> str:
     """Short, readable form of a type hint : Adapter[Any, bytes], str | bytes, ..."""
     if hint is inspect.Parameter.empty or hint is None:
@@ -253,7 +255,7 @@ class ParamDoc:
 
 _SECTION_RE = re.compile(r"^\s*(\w[\w ]*)\n\s*-{3,}\s*$", re.MULTILINE)
 
-
+# pylint: disable=too-many-branches
 def parse_numpy_doc(doc: str | None) -> tuple[str, dict[str, ParamDoc]]:
     """
     Return the summary of a numpy docstring and its Parameters section
@@ -334,6 +336,7 @@ class FieldType(StrEnum):
     UNSUPPORTED = "unsupported"
 
 
+# pylint: disable=too-many-instance-attributes
 @dataclass
 class ParamSpec:
     """One parameter of a constructor or of a method"""
@@ -377,7 +380,7 @@ class ParamSpec:
         """True if the slot accepts an instance of cls"""
         return self.is_slot and accepts(self.annotation, cls)
 
-
+# pylint: disable=too-many-return-statements
 def _classify_member(hint: Any) -> tuple[FieldType, list[Any] | None]:
     if hint is bool:
         return FieldType.BOOL, None
@@ -404,7 +407,7 @@ def _classify_member(hint: Any) -> tuple[FieldType, list[Any] | None]:
         return FieldType.EXPRESSION, None
     return FieldType.UNSUPPORTED, None
 
-
+# pylint: disable=too-many-branches
 def _classify(spec: ParamSpec) -> None:
     hint = spec.annotation
     if hint is inspect.Parameter.empty:

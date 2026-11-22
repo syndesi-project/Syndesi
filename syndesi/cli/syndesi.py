@@ -23,7 +23,6 @@ class SyndesiCommand(Enum):
     DRIVER = "driver"
     UI = "ui"
 
-
 def main() -> None:
     """
     Main syndesi entry point

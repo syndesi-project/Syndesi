@@ -45,9 +45,11 @@ if TYPE_CHECKING:
     from .screen import TestScreen
 
 
+# pylint: disable=too-many-instance-attributes
 class CommandPanel(QWidget):
     """The public methods of a component, with a form for their arguments"""
 
+    # pylint: disable=too-many-statements
     def __init__(self, screen: TestScreen, item: RuntimeItem, commands: list[CommandInfo]) -> None:
         super().__init__()
         self.owner = screen
@@ -183,14 +185,23 @@ class CommandPanel(QWidget):
         method = getattr(self.item.instance, command.name)
         self.result.setText("running…")
         set_tone(self.result, "muted")
-        self.owner.log(self.item, "▶ command", call_text, EntryStyle.COMMAND)
+        self.owner.log(
+            item=self.item,
+            label="▶ command",
+            data=call_text,
+            style=EntryStyle.COMMAND
+        )
 
         def done(result: Any) -> None:
             text = "done" if result is None else repr(result)
             self.result.setText(f"= {text}")
             set_tone(self.result, "")
-            self.owner.log(self.item, "= result", "None" if result is None else repr(result),
-                            EntryStyle.RESULT)
+            self.owner.log(
+                item=self.item,
+                label="= result",
+                data="None" if result is None else repr(result),
+                style=EntryStyle.RESULT
+            )
             self.owner.add_returned(self.item, result, call_text)
 
         def failed(error: BaseException) -> None:

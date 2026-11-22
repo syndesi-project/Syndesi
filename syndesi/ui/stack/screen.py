@@ -55,6 +55,7 @@ from .inspector import CodePreview, Inspector
 from .library_panel import GROUPS, Palette
 
 
+# pylint: disable=too-many-instance-attributes
 class StackScreen(QWidget):
     """
     First screen : assemble and configure the stack

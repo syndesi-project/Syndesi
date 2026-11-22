@@ -64,7 +64,7 @@ def _role_text(item: RuntimeItem) -> str:
         Role.RETURNED: f"Returned by <code>{item.path}</code> of {parent}",
     }[item.role]
 
-
+# pylint: disable=too-many-instance-attributes
 class TestScreen(QWidget):
     """
     Second screen : open, send, read, run commands, watch the events
@@ -167,7 +167,12 @@ class TestScreen(QWidget):
         self._panels.clear()
         self._buffers.clear()
         self.tree.show_runtime(runtime.root)
-        self.log(runtime.root, "✓ built", describe(runtime.root.instance), EntryStyle.INFO)
+        self.log(
+            item=runtime.root,
+            label="✓ built",
+            data=describe(runtime.root.instance),
+            style=EntryStyle.INFO
+        )
         for item in runtime.walk():
             self._relay.listen(item)
         self._update_components()
@@ -260,8 +265,7 @@ class TestScreen(QWidget):
         self.tree.retheme()
 
     # Calls
-
-    def log(self, item: RuntimeItem, label: str, data: str, style: EntryStyle,
+    def log(self, *, item: RuntimeItem, label: str, data: str, style: EntryStyle,
             timestamp: float | None = None, key: str = "") -> None:
         """Add a main row, key : see LogEntry.key"""
         self.log_view.add(
@@ -271,7 +275,7 @@ class TestScreen(QWidget):
 
     def log_error(self, item: RuntimeItem, message: str) -> None:
         """Add an error row"""
-        self.log(item, "✗ error", message, EntryStyle.ERROR)
+        self.log(item=item, label="✗ error", data=message, style=EntryStyle.ERROR)
 
     def run(
         self,
@@ -293,7 +297,7 @@ class TestScreen(QWidget):
             if generation != self._generation:
                 return
             if error is not None:
-                self.log(item, failure, error_text(error), failure_style)
+                self.log(item=item, label=failure, data=error_text(error), style=failure_style)
                 if on_error is not None:
                     on_error(error)
                 return
@@ -313,7 +317,12 @@ class TestScreen(QWidget):
             new = self.runtime.add(found.instance, Role.RETURNED, call_text + found.path, item)
             if new is not None:
                 self._add(new)
-                self.log(item, "+ object", f"{new.label} added to the objects", EntryStyle.INFO)
+                self.log(
+                    item=item,
+                    label="+ object",
+                    data=f"{new.label} added to the objects",
+                    style=EntryStyle.INFO
+                )
 
     def open(self) -> None:
         """Open the stack"""
@@ -329,7 +338,7 @@ class TestScreen(QWidget):
         targets = open_targets(self.runtime)
         for target in targets:
             item = self.runtime.find(target) or self.runtime.root
-            self.log(item, "▶ command", f"{action}()", EntryStyle.COMMAND)
+            self.log(item=item, label="▶ command", data=f"{action}()", style=EntryStyle.COMMAND)
 
         def job() -> None:
             for target in targets:

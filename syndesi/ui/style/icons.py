@@ -61,15 +61,15 @@ _SVG = (
     'stroke-linejoin="round">{body}</svg>'
 )
 
-_directory: Path | None = None
+_DIRECTORY: Path | None = None
 
 
 def _cache() -> Path:
-    global _directory  # pylint: disable=global-statement
-    if _directory is None:
-        _directory = Path(tempfile.mkdtemp(prefix="syndesi-icons-"))
-        atexit.register(shutil.rmtree, _directory, True)
-    return _directory
+    global _DIRECTORY  # pylint: disable=global-statement
+    if _DIRECTORY is None:
+        _DIRECTORY = Path(tempfile.mkdtemp(prefix="syndesi-icons-"))
+        atexit.register(shutil.rmtree, _DIRECTORY, True)
+    return _DIRECTORY
 
 
 def icon_file(name: str, color: str) -> str:

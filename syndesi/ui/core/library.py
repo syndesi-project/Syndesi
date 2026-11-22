@@ -24,6 +24,7 @@ from .introspection import (
 )
 
 
+# pylint: disable=too-many-locals
 def _builtin_classes() -> list[type]:
     # pylint: disable=import-outside-toplevel
     from ...adapters.i2c import I2C, AsyncI2C

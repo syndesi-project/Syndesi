@@ -431,6 +431,7 @@ class FieldEditor(QWidget):
 
     # Values
 
+    # pylint: disable=too-many-branches
     def set_value(self, value: Any) -> None:
         """Show a value (DEFAULT and None check the matching box)"""
         if self._default_box is not None:
@@ -466,6 +467,7 @@ class FieldEditor(QWidget):
             else:
                 editor.setText(str(value))
 
+    # pylint: disable=too-many-return-statements
     def value(self) -> Any:
         """Value of the parameter, raises ValueError if it's invalid"""
         if self._default_box is not None and self._default_box.isChecked():

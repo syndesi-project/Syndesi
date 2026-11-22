@@ -877,6 +877,7 @@ class ProtocolCommon(Generic[BackendT, AdapterT, ProtocolT]):
 
     def __init__(
         self,
+        *,
         adapter: Adapter[Any, AdapterT] | AsyncAdapter[Any, AdapterT],
         backend: BackendT,
         timeout: TimeoutParameterType,
@@ -977,7 +978,14 @@ class Protocol(
         auto_open: bool = True,
     ) -> None:
         self._lock = threading.Lock()
-        super().__init__(adapter, backend, timeout, alias, event_callback, auto_open)
+        super().__init__(
+            adapter=adapter,
+            backend=backend,
+            timeout=timeout,
+            alias=alias,
+            event_callback=event_callback,
+            auto_open=auto_open
+        )
 
         # Waited for, so that the adapter attributes (framing, ...) are up to date as
         # soon as the constructor returns. AsyncProtocol deliberately doesn't wait
@@ -1079,7 +1087,14 @@ class AsyncProtocol(
         auto_open: bool = True,
     ) -> None:
         self._lock = asyncio.Lock()
-        super().__init__(adapter, backend, timeout, alias, event_callback, auto_open)
+        super().__init__(
+            adapter=adapter,
+            backend=backend,
+            timeout=timeout,
+            alias=alias,
+            event_callback=event_callback,
+            auto_open=auto_open
+        )
 
     async def open(self) -> None:
         """Open communication with the target"""

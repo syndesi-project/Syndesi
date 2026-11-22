@@ -57,6 +57,7 @@ GROUPS = [
 
 
 def class_from_mime(mime: QMimeData, library: Library) -> type | None:
+    """Generate a class from QMimeData"""
     if not mime.hasFormat(MIME):
         return None
     name = bytes(mime.data(MIME).data()).decode()
@@ -108,7 +109,7 @@ class _PaletteDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self._library = library
 
-
+    # pylint: disable=too-many-statements, too-many-locals
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: Any) -> None:
         data = index.data(Qt.ItemDataRole.UserRole)
         self.initStyleOption(option, index)
